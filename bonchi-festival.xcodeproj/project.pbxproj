@@ -1,0 +1,597 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A54858742EF2579B00155732 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54858732EF2579B00155732 /* AppDelegate.swift */; };
+		A54858762EF2579B00155732 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54858752EF2579B00155732 /* ContentView.swift */; };
+		A54858782EF2579F00155732 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A54858772EF2579F00155732 /* Assets.xcassets */; };
+		A548587B2EF2579F00155732 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A548587A2EF2579F00155732 /* Preview Assets.xcassets */; };
+		A54858852EF2579F00155732 /* bonchi_festivalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54858842EF2579F00155732 /* bonchi_festivalTests.swift */; };
+		A548588F2EF2579F00155732 /* bonchi_festivalUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A548588E2EF2579F00155732 /* bonchi_festivalUITests.swift */; };
+		A54858912EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54858902EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A54858812EF2579F00155732 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A54858682EF2579B00155732 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A548586F2EF2579B00155732;
+			remoteInfo = "bonchi-festival";
+		};
+		A548588B2EF2579F00155732 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A54858682EF2579B00155732 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A548586F2EF2579B00155732;
+			remoteInfo = "bonchi-festival";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A54858702EF2579B00155732 /* bonchi-festival.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "bonchi-festival.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A54858732EF2579B00155732 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A54858752EF2579B00155732 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A54858772EF2579F00155732 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A548587A2EF2579F00155732 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		A54858802EF2579F00155732 /* bonchi-festivalTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "bonchi-festivalTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A54858842EF2579F00155732 /* bonchi_festivalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = bonchi_festivalTests.swift; sourceTree = "<group>"; };
+		A548588A2EF2579F00155732 /* bonchi-festivalUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "bonchi-festivalUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A548588E2EF2579F00155732 /* bonchi_festivalUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = bonchi_festivalUITests.swift; sourceTree = "<group>"; };
+		A54858902EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = bonchi_festivalUITestsLaunchTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A548586D2EF2579B00155732 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A548587D2EF2579F00155732 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A54858872EF2579F00155732 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A54858672EF2579B00155732 = {
+			isa = PBXGroup;
+			children = (
+				A54858722EF2579B00155732 /* bonchi-festival */,
+				A54858832EF2579F00155732 /* bonchi-festivalTests */,
+				A548588D2EF2579F00155732 /* bonchi-festivalUITests */,
+				A54858712EF2579B00155732 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A54858712EF2579B00155732 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A54858702EF2579B00155732 /* bonchi-festival.app */,
+				A54858802EF2579F00155732 /* bonchi-festivalTests.xctest */,
+				A548588A2EF2579F00155732 /* bonchi-festivalUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A54858722EF2579B00155732 /* bonchi-festival */ = {
+			isa = PBXGroup;
+			children = (
+				A54858732EF2579B00155732 /* AppDelegate.swift */,
+				A54858752EF2579B00155732 /* ContentView.swift */,
+				A54858772EF2579F00155732 /* Assets.xcassets */,
+				A54858792EF2579F00155732 /* Preview Content */,
+			);
+			path = "bonchi-festival";
+			sourceTree = "<group>";
+		};
+		A54858792EF2579F00155732 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				A548587A2EF2579F00155732 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		A54858832EF2579F00155732 /* bonchi-festivalTests */ = {
+			isa = PBXGroup;
+			children = (
+				A54858842EF2579F00155732 /* bonchi_festivalTests.swift */,
+			);
+			path = "bonchi-festivalTests";
+			sourceTree = "<group>";
+		};
+		A548588D2EF2579F00155732 /* bonchi-festivalUITests */ = {
+			isa = PBXGroup;
+			children = (
+				A548588E2EF2579F00155732 /* bonchi_festivalUITests.swift */,
+				A54858902EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift */,
+			);
+			path = "bonchi-festivalUITests";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A548586F2EF2579B00155732 /* bonchi-festival */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A54858942EF2579F00155732 /* Build configuration list for PBXNativeTarget "bonchi-festival" */;
+			buildPhases = (
+				A548586C2EF2579B00155732 /* Sources */,
+				A548586D2EF2579B00155732 /* Frameworks */,
+				A548586E2EF2579B00155732 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "bonchi-festival";
+			productName = "bonchi-festival";
+			productReference = A54858702EF2579B00155732 /* bonchi-festival.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A548587F2EF2579F00155732 /* bonchi-festivalTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A54858972EF2579F00155732 /* Build configuration list for PBXNativeTarget "bonchi-festivalTests" */;
+			buildPhases = (
+				A548587C2EF2579F00155732 /* Sources */,
+				A548587D2EF2579F00155732 /* Frameworks */,
+				A548587E2EF2579F00155732 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A54858822EF2579F00155732 /* PBXTargetDependency */,
+			);
+			name = "bonchi-festivalTests";
+			productName = "bonchi-festivalTests";
+			productReference = A54858802EF2579F00155732 /* bonchi-festivalTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		A54858892EF2579F00155732 /* bonchi-festivalUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A548589A2EF2579F00155732 /* Build configuration list for PBXNativeTarget "bonchi-festivalUITests" */;
+			buildPhases = (
+				A54858862EF2579F00155732 /* Sources */,
+				A54858872EF2579F00155732 /* Frameworks */,
+				A54858882EF2579F00155732 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A548588C2EF2579F00155732 /* PBXTargetDependency */,
+			);
+			name = "bonchi-festivalUITests";
+			productName = "bonchi-festivalUITests";
+			productReference = A548588A2EF2579F00155732 /* bonchi-festivalUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A54858682EF2579B00155732 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1510;
+				LastUpgradeCheck = 1510;
+				TargetAttributes = {
+					A548586F2EF2579B00155732 = {
+						CreatedOnToolsVersion = 15.1;
+					};
+					A548587F2EF2579F00155732 = {
+						CreatedOnToolsVersion = 15.1;
+						TestTargetID = A548586F2EF2579B00155732;
+					};
+					A54858892EF2579F00155732 = {
+						CreatedOnToolsVersion = 15.1;
+						TestTargetID = A548586F2EF2579B00155732;
+					};
+				};
+			};
+			buildConfigurationList = A548586B2EF2579B00155732 /* Build configuration list for PBXProject "bonchi-festival" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A54858672EF2579B00155732;
+			productRefGroup = A54858712EF2579B00155732 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A548586F2EF2579B00155732 /* bonchi-festival */,
+				A548587F2EF2579F00155732 /* bonchi-festivalTests */,
+				A54858892EF2579F00155732 /* bonchi-festivalUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A548586E2EF2579B00155732 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A548587B2EF2579F00155732 /* Preview Assets.xcassets in Resources */,
+				A54858782EF2579F00155732 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A548587E2EF2579F00155732 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A54858882EF2579F00155732 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A548586C2EF2579B00155732 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A54858762EF2579B00155732 /* ContentView.swift in Sources */,
+				A54858742EF2579B00155732 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A548587C2EF2579F00155732 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A54858852EF2579F00155732 /* bonchi_festivalTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A54858862EF2579F00155732 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A548588F2EF2579F00155732 /* bonchi_festivalUITests.swift in Sources */,
+				A54858912EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A54858822EF2579F00155732 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A548586F2EF2579B00155732 /* bonchi-festival */;
+			targetProxy = A54858812EF2579F00155732 /* PBXContainerItemProxy */;
+		};
+		A548588C2EF2579F00155732 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A548586F2EF2579B00155732 /* bonchi-festival */;
+			targetProxy = A548588B2EF2579F00155732 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A54858922EF2579F00155732 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A54858932EF2579F00155732 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A54858952EF2579F00155732 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"bonchi-festival/Preview Content\"";
+				DEVELOPMENT_TEAM = GP7Z3N223V;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "rt.bonchi-festival";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A54858962EF2579F00155732 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"bonchi-festival/Preview Content\"";
+				DEVELOPMENT_TEAM = GP7Z3N223V;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "rt.bonchi-festival";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A54858982EF2579F00155732 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GP7Z3N223V;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "rt.bonchi-festivalTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/bonchi-festival.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/bonchi-festival";
+			};
+			name = Debug;
+		};
+		A54858992EF2579F00155732 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GP7Z3N223V;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "rt.bonchi-festivalTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/bonchi-festival.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/bonchi-festival";
+			};
+			name = Release;
+		};
+		A548589B2EF2579F00155732 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GP7Z3N223V;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "rt.bonchi-festivalUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "bonchi-festival";
+			};
+			name = Debug;
+		};
+		A548589C2EF2579F00155732 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GP7Z3N223V;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "rt.bonchi-festivalUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "bonchi-festival";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A548586B2EF2579B00155732 /* Build configuration list for PBXProject "bonchi-festival" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A54858922EF2579F00155732 /* Debug */,
+				A54858932EF2579F00155732 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A54858942EF2579F00155732 /* Build configuration list for PBXNativeTarget "bonchi-festival" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A54858952EF2579F00155732 /* Debug */,
+				A54858962EF2579F00155732 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A54858972EF2579F00155732 /* Build configuration list for PBXNativeTarget "bonchi-festivalTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A54858982EF2579F00155732 /* Debug */,
+				A54858992EF2579F00155732 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A548589A2EF2579F00155732 /* Build configuration list for PBXNativeTarget "bonchi-festivalUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A548589B2EF2579F00155732 /* Debug */,
+				A548589C2EF2579F00155732 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A54858682EF2579B00155732 /* Project object */;
+}
