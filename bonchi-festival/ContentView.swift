@@ -82,7 +82,7 @@ struct WaitingView: View {
                 .background(Color.white.opacity(0.12))
                 .clipShape(Capsule())
 
-                // Start button
+                // Start button — always enabled; connection is optional
                 Button {
                     withAnimation { gameManager.startGame() }
                 } label: {
@@ -91,12 +91,10 @@ struct WaitingView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 52)
                         .padding(.vertical, 16)
-                        .background(gameManager.isConnected ? Color.green : Color.gray)
+                        .background(Color.green)
                         .clipShape(Capsule())
-                        .shadow(color: gameManager.isConnected ? .green.opacity(0.5) : .clear,
-                                radius: 12)
+                        .shadow(color: .green.opacity(0.5), radius: 12)
                 }
-                .disabled(!gameManager.isConnected)
 
                 // Bug legend card
                 VStack(spacing: 12) {
