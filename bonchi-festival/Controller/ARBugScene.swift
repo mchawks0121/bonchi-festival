@@ -404,18 +404,58 @@ final class ARBugScene: SKScene {
 
     private func playNetThrowAnimation() {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
+
+        // Expanding ring that mimics the net mouth opening
+        let ring = SKShapeNode(circleOfRadius: 28)
+        ring.strokeColor = UIColor.white.withAlphaComponent(0.60)
+        ring.fillColor   = .clear
+        ring.lineWidth   = 2.5
+        ring.position    = center
+        ring.zPosition   = 52
+        ring.setScale(0.3)
+        ring.alpha = 0.85
+        addChild(ring)
+        ring.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.scale(to: 3.8, duration: 0.45),
+                SKAction.fadeOut(withDuration: 0.45)
+            ]),
+            SKAction.removeFromParent()
+        ]))
+
         let net = SKLabelNode(text: "🕸️")
-        net.fontSize  = 52
+        net.fontSize  = 64
         net.position  = center
         net.zPosition = 53
-        net.setScale(0.15)
-        net.alpha = 0.95
+        net.setScale(0.2)
+        net.alpha = 1.0
         addChild(net)
+
+        // Fly toward the locked-on bug if one is within range; otherwise throw straight up.
+        // Use 55 % of the distance so the net visibly travels toward the target but doesn't
+        // fully overlap it (the capture effect at the bug's position handles the overlap).
+        let targetDistanceFraction: CGFloat = 0.55
+        let flyTarget: CGPoint
+        if let target = currentLockTarget {
+            flyTarget = CGPoint(
+                x: center.x + (target.position.x - center.x) * targetDistanceFraction,
+                y: center.y + (target.position.y - center.y) * targetDistanceFraction
+            )
+        } else {
+            flyTarget = CGPoint(x: center.x, y: center.y + 130)
+        }
+
+        let flyAndExpand = SKAction.group([
+            SKAction.move(to: flyTarget, duration: 0.42),
+            SKAction.scale(to: 2.0, duration: 0.30),
+            SKAction.rotate(byAngle: .pi * 2.5, duration: 0.42)
+        ])
+        let delayedFade = SKAction.sequence([
+            SKAction.wait(forDuration: 0.22),
+            SKAction.fadeOut(withDuration: 0.20)
+        ])
         net.run(SKAction.sequence([
-            SKAction.group([
-                SKAction.scale(to: 1.9, duration: 0.42),
-                SKAction.fadeOut(withDuration: 0.42)
-            ]),
+            SKAction.group([flyAndExpand, delayedFade]),
             SKAction.removeFromParent()
         ]))
     }

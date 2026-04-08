@@ -36,6 +36,7 @@ struct SlingshotView: View {
     @State private var netFlightOffset: CGSize = .zero
     @State private var netScale: CGFloat = 1.0
     @State private var netOpacity: Double = 0.0
+    @State private var netRotation: Double = 0.0
 
     var body: some View {
         GeometryReader { geo in
@@ -46,7 +47,9 @@ struct SlingshotView: View {
                 // Flying-net animation
                 if showNet {
                     Text("🕸️")
-                        .font(.system(size: 52 * netScale))
+                        .font(.system(size: 64))
+                        .scaleEffect(netScale)
+                        .rotationEffect(.degrees(netRotation))
                         .opacity(netOpacity)
                         .offset(netFlightOffset)
                 }
@@ -112,7 +115,8 @@ struct SlingshotView: View {
                             return
                         }
                         fireSlingshot(forkCenter: CGPoint(x: geo.size.width / 2,
-                                                          y: geo.size.height * SlingshotView.forkYRatio))
+                                                          y: geo.size.height * SlingshotView.forkYRatio),
+                                      sceneSize: geo.size)
                     }
             )
         }
@@ -128,7 +132,7 @@ struct SlingshotView: View {
         min(dragLength / maxDragDistance, 1.0)
     }
 
-    private func fireSlingshot(forkCenter: CGPoint) {
+    private func fireSlingshot(forkCenter: CGPoint, sceneSize: CGSize) {
         let power  = Float(normalizedPower)
         // Pulling left launches right, pulling down launches up
         let dx     = -dragOffset.width
@@ -145,21 +149,31 @@ struct SlingshotView: View {
             dragOffset = .zero
         }
 
-        netFlightOffset = .zero
-        netScale    = 0.6
+        // Net starts at the fork, not the screen centre
+        let startY = sceneSize.height * (SlingshotView.forkYRatio - 0.5)
+        netFlightOffset = CGSize(width: 0, height: startY)
+        netScale    = 0.3   // starts compact (net is folded before it opens)
         netOpacity  = 1.0
+        netRotation = 0
         showNet     = true
 
+        // Spin amount: 270°–810° (0.75–2.25 full turns) based on power
+        let minSpinDegrees: Double  = 270   // minimum rotation at zero power
+        let powerSpinRange: Double  = 540   // additional rotation at full power
+        let spinDegrees = Double(normalizedPower) * powerSpinRange + minSpinDegrees
+
         withAnimation(.easeOut(duration: 0.55)) {
-            netFlightOffset = CGSize(width: flyDx * 2.5, height: flyDy * 2.5)
-            netScale    = 1.6
+            netFlightOffset = CGSize(width: flyDx * 2.5, height: startY + flyDy * 2.5)
+            netScale    = 1.8   // expands as the net opens in flight
             netOpacity  = 0
+            netRotation = spinDegrees
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
             showNet = false
             netFlightOffset = .zero
             netScale = 1.0
+            netRotation = 0
         }
     }
 }
