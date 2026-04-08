@@ -50,6 +50,10 @@ final class ARBugScene: SKScene {
     private var distortionBars: [SKShapeNode] = []
     private var lastBugCount = -1
 
+    /// Fraction of full intensity added per active bug.
+    /// At 3+ bugs the distortion layer reaches full opacity.
+    private static let distortionPerBug: CGFloat = 0.38
+
     // MARK: - Lifecycle
 
     override func didMove(to view: SKView) {
@@ -176,7 +180,7 @@ final class ARBugScene: SKScene {
         lastBugCount = bugCount
 
         // 0 bugs → invisible, 1 bug → 38 %, 2 → 66 %, 3+ → 100 %
-        let target = min(CGFloat(bugCount) * 0.38, 1.0)
+        let target = min(CGFloat(bugCount) * ARBugScene.distortionPerBug, 1.0)
         distortionLayer.run(
             SKAction.fadeAlpha(to: target, duration: 0.6),
             withKey: "distortFade"

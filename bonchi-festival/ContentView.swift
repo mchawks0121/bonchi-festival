@@ -276,7 +276,7 @@ struct PlayingView: View {
 
                 Spacer()
             }
-            .allowsHitTesting(false)
+            .allowsHitTesting(false)  // gestures pass through to the slingshot layer below
 
             // ── Slingshot — full-screen overlay ──────────────────────────
             SlingshotView()
