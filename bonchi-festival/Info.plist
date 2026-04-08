@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+	<!-- ── App identity ──────────────────────────────────────────────── -->
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+
+	<key>CFBundleDisplayName</key>
+	<string>Bug Hunter</string>
+
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+
+	<!-- ── Device capabilities ───────────────────────────────────────── -->
+	<!-- ARKit requirement removed; game uses SpriteKit + Multipeer -->
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+
+	<!-- ── Orientation ───────────────────────────────────────────────── -->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<!-- ── UI appearance ─────────────────────────────────────────────── -->
+	<key>UIStatusBarHidden</key>
+	<true/>
+
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+
+	<key>UILaunchScreen</key>
+	<dict/>
+
+	<!-- ── Multipeer Connectivity permissions ────────────────────────── -->
+	<!--
+	  NSLocalNetworkUsageDescription is REQUIRED on iOS 14+ for apps that
+	  use Multipeer Connectivity.  Without this key the system blocks all
+	  peer discovery and the game cannot connect to the projector device.
+	-->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>近くのプロジェクターデバイスと接続してゲームをプレイするために、ローカルネットワークへのアクセスが必要です。</string>
+
+	<!--
+	  NSBonjourServices declares the Bonjour service types that this app
+	  will browse or advertise.  Both TCP and UDP variants are required.
+	  The service type must match MultipeerSession.serviceType ("bughunter-game").
+	-->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_bughunter-game._tcp</string>
+		<string>_bughunter-game._udp</string>
+	</array>
+
+</dict>
+</plist>

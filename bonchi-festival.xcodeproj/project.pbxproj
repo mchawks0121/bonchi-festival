@@ -64,6 +64,7 @@
 		BB10000FDEADBEEF00100001 /* NetProjectile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetProjectile.swift; sourceTree = "<group>"; };
 		BB100011DEADBEEF00100001 /* ProjectorGameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectorGameManager.swift; sourceTree = "<group>"; };
 		BB100013DEADBEEF00100001 /* WaitingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaitingScene.swift; sourceTree = "<group>"; };
+		BB200001DEADBEEF00200001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -115,6 +116,7 @@
 			isa = PBXGroup;
 			children = (
 				A54858732EF2579B00155732 /* AppDelegate.swift */,
+				BB200001DEADBEEF00200001 /* Info.plist */,
 				A54858752EF2579B00155732 /* ContentView.swift */,
 				A54858772EF2579F00155732 /* Assets.xcassets */,
 				A54858792EF2579F00155732 /* Preview Content */,
@@ -488,14 +490,8 @@
 				DEVELOPMENT_ASSET_PATHS = "\"bonchi-festival/Preview Content\"";
 				DEVELOPMENT_TEAM = GP7Z3N223V;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "";
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
-				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "bonchi-festival/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -519,14 +515,8 @@
 				DEVELOPMENT_ASSET_PATHS = "\"bonchi-festival/Preview Content\"";
 				DEVELOPMENT_TEAM = GP7Z3N223V;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "";
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
-				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "bonchi-festival/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
