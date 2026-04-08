@@ -169,7 +169,7 @@ struct PlayingView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("SCORE")
                             .font(.caption2.bold())
-                            .foregroundColor(.white.opacity(0.9))
+                            .foregroundColor(.white.opacity(0.6))
                         Text("\(gameManager.score)")
                             .font(.system(size: 44, weight: .black, design: .rounded))
                             .foregroundColor(.yellow)
@@ -180,7 +180,7 @@ struct PlayingView: View {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("TIME")
                             .font(.caption2.bold())
-                            .foregroundColor(.white.opacity(0.9))
+                            .foregroundColor(.white.opacity(0.6))
                         Text(String(format: "%.1f", gameManager.timeRemaining))
                             .font(.system(size: 44, weight: .black, design: .rounded))
                             .foregroundColor(gameManager.timeRemaining < 10 ? .red : .white)

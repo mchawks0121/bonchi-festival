@@ -20,6 +20,14 @@ struct ARGameView: UIViewRepresentable {
 
     @EnvironmentObject var gameManager: GameManager
 
+    // MARK: Coordinator
+
+    final class Coordinator: NSObject {}
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    // MARK: UIViewRepresentable
+
     func makeUIView(context: Context) -> ARSKView {
         let arView = ARSKView(frame: .zero)
         arView.ignoresSiblingOrder = true
@@ -43,7 +51,7 @@ struct ARGameView: UIViewRepresentable {
         }
     }
 
-    static func dismantleUIView(_ uiView: ARSKView, coordinator: Void) {
+    static func dismantleUIView(_ uiView: ARSKView, coordinator: Coordinator) {
         uiView.session.pause()
     }
 }
