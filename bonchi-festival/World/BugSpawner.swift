@@ -54,10 +54,10 @@ final class BugSpawner {
         scene.addChild(bug)
 
         // Move along a random bezier path, then remove when it leaves the scene.
-        // duration = 600 / speed so that faster bugs (higher speed value) traverse the
-        // path in less time: butterfly ~2.7 s, beetle ~4.3 s, stag ~6.7 s.
+        // duration = 600 / speed so slower bugs spend more time on screen:
+        // Null (butterfly) ~5.5 s, Virus (beetle) ~8.6 s, Glitch (stag) ~13 s (capped at 12).
         let path     = randomPath(from: bug.position, in: scene.size)
-        let duration = max(2.0, min(600.0 / Double(bugType.speed), 9.0))
+        let duration = max(3.0, min(600.0 / Double(bugType.speed), 12.0))
         let move     = SKAction.follow(path, asOffset: false, orientToPath: true, duration: duration)
         bug.run(SKAction.sequence([move, SKAction.removeFromParent()]))
 

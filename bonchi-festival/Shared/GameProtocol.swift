@@ -64,11 +64,13 @@ struct GameStatePayload: Codable {
 
 // MARK: - Bug types
 
-/// The three species of bugs that appear in the world.
+/// The three classes of bugs that infect the world.
+/// Lore: these are digital anomalies corrupting the world's code.
+/// Bug hunters must net them all to restore the world to a clean state.
 enum BugType: String, CaseIterable {
-    case butterfly = "butterfly"   // 1 pt – fast, small
-    case beetle    = "beetle"      // 3 pt – medium
-    case stag      = "stag"        // 5 pt – slow, large (represents クワガタ / stag beetle; 🪲 is the closest available emoji)
+    case butterfly = "butterfly"   // 1 pt – fast, small  (Null Bug  — minor undefined reference)
+    case beetle    = "beetle"      // 3 pt – medium       (Virus Bug — self-replicating runtime error)
+    case stag      = "stag"        // 5 pt – slow, large  (Glitch    — critical corruption, hard to catch)
 
     var points: Int {
         switch self {
@@ -80,18 +82,27 @@ enum BugType: String, CaseIterable {
 
     var emoji: String {
         switch self {
-        case .butterfly: return "🦋"
-        case .beetle:    return "🐛"
-        case .stag:      return "🪲"
+        case .butterfly: return "🐞"   // Null Bug
+        case .beetle:    return "🦠"   // Virus Bug
+        case .stag:      return "👾"   // Glitch
+        }
+    }
+
+    /// Display name shown in the bug legend.
+    var displayName: String {
+        switch self {
+        case .butterfly: return "Null"
+        case .beetle:    return "Virus"
+        case .stag:      return "Glitch"
         }
     }
 
     /// Base movement speed in scene units per second.
     var speed: CGFloat {
         switch self {
-        case .butterfly: return 220
-        case .beetle:    return 140
-        case .stag:      return 90
+        case .butterfly: return 110
+        case .beetle:    return 70
+        case .stag:      return 45
         }
     }
 

@@ -106,15 +106,15 @@ final class BugHunterScene: SKScene {
         overlay.zPosition = 100
         addChild(overlay)
 
-        let title = SKLabelNode(text: "ゲームオーバー！")
+        let title = SKLabelNode(text: "デバッグ完了！")
         title.fontName   = "HiraginoSans-W7"
         title.fontSize   = 72
-        title.fontColor  = .white
+        title.fontColor  = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 1)
         title.position   = CGPoint(x: size.width / 2, y: size.height / 2 + 80)
         title.zPosition  = 101
         addChild(title)
 
-        let scoreLbl = SKLabelNode(text: "スコア: \(finalScore) pt")
+        let scoreLbl = SKLabelNode(text: "修正バグ: \(finalScore) pt")
         scoreLbl.fontName  = "HiraginoSans-W7"
         scoreLbl.fontSize  = 96
         scoreLbl.fontColor = SKColor(red: 1, green: 0.85, blue: 0, alpha: 1)
@@ -132,23 +132,23 @@ final class BugHunterScene: SKScene {
     // MARK: - HUD Setup
 
     private func setupBackground() {
-        // Subtle grass-field gradient using a shader-less approach: tiled stars/leaves
-        for _ in 0..<30 {
-            let leaf = SKLabelNode(text: ["🌿", "🍃", "🌾"].randomElement()!)
-            leaf.fontSize   = CGFloat.random(in: 24...50)
-            leaf.position   = CGPoint(
+        // Scattered glitch symbols to convey "world being corrupted by bugs"
+        for _ in 0..<28 {
+            let symbol = SKLabelNode(text: ["⚠️", "❌", "🔴", "⛔", "💀", "🔥"].randomElement()!)
+            symbol.fontSize  = CGFloat.random(in: 18...44)
+            symbol.position  = CGPoint(
                 x: CGFloat.random(in: 0...size.width),
                 y: CGFloat.random(in: 0...size.height)
             )
-            leaf.alpha      = 0.25
-            leaf.zPosition  = -1
-            addChild(leaf)
+            symbol.alpha     = 0.15
+            symbol.zPosition = -1
+            addChild(symbol)
         }
     }
 
     private func setupHUD() {
         // Score label (top-left)
-        scoreLabel = SKLabelNode(text: "🏆 0")
+        scoreLabel = SKLabelNode(text: "🔧 0")
         scoreLabel.fontName  = "HiraginoSans-W7"
         scoreLabel.fontSize  = 48
         scoreLabel.fontColor = SKColor(red: 1, green: 0.85, blue: 0, alpha: 1)
@@ -190,7 +190,7 @@ final class BugHunterScene: SKScene {
     }
 
     private func updateHUD() {
-        scoreLabel.text = "🏆 \(score)"
+        scoreLabel.text = "🔧 \(score)"
     }
 
     private func updateTimerBar() {

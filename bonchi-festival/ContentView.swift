@@ -15,11 +15,11 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            // Dark nature gradient background
+            // Digital-corruption gradient: deep navy → almost-black
             LinearGradient(
                 colors: [
-                    Color(red: 0.03, green: 0.10, blue: 0.03),
-                    Color(red: 0.01, green: 0.05, blue: 0.01)
+                    Color(red: 0.04, green: 0.02, blue: 0.14),
+                    Color(red: 0.01, green: 0.01, blue: 0.08)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -54,7 +54,7 @@ struct WaitingView: View {
         ScrollView {
             VStack(spacing: 28) {
 
-                Text("🦟")
+                Text("👾")
                     .font(.system(size: 90))
                     .padding(.top, 48)
 
@@ -62,9 +62,10 @@ struct WaitingView: View {
                     .font(.largeTitle.bold())
                     .foregroundColor(.white)
 
-                Text("You are the Bug Hunter")
+                Text("バグに侵食されたワールドを救え！")
                     .font(.title3)
-                    .foregroundColor(.white.opacity(0.65))
+                    .foregroundColor(Color(red: 0.4, green: 0.9, blue: 1.0).opacity(0.85))
+                    .multilineTextAlignment(.center)
 
                 // Connection status pill
                 HStack(spacing: 8) {
@@ -86,26 +87,26 @@ struct WaitingView: View {
                 Button {
                     withAnimation { gameManager.startGame() }
                 } label: {
-                    Text("ゲームスタート")
+                    Text("デバッグ開始")
                         .font(.title2.bold())
-                        .foregroundColor(.white)
+                        .foregroundColor(.black)
                         .padding(.horizontal, 52)
                         .padding(.vertical, 16)
-                        .background(Color.green)
+                        .background(Color(red: 0.2, green: 1.0, blue: 0.8))
                         .clipShape(Capsule())
-                        .shadow(color: .green.opacity(0.5), radius: 12)
+                        .shadow(color: Color(red: 0.2, green: 1.0, blue: 0.8).opacity(0.6), radius: 16)
                 }
 
                 // Bug legend card
                 VStack(spacing: 12) {
-                    Text("スコア表")
+                    Text("出現バグ一覧")
                         .font(.headline.bold())
                         .foregroundColor(.white)
 
                     HStack(spacing: 32) {
-                        BugLegendItem(emoji: "🦋", pts: 1, name: "チョウ")
-                        BugLegendItem(emoji: "🐛", pts: 3, name: "カブトムシ")
-                        BugLegendItem(emoji: "🪲", pts: 5, name: "クワガタ")
+                        BugLegendItem(emoji: "🐞", pts: 1, name: "Null")
+                        BugLegendItem(emoji: "🦠", pts: 3, name: "Virus")
+                        BugLegendItem(emoji: "👾", pts: 5, name: "Glitch")
                     }
                 }
                 .padding(20)
@@ -115,8 +116,8 @@ struct WaitingView: View {
 
                 // How to play
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("遊び方").font(.headline).foregroundColor(.white)
-                    Text("画面下のスリングショットを\n引っ張って網を飛ばそう！\n制限時間は90秒。たくさん捕まえてハイスコアを目指せ！")
+                    Text("ミッション").font(.headline).foregroundColor(.white)
+                    Text("ワールドはバグに蝕まれている。\nスリングショットで網を飛ばし、バグを捕まえてデバッグせよ！\n制限時間は90秒。Glitchほど手強く、倒すほど価値がある。")
                         .font(.body)
                         .foregroundColor(.white.opacity(0.75))
                         .multilineTextAlignment(.leading)
@@ -167,12 +168,12 @@ struct PlayingView: View {
                 // ── HUD ──────────────────────────────────────────────────
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("SCORE")
+                        Text("BUGS FIXED")
                             .font(.caption2.bold())
                             .foregroundColor(.white.opacity(0.6))
                         Text("\(gameManager.score)")
                             .font(.system(size: 44, weight: .black, design: .rounded))
-                            .foregroundColor(.yellow)
+                            .foregroundColor(Color(red: 0.2, green: 1.0, blue: 0.8))
                     }
 
                     Spacer()
@@ -234,9 +235,13 @@ struct FinishedView: View {
     var body: some View {
         VStack(spacing: 30) {
 
-            Text("タイムアップ！").font(.largeTitle.bold()).foregroundColor(.white)
+            Text("🔧").font(.system(size: 72))
 
-            Text("最終スコア").font(.title3).foregroundColor(.white.opacity(0.65))
+            Text("デバッグ完了！")
+                .font(.largeTitle.bold())
+                .foregroundColor(Color(red: 0.2, green: 1.0, blue: 0.8))
+
+            Text("修正したバグ").font(.title3).foregroundColor(.white.opacity(0.65))
 
             HStack(alignment: .lastTextBaseline, spacing: 8) {
                 Text("\(gameManager.score)")
@@ -250,14 +255,14 @@ struct FinishedView: View {
             Button {
                 withAnimation { gameManager.resetGame() }
             } label: {
-                Text("もう一度プレイ")
+                Text("再デバッグ")
                     .font(.title2.bold())
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                     .padding(.horizontal, 52)
                     .padding(.vertical, 16)
-                    .background(Color.blue)
+                    .background(Color(red: 0.2, green: 1.0, blue: 0.8))
                     .clipShape(Capsule())
-                    .shadow(color: .blue.opacity(0.5), radius: 12)
+                    .shadow(color: Color(red: 0.2, green: 1.0, blue: 0.8).opacity(0.5), radius: 12)
             }
         }
         .padding()
