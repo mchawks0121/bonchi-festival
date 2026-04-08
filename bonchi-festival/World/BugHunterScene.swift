@@ -20,6 +20,9 @@ final class BugHunterScene: SKScene {
 
     weak var gameDelegate: BugHunterSceneDelegate?
 
+    /// When `true` the scene background is transparent so the AR camera feed shows through.
+    var isARMode: Bool = false
+
     // MARK: State
 
     private var score: Int = 0 {
@@ -39,7 +42,9 @@ final class BugHunterScene: SKScene {
     // MARK: - Lifecycle
 
     override func didMove(to view: SKView) {
-        backgroundColor = SKColor(red: 0.05, green: 0.12, blue: 0.05, alpha: 1)
+        backgroundColor = isARMode
+            ? .clear
+            : SKColor(red: 0.05, green: 0.12, blue: 0.05, alpha: 1)
 
         physicsWorld.gravity = .zero
         physicsWorld.contactDelegate = self

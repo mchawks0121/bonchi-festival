@@ -155,55 +155,65 @@ struct PlayingView: View {
     @EnvironmentObject var gameManager: GameManager
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack {
+            // ── AR camera + SpriteKit bug world (full screen) ────────────
+            ARGameView()
+                .environmentObject(gameManager)
+                .ignoresSafeArea()
 
-            // ── HUD ──────────────────────────────────────────────────────
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("SCORE")
-                        .font(.caption2.bold())
-                        .foregroundColor(.white.opacity(0.6))
-                    Text("\(gameManager.score)")
-                        .font(.system(size: 44, weight: .black, design: .rounded))
-                        .foregroundColor(.yellow)
+            // ── HUD + slingshot overlaid on the AR scene ─────────────────
+            VStack(spacing: 0) {
+
+                // ── HUD ──────────────────────────────────────────────────
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("SCORE")
+                            .font(.caption2.bold())
+                            .foregroundColor(.white.opacity(0.9))
+                        Text("\(gameManager.score)")
+                            .font(.system(size: 44, weight: .black, design: .rounded))
+                            .foregroundColor(.yellow)
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("TIME")
+                            .font(.caption2.bold())
+                            .foregroundColor(.white.opacity(0.9))
+                        Text(String(format: "%.1f", gameManager.timeRemaining))
+                            .font(.system(size: 44, weight: .black, design: .rounded))
+                            .foregroundColor(gameManager.timeRemaining < 10 ? .red : .white)
+                    }
                 }
+                .padding(.horizontal, 28)
+                .padding(.top, 12)
+                .background(Color.black.opacity(0.35))
+
+                // Timer bar
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.18))
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(timerBarColor)
+                            .frame(width: geo.size.width * CGFloat(gameManager.timeRemaining / 90.0))
+                            .animation(.linear(duration: 0.1), value: gameManager.timeRemaining)
+                    }
+                    .frame(height: 7)
+                }
+                .frame(height: 7)
+                .padding(.horizontal, 28)
+                .padding(.top, 2)
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("TIME")
-                        .font(.caption2.bold())
-                        .foregroundColor(.white.opacity(0.6))
-                    Text(String(format: "%.1f", gameManager.timeRemaining))
-                        .font(.system(size: 44, weight: .black, design: .rounded))
-                        .foregroundColor(gameManager.timeRemaining < 10 ? .red : .white)
-                }
+                // ── Slingshot area ───────────────────────────────────────
+                SlingshotView()
+                    .environmentObject(gameManager)
+                    .frame(height: 340)
+                    .background(Color.black.opacity(0.25))
             }
-            .padding(.horizontal, 28)
-            .padding(.top, 12)
-
-            // Timer bar
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.white.opacity(0.18))
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(timerBarColor)
-                        .frame(width: geo.size.width * CGFloat(gameManager.timeRemaining / 90.0))
-                        .animation(.linear(duration: 0.1), value: gameManager.timeRemaining)
-                }
-                .frame(height: 7)
-            }
-            .frame(height: 7)
-            .padding(.horizontal, 28)
-            .padding(.top, 8)
-
-            Spacer()
-
-            // ── Slingshot area ───────────────────────────────────────────
-            SlingshotView()
-                .environmentObject(gameManager)
-                .frame(height: 340)
         }
     }
 

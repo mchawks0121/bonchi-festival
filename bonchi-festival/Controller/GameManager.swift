@@ -2,12 +2,16 @@
 //  GameManager.swift
 //  bonchi-festival
 //
-//  iOS Controller: game state, 90-second countdown timer, and score management.
+//  iOS Controller: game state, score management, and local AR scene ownership.
+//  When no projector is connected the game runs entirely on-device using an
+//  ARSKView-hosted BugHunterScene.  When a projector IS connected it also
+//  receives launch events so both screens show the action.
 //
 
 import Foundation
 import Combine
 import MultipeerConnectivity
+import UIKit
 
 // MARK: - GameManager
 
@@ -27,10 +31,12 @@ final class GameManager: ObservableObject {
     @Published var timeRemaining: Double = 90.0
     @Published var isConnected: Bool = false
 
+    /// The live SpriteKit scene rendered by the on-device ARSKView.
+    @Published var localScene: BugHunterScene?
+
     // MARK: Dependencies
 
     let multipeerSession = MultipeerSession()
-    private var timerCancellable: AnyCancellable?
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: Init
@@ -39,7 +45,6 @@ final class GameManager: ObservableObject {
         multipeerSession.delegate = self
         multipeerSession.start()
 
-        // Mirror MultipeerSession's isConnected into our own @Published
         multipeerSession.$isConnected
             .receive(on: RunLoop.main)
             .assign(to: \.isConnected, on: self)
@@ -48,26 +53,37 @@ final class GameManager: ObservableObject {
 
     // MARK: Actions
 
-    /// Start a new 90-second game round.
+    /// Start a new 90-second game round on-device (and signal the projector if connected).
     func startGame() {
         score = 0
         timeRemaining = 90.0
+
+        let screenSize = UIScreen.main.bounds.size
+        let scene = BugHunterScene(size: screenSize)
+        scene.isARMode   = true
+        scene.scaleMode  = .resizeFill
+        scene.gameDelegate = self
+        localScene = scene
+
         state = .playing
         multipeerSession.send(.startGame())
-        startTimer()
     }
 
     /// Reset everything back to the waiting screen.
     func resetGame() {
-        timerCancellable?.cancel()
+        localScene = nil
         score = 0
         timeRemaining = 90.0
         state = .waiting
         multipeerSession.send(.resetGame())
     }
 
-    /// Encode a slingshot launch and forward it to the projector.
+    /// Fire the slingshot: launch on the local AR scene and forward to the projector.
     func sendLaunch(angle: Float, power: Float) {
+        // Fire locally on the on-device AR scene.
+        localScene?.fireNet(angle: angle, power: power)
+
+        // Also send to the projector if one is connected.
         let payload = LaunchPayload(
             angle: angle,
             power: power,
@@ -75,21 +91,25 @@ final class GameManager: ObservableObject {
         )
         multipeerSession.send(.launch(payload))
     }
+}
 
-    // MARK: Private
+// MARK: - BugHunterSceneDelegate
 
-    private func startTimer() {
-        timerCancellable?.cancel()
-        timerCancellable = Timer.publish(every: 0.1, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                guard let self else { return }
-                self.timeRemaining = max(0, self.timeRemaining - 0.1)
-                if self.timeRemaining <= 0 {
-                    self.timerCancellable?.cancel()
-                    self.state = .finished
-                }
-            }
+extension GameManager: BugHunterSceneDelegate {
+
+    func scene(_ scene: BugHunterScene, didUpdateScore score: Int, timeRemaining: Double) {
+        DispatchQueue.main.async {
+            self.score = score
+            self.timeRemaining = timeRemaining
+        }
+    }
+
+    func sceneDidFinish(_ scene: BugHunterScene, finalScore: Int) {
+        DispatchQueue.main.async {
+            self.score = finalScore
+            self.timeRemaining = 0
+            self.state = .finished
+        }
     }
 }
 
@@ -98,15 +118,8 @@ final class GameManager: ObservableObject {
 extension GameManager: MultipeerSessionDelegate {
 
     func session(_ session: MultipeerSession, didReceive message: GameMessage, from peer: MCPeerID) {
-        switch message.type {
-        case .gameState:
-            if let payload = message.gameStatePayload {
-                score = payload.score
-                timeRemaining = payload.timeRemaining
-            }
-        default:
-            break
-        }
+        // iOS now drives its own game state from the local AR scene.
+        // Projector gameState messages are intentionally ignored.
     }
 
     func session(_ session: MultipeerSession, peerDidConnect peer: MCPeerID) {
@@ -117,3 +130,4 @@ extension GameManager: MultipeerSessionDelegate {
         isConnected = !session.connectedPeers.isEmpty
     }
 }
+

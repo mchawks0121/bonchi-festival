@@ -32,10 +32,11 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 
 	<!-- ── Device capabilities ───────────────────────────────────────── -->
-	<!-- ARKit requirement removed; game uses SpriteKit + Multipeer -->
+	<!-- arkit required: iOS controller uses ARKit to display bugs over the camera -->
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
+		<string>arkit</string>
 	</array>
 
 	<!-- ── Orientation ───────────────────────────────────────────────── -->
@@ -63,6 +64,14 @@
 
 	<key>UILaunchScreen</key>
 	<dict/>
+
+	<!-- ── Camera / AR permission ────────────────────────────────────── -->
+	<!--
+	  NSCameraUsageDescription is REQUIRED for ARKit.  iOS presents this
+	  string to the user when the app requests camera access.
+	-->
+	<key>NSCameraUsageDescription</key>
+	<string>カメラを使って現実空間にバグを表示するARゲームです。</string>
 
 	<!-- ── Multipeer Connectivity permissions ────────────────────────── -->
 	<!--
