@@ -100,9 +100,9 @@ struct SlingshotView: View {
                 DragGesture(minimumDistance: 5)
                     .onChanged { value in
                         isDragging = true
-                        // Only allow pulling back (upward) and sideways, not forward
+                        // Allow pulling in any direction (up, down, left, right)
                         let clampedX = max(-maxDragDistance, min(maxDragDistance, value.translation.width))
-                        let clampedY = max(-maxDragDistance, min(0, value.translation.height))
+                        let clampedY = max(-maxDragDistance, min(maxDragDistance, value.translation.height))
                         dragOffset = CGSize(width: clampedX, height: clampedY)
                     }
                     .onEnded { _ in
