@@ -15,12 +15,18 @@ struct SlingshotView: View {
 
     @EnvironmentObject var gameManager: GameManager
 
-    /// Maximum drag distance mapped to power = 1.0.
-    private let maxDragDistance: CGFloat = 140
+    /// Maximum drag distance (upward) mapped to power = 1.0.
+    private let maxDragDistance: CGFloat = 220
 
-    /// Fractional Y position of the slingshot fork (0 = top, 1 = bottom).
-    /// Kept at ~68 % so the fork is comfortably reachable with one hand.
-    private static let forkYRatio: CGFloat = 0.68
+    /// Fork shape dimensions. Increasing both makes the fork more prominent.
+    private static let forkWidth:  CGFloat = 100
+    private static let forkHeight: CGFloat = 130
+
+    /// Fractional Y position of the slingshot fork (0 = top, 1 = bottom) of the
+    /// full-screen view.  0.62 places the fork well within comfortable thumb reach
+    /// (lower-middle of the screen) while leaving plenty of vertical room to pull
+    /// upward.
+    private static let forkYRatio: CGFloat = 0.62
 
     @State private var dragOffset: CGSize = .zero
     @State private var isDragging: Bool = false
@@ -34,31 +40,32 @@ struct SlingshotView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // Invisible background to capture gestures everywhere
-                Color.clear
+                // Transparent background — captures gestures over the whole screen
+                Color.clear.contentShape(Rectangle())
 
                 // Flying-net animation
                 if showNet {
                     Text("🕸️")
-                        .font(.system(size: 44 * netScale))
+                        .font(.system(size: 52 * netScale))
                         .opacity(netOpacity)
                         .offset(netFlightOffset)
                 }
 
-                // Slingshot fork drawn at lower-centre — raised to ~68 % down
-                // so it is comfortably reachable while holding the phone.
+                // Slingshot fork at 62 % down the full screen
                 let forkCenter = CGPoint(x: geo.size.width / 2,
-                                        y: geo.size.height * SlingshotView.forkYRatio)
+                                         y: geo.size.height * SlingshotView.forkYRatio)
 
                 SlingshotForkShape()
-                    .stroke(Color(red: 0.55, green: 0.27, blue: 0.07), lineWidth: 6)
-                    .frame(width: 60, height: 80)
+                    .stroke(Color(red: 0.55, green: 0.27, blue: 0.07), lineWidth: 9)
+                    .frame(width: SlingshotView.forkWidth, height: SlingshotView.forkHeight)
                     .position(forkCenter)
 
                 // Rubber bands + pulled projectile
                 if isDragging || dragOffset != .zero {
-                    let leftFork  = CGPoint(x: forkCenter.x - 20, y: forkCenter.y - 50)
-                    let rightFork = CGPoint(x: forkCenter.x + 20, y: forkCenter.y - 50)
+                    let leftFork  = CGPoint(x: forkCenter.x - SlingshotView.forkWidth  / 2,
+                                            y: forkCenter.y - SlingshotView.forkHeight / 2)
+                    let rightFork = CGPoint(x: forkCenter.x + SlingshotView.forkWidth  / 2,
+                                            y: forkCenter.y - SlingshotView.forkHeight / 2)
                     let pullPoint = CGPoint(
                         x: forkCenter.x + dragOffset.width,
                         y: forkCenter.y + dragOffset.height
@@ -68,16 +75,16 @@ struct SlingshotView: View {
                         p.move(to: leftFork)
                         p.addLine(to: pullPoint)
                     }
-                    .stroke(Color.orange, lineWidth: 3)
+                    .stroke(Color.orange, lineWidth: 4)
 
                     Path { p in
                         p.move(to: rightFork)
                         p.addLine(to: pullPoint)
                     }
-                    .stroke(Color.orange, lineWidth: 3)
+                    .stroke(Color.orange, lineWidth: 4)
 
                     Text("🕸️")
-                        .font(.system(size: 36))
+                        .font(.system(size: 52))
                         .position(pullPoint)
                 }
 
@@ -85,7 +92,8 @@ struct SlingshotView: View {
                 if isDragging {
                     PowerIndicatorView(power: normalizedPower)
                         .position(x: geo.size.width / 2,
-                                  y: geo.size.height * SlingshotView.forkYRatio - 90)
+                                  y: geo.size.height * SlingshotView.forkYRatio
+                                   - SlingshotView.forkHeight / 2 - 24)
                 }
             }
             .gesture(

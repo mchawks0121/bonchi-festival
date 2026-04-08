@@ -42,11 +42,20 @@ final class ARBugScene: SKScene {
     private var lockOnRing: SKShapeNode!        // secondary ring drawn around locked bug
     private var currentLockTarget: SKNode?      // bugContainer currently locked on
 
+    // MARK: Background distortion nodes
+
+    /// Container for all glitch-bar distortion effects.  Its alpha is driven by
+    /// the current bug count so the distortion grows as more bugs invade.
+    private var distortionLayer: SKNode!
+    private var distortionBars: [SKShapeNode] = []
+    private var lastBugCount = -1
+
     // MARK: - Lifecycle
 
     override func didMove(to view: SKView) {
         backgroundColor = .clear
         physicsWorld.gravity = .zero
+        setupDistortionLayer()
         setupCrosshair()
     }
 
@@ -61,6 +70,7 @@ final class ARBugScene: SKScene {
         timeRemaining = max(0, timeRemaining - dt)
 
         updateLockOn()
+        updateDistortion()
 
         gameDelegate?.scene(self, didUpdateScore: score, timeRemaining: timeRemaining)
 
@@ -108,6 +118,69 @@ final class ARBugScene: SKScene {
         let cx = size.width  / 2
         let cy = size.height / 2
         return hypot(node.position.x - cx, node.position.y - cy)
+    }
+
+    // MARK: - Private: background distortion
+
+    /// Creates the full-screen glitch-bar layer (initially invisible).
+    /// Bars flicker independently; the parent node's alpha is driven by bug count.
+    private func setupDistortionLayer() {
+        distortionLayer = SKNode()
+        distortionLayer.zPosition = -1   // behind all bugs and crosshair, in front of camera
+        distortionLayer.alpha = 0
+        addChild(distortionLayer)
+
+        // Subtle purple-red full-screen tint
+        let tint = SKShapeNode(rect: CGRect(origin: .zero, size: size))
+        tint.fillColor   = SKColor(red: 0.55, green: 0.0, blue: 0.55, alpha: 0.07)
+        tint.strokeColor = .clear
+        distortionLayer.addChild(tint)
+
+        // Horizontal glitch bars at randomised vertical positions
+        let barColors: [SKColor] = [
+            SKColor(red: 1.0, green: 0.05, blue: 0.25, alpha: 0.45),  // red
+            SKColor(red: 0.7, green: 0.0,  blue: 1.0,  alpha: 0.35),  // purple
+            SKColor(red: 0.0, green: 0.9,  blue: 1.0,  alpha: 0.25),  // cyan
+            SKColor(red: 1.0, green: 0.55, blue: 0.0,  alpha: 0.30),  // orange
+        ]
+
+        for i in 0..<12 {
+            let barH  = CGFloat.random(in: 3...14)
+            let baseY = CGFloat(i) / 12 * size.height + CGFloat.random(in: 0...size.height / 12)
+            let bar   = SKShapeNode(rect: CGRect(x: 0, y: baseY,
+                                                 width: size.width, height: barH))
+            bar.fillColor   = barColors.randomElement()!
+            bar.strokeColor = .clear
+            bar.alpha       = 0
+            distortionLayer.addChild(bar)
+            distortionBars.append(bar)
+
+            // Each bar flickers on its own random schedule
+            let waitOff  = Double.random(in: 0.3...5.0)
+            let onDur    = Double.random(in: 0.03...0.14)
+            let holdDur  = Double.random(in: 0.02...0.10)
+            let offDur   = Double.random(in: 0.05...0.22)
+            bar.run(SKAction.repeatForever(SKAction.sequence([
+                SKAction.wait(forDuration: waitOff),
+                SKAction.fadeAlpha(to: 1.0, duration: onDur),
+                SKAction.wait(forDuration: holdDur),
+                SKAction.fadeAlpha(to: 0,   duration: offDur)
+            ])))
+        }
+    }
+
+    /// Adjusts distortion intensity to match the current number of active bugs.
+    private func updateDistortion() {
+        let bugCount = children.filter { $0.name == "bugContainer" }.count
+        guard bugCount != lastBugCount else { return }
+        lastBugCount = bugCount
+
+        // 0 bugs → invisible, 1 bug → 38 %, 2 → 66 %, 3+ → 100 %
+        let target = min(CGFloat(bugCount) * 0.38, 1.0)
+        distortionLayer.run(
+            SKAction.fadeAlpha(to: target, duration: 0.6),
+            withKey: "distortFade"
+        )
     }
 
     // MARK: - Private: lock-on
@@ -208,6 +281,9 @@ final class ARBugScene: SKScene {
                 ]))
             }
 
+        // Fade out background distortion
+        distortionLayer.run(SKAction.fadeOut(withDuration: 0.7))
+
         gameDelegate?.sceneDidFinish(self, finalScore: score)
         showEndOverlay()
     }
@@ -231,10 +307,8 @@ final class ARBugScene: SKScene {
         // ── 1. Existing BugNode captured() animation ─────────────────────
         bugNode?.captured()
 
-        // ── 2. Space-restoration healing ripple (dissolves the aura) ─────
-        if let aura = container.childNode(withName: "corruptionAura") {
-            playHealAnimation(on: aura, at: container.position)
-        }
+        // ── 2. Space-restoration healing ripple ───────────────────────────
+        playHealRipple(at: container.position)
 
         // ── 3. Large net expands from bug position ────────────────────────
         let netEmoji = SKLabelNode(text: "🕸️")
@@ -304,20 +378,8 @@ final class ARBugScene: SKScene {
         score += pts
     }
 
-    /// Healing ripple: corruption aura expands and dissipates in light.
-    private func playHealAnimation(on aura: SKNode, at position: CGPoint) {
-        // Fade out the glitch rings with an outward burst
-        aura.children.forEach { child in
-            child.run(SKAction.sequence([
-                SKAction.group([
-                    SKAction.scale(to: 2.5, duration: 0.50),
-                    SKAction.fadeOut(withDuration: 0.50)
-                ]),
-                SKAction.removeFromParent()
-            ]))
-        }
-
-        // Expanding "space restored" ring
+    /// Expanding cyan ripple that signals the space has been restored.
+    private func playHealRipple(at position: CGPoint) {
         let healRing = SKShapeNode(circleOfRadius: 20)
         healRing.strokeColor = SKColor(red: 0.4, green: 1.0, blue: 0.8, alpha: 0.9)
         healRing.fillColor   = .clear

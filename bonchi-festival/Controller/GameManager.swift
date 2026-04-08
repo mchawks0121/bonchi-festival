@@ -25,10 +25,17 @@ final class GameManager: ObservableObject {
         case finished = "finished"
     }
 
+    /// Whether the game runs standalone (AR-only) or tries to reach a projector.
+    enum GameMode {
+        case standalone
+        case projector
+    }
+
     @Published var state: GameState = .waiting
     @Published var score: Int = 0
     @Published var timeRemaining: Double = 90.0
     @Published var isConnected: Bool = false
+    @Published var gameMode: GameMode = .standalone
 
     /// The live ARBugScene rendered by the on-device ARSKView.
     @Published var arBugScene: ARBugScene?
@@ -42,12 +49,22 @@ final class GameManager: ObservableObject {
 
     init() {
         multipeerSession.delegate = self
-        multipeerSession.start()
+        // MultipeerSession is started only when projector mode is selected.
 
         multipeerSession.$isConnected
             .receive(on: RunLoop.main)
             .assign(to: \.isConnected, on: self)
             .store(in: &cancellables)
+    }
+
+    // MARK: Mode selection
+
+    /// Switch between standalone AR-only mode and projector-connected mode.
+    func selectMode(_ mode: GameMode) {
+        guard mode != gameMode else { return }
+        if gameMode == .projector { multipeerSession.stop() }
+        gameMode = mode
+        if mode == .projector { multipeerSession.start() }
     }
 
     // MARK: Actions
@@ -64,7 +81,7 @@ final class GameManager: ObservableObject {
         arBugScene = scene
 
         state = .playing
-        multipeerSession.send(.startGame())
+        if gameMode == .projector { multipeerSession.send(.startGame()) }
     }
 
     /// Reset everything back to the waiting screen.
@@ -73,7 +90,7 @@ final class GameManager: ObservableObject {
         score = 0
         timeRemaining = 90.0
         state = .waiting
-        multipeerSession.send(.resetGame())
+        if gameMode == .projector { multipeerSession.send(.resetGame()) }
     }
 
     /// Fire the slingshot: launch on the local AR scene and forward to the projector.
@@ -81,13 +98,15 @@ final class GameManager: ObservableObject {
         // Fire locally on the on-device AR scene
         arBugScene?.fireNet(angle: angle, power: power)
 
-        // Also send to the projector if one is connected
-        let payload = LaunchPayload(
-            angle: angle,
-            power: power,
-            timestamp: Date().timeIntervalSince1970
-        )
-        multipeerSession.send(.launch(payload))
+        // Also forward to the projector when in projector mode
+        if gameMode == .projector {
+            let payload = LaunchPayload(
+                angle: angle,
+                power: power,
+                timestamp: Date().timeIntervalSince1970
+            )
+            multipeerSession.send(.launch(payload))
+        }
     }
 }
 

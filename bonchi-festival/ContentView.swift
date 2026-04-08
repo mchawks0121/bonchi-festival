@@ -67,23 +67,53 @@ struct WaitingView: View {
                     .foregroundColor(Color(red: 0.4, green: 0.9, blue: 1.0).opacity(0.85))
                     .multilineTextAlignment(.center)
 
-                // Connection status pill
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(gameManager.isConnected ? Color.green : Color.orange)
-                        .frame(width: 12, height: 12)
-                    Text(gameManager.isConnected
-                         ? "プロジェクターに接続済み"
-                         : "プロジェクターを探しています…")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.85))
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.white.opacity(0.12))
-                .clipShape(Capsule())
+                // ── Mode selection ───────────────────────────────────────
+                VStack(spacing: 10) {
+                    Text("プレイモードを選択")
+                        .font(.caption.bold())
+                        .foregroundColor(.white.opacity(0.55))
 
-                // Start button — always enabled; connection is optional
+                    HStack(spacing: 14) {
+                        ModeCard(
+                            icon: "📱",
+                            title: "スタンドアロン",
+                            subtitle: "AR のみ",
+                            isSelected: gameManager.gameMode == .standalone
+                        )
+                        .onTapGesture { gameManager.selectMode(.standalone) }
+
+                        ModeCard(
+                            icon: "📡",
+                            title: "プロジェクター",
+                            subtitle: "接続モード",
+                            isSelected: gameManager.gameMode == .projector
+                        )
+                        .onTapGesture { gameManager.selectMode(.projector) }
+                    }
+                    .padding(.horizontal, 24)
+                }
+
+                // Connection status pill — only in projector mode
+                if gameManager.gameMode == .projector {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(gameManager.isConnected ? Color.green : Color.orange)
+                            .frame(width: 12, height: 12)
+                        Text(gameManager.isConnected
+                             ? "プロジェクターに接続済み"
+                             : "プロジェクターを探しています…")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.85))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Capsule())
+                    .transition(.opacity.combined(with: .scale))
+                    .animation(.easeInOut(duration: 0.25), value: gameManager.isConnected)
+                }
+
+                // Start button
                 Button {
                     withAnimation { gameManager.startGame() }
                 } label: {
@@ -132,6 +162,45 @@ struct WaitingView: View {
     }
 }
 
+// MARK: - Mode Card
+
+struct ModeCard: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(icon).font(.system(size: 36))
+            Text(title)
+                .font(.caption.bold())
+                .foregroundColor(.white)
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.6))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(isSelected
+                      ? Color(red: 0.2, green: 1.0, blue: 0.8).opacity(0.18)
+                      : Color.white.opacity(0.07))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(
+                    isSelected
+                        ? Color(red: 0.2, green: 1.0, blue: 0.8)
+                        : Color.white.opacity(0.15),
+                    lineWidth: isSelected ? 2 : 1
+                )
+        )
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+}
+
 struct BugLegendItem: View {
     let emoji: String
     let pts: Int
@@ -162,10 +231,8 @@ struct PlayingView: View {
                 .environmentObject(gameManager)
                 .ignoresSafeArea()
 
-            // ── HUD + slingshot overlaid on the AR scene ─────────────────
+            // ── HUD pinned to the top ─────────────────────────────────────
             VStack(spacing: 0) {
-
-                // ── HUD ──────────────────────────────────────────────────
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("BUGS FIXED")
@@ -208,13 +275,12 @@ struct PlayingView: View {
                 .padding(.top, 2)
 
                 Spacer()
-
-                // ── Slingshot area ───────────────────────────────────────
-                SlingshotView()
-                    .environmentObject(gameManager)
-                    .frame(height: 340)
-                    .background(Color.black.opacity(0.25))
             }
+            .allowsHitTesting(false)
+
+            // ── Slingshot — full-screen overlay ──────────────────────────
+            SlingshotView()
+                .environmentObject(gameManager)
         }
     }
 
