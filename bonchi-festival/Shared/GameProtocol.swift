@@ -68,9 +68,9 @@ struct GameStatePayload: Codable {
 /// Lore: these are digital anomalies corrupting the world's code.
 /// Bug hunters must net them all to restore the world to a clean state.
 enum BugType: String, CaseIterable {
-    case butterfly = "butterfly"   // 1 pt – fast, small  (Null Bug  — minor undefined reference)
-    case beetle    = "beetle"      // 3 pt – medium       (Virus Bug — self-replicating runtime error)
-    case stag      = "stag"        // 5 pt – slow, large  (Glitch    — critical corruption, hard to catch)
+    case butterfly = "butterfly"   // 1 pt – fastest of the three  (Null Bug  — minor undefined reference)
+    case beetle    = "beetle"      // 3 pt – medium speed          (Virus Bug — self-replicating runtime error)
+    case stag      = "stag"        // 5 pt – slowest, largest      (Glitch    — critical corruption, hard to catch)
 
     var points: Int {
         switch self {
