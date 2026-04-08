@@ -3,9 +3,8 @@
 //  bonchi-festival
 //
 //  iOS Controller: game state, score management, and local AR scene ownership.
-//  When no projector is connected the game runs entirely on-device using an
-//  ARSKView-hosted BugHunterScene.  When a projector IS connected it also
-//  receives launch events so both screens show the action.
+//  The game runs entirely on-device using an ARSKView-hosted ARBugScene.
+//  When a projector IS connected it also receives launch / state events.
 //
 
 import Foundation
@@ -31,8 +30,8 @@ final class GameManager: ObservableObject {
     @Published var timeRemaining: Double = 90.0
     @Published var isConnected: Bool = false
 
-    /// The live SpriteKit scene rendered by the on-device ARSKView.
-    @Published var localScene: BugHunterScene?
+    /// The live ARBugScene rendered by the on-device ARSKView.
+    @Published var arBugScene: ARBugScene?
 
     // MARK: Dependencies
 
@@ -59,11 +58,10 @@ final class GameManager: ObservableObject {
         timeRemaining = 90.0
 
         let screenSize = UIScreen.main.bounds.size
-        let scene = BugHunterScene(size: screenSize)
-        scene.isARMode   = true
-        scene.scaleMode  = .resizeFill
+        let scene = ARBugScene(size: screenSize)
+        scene.scaleMode    = .resizeFill
         scene.gameDelegate = self
-        localScene = scene
+        arBugScene = scene
 
         state = .playing
         multipeerSession.send(.startGame())
@@ -71,7 +69,7 @@ final class GameManager: ObservableObject {
 
     /// Reset everything back to the waiting screen.
     func resetGame() {
-        localScene = nil
+        arBugScene = nil
         score = 0
         timeRemaining = 90.0
         state = .waiting
@@ -80,10 +78,10 @@ final class GameManager: ObservableObject {
 
     /// Fire the slingshot: launch on the local AR scene and forward to the projector.
     func sendLaunch(angle: Float, power: Float) {
-        // Fire locally on the on-device AR scene.
-        localScene?.fireNet(angle: angle, power: power)
+        // Fire locally on the on-device AR scene
+        arBugScene?.fireNet(angle: angle, power: power)
 
-        // Also send to the projector if one is connected.
+        // Also send to the projector if one is connected
         let payload = LaunchPayload(
             angle: angle,
             power: power,
@@ -97,14 +95,14 @@ final class GameManager: ObservableObject {
 
 extension GameManager: BugHunterSceneDelegate {
 
-    func scene(_ scene: BugHunterScene, didUpdateScore score: Int, timeRemaining: Double) {
+    func scene(_ scene: SKScene, didUpdateScore score: Int, timeRemaining: Double) {
         DispatchQueue.main.async {
             self.score = score
             self.timeRemaining = timeRemaining
         }
     }
 
-    func sceneDidFinish(_ scene: BugHunterScene, finalScore: Int) {
+    func sceneDidFinish(_ scene: SKScene, finalScore: Int) {
         DispatchQueue.main.async {
             self.score = finalScore
             self.timeRemaining = 0
@@ -118,7 +116,7 @@ extension GameManager: BugHunterSceneDelegate {
 extension GameManager: MultipeerSessionDelegate {
 
     func session(_ session: MultipeerSession, didReceive message: GameMessage, from peer: MCPeerID) {
-        // iOS now drives its own game state from the local AR scene.
+        // iOS drives its own game state from the local AR scene.
         // Projector gameState messages are intentionally ignored.
     }
 

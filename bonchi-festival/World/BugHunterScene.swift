@@ -10,8 +10,8 @@ import SpriteKit
 // MARK: - Delegate
 
 protocol BugHunterSceneDelegate: AnyObject {
-    func scene(_ scene: BugHunterScene, didUpdateScore score: Int, timeRemaining: Double)
-    func sceneDidFinish(_ scene: BugHunterScene, finalScore: Int)
+    func scene(_ scene: SKScene, didUpdateScore score: Int, timeRemaining: Double)
+    func sceneDidFinish(_ scene: SKScene, finalScore: Int)
 }
 
 // MARK: - BugHunterScene
