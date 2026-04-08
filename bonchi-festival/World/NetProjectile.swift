@@ -38,9 +38,14 @@ final class NetProjectile: SKNode {
 
         name = "net"
 
-        // Expanding ring physics body (used for contact detection)
+        // Physics body for contact detection.
+        // isDynamic = true (with gravity disabled) is required: SpriteKit only fires
+        // contact callbacks when at least one of the two bodies is dynamic.
         physicsBody = SKPhysicsBody(circleOfRadius: 44)
-        physicsBody?.isDynamic          = false
+        physicsBody?.isDynamic          = true
+        physicsBody?.affectedByGravity  = false
+        physicsBody?.linearDamping      = 0
+        physicsBody?.angularDamping     = 0
         physicsBody?.categoryBitMask    = PhysicsCategory.net
         physicsBody?.contactTestBitMask = PhysicsCategory.bug
         physicsBody?.collisionBitMask   = 0
