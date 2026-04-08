@@ -85,10 +85,14 @@ extension ARGameView {
         private var nodeAnchorMap: [ObjectIdentifier: ARAnchor] = [:]
 
         // MARK: Spawn geometry constants
-        private static let minSpawnDistance:  Float = 1.2
-        private static let maxSpawnDistance:  Float = 2.8
+        private static let minSpawnDistance:     Float  = 1.2
+        private static let maxSpawnDistance:     Float  = 2.8
         private static let horizontalAngleRange: ClosedRange<Float> = -0.65...0.65  // ±~37 °
         private static let verticalOffsetRange:  ClosedRange<Float> = -0.30...0.45
+
+        // MARK: Aura constants
+        /// Glitch symbols shown orbiting each bug's corruption aura.
+        private static let auraGlitchSymbols: [String] = ["⚠️", "❌", "👾"]
 
         // MARK: Spawning
 
@@ -203,29 +207,104 @@ extension ARGameView {
             let container = SKNode()
             container.name = "bugContainer"
 
-            // Visual bug node (child; can be animated independently)
+            // ── Corruption aura — space-distortion effect ──────────────────
+            // Two counter-rotating broken rings that suggest the bug is
+            // warping the surrounding space.
+            let aura = SKNode()
+            aura.name     = "corruptionAura"
+            aura.zPosition = -1
+            container.addChild(aura)
+
+            let innerRing = makeGlitchRing(radius: 44, lineWidth: 2.0, alpha: 0.55,
+                                           color: SKColor(red: 1.0, green: 0.3, blue: 0.1, alpha: 1))
+            aura.addChild(innerRing)
+            innerRing.run(SKAction.repeatForever(SKAction.rotate(byAngle: .pi * 2, duration: 2.8)))
+
+            let outerRing = makeGlitchRing(radius: 66, lineWidth: 1.5, alpha: 0.35,
+                                           color: SKColor(red: 0.8, green: 0.1, blue: 1.0, alpha: 1))
+            aura.addChild(outerRing)
+            outerRing.run(SKAction.repeatForever(SKAction.rotate(byAngle: -.pi * 2, duration: 4.2)))
+
+            // Three orbiting glitch symbols using SpriteKit's native circular path follow
+            let orbitRadius: CGFloat = 56
+            for (i, sym) in Coordinator.auraGlitchSymbols.enumerated() {
+                let label = SKLabelNode(text: sym)
+                label.fontSize  = 18
+                label.zPosition = 2
+                label.alpha     = 0.7
+                aura.addChild(label)
+
+                // Build a full-circle CGPath offset so the label orbits the aura centre.
+                // Each symbol starts at a different phase so they are evenly spread.
+                let phaseOffset = CGFloat(i) * (.pi * 2 / CGFloat(Coordinator.auraGlitchSymbols.count))
+                let orbitPath   = UIBezierPath(arcCenter: .zero,
+                                               radius: orbitRadius,
+                                               startAngle: phaseOffset,
+                                               endAngle: phaseOffset + .pi * 2,
+                                               clockwise: true).cgPath
+                let orbitDuration = 5.0 + Double(i) * 0.9
+                label.run(SKAction.repeatForever(
+                    SKAction.follow(orbitPath, asOffset: false, orientToPath: false,
+                                   duration: orbitDuration)
+                ))
+
+                // Flicker
+                let flicker = SKAction.sequence([
+                    SKAction.fadeAlpha(to: CGFloat.random(in: 0.2...0.9), duration: 0.12),
+                    SKAction.fadeAlpha(to: CGFloat.random(in: 0.5...1.0), duration: 0.18)
+                ])
+                label.run(SKAction.repeatForever(flicker))
+            }
+
+            // ── Visual bug node (child; animated independently) ────────────
             let bugNode = BugNode(type: bugType)
-            bugNode.physicsBody = nil   // proximity detection used instead
+            bugNode.physicsBody = nil
             container.addChild(bugNode)
 
-            // Gentle vertical bob on the visual layer (container pos is ARKit-owned)
+            // Gentle vertical bob
             let bobUp   = SKAction.moveBy(x: 0, y: 10, duration: 0.65)
             let bobDown = SKAction.moveBy(x: 0, y: -10, duration: 0.65)
             bobUp.timingMode   = .easeInEaseOut
             bobDown.timingMode = .easeInEaseOut
             bugNode.run(SKAction.repeatForever(SKAction.sequence([bobUp, bobDown])))
 
-            // Idle wobble rotation
+            // Idle wobble
             let wobbleL = SKAction.rotate(byAngle:  0.12, duration: 0.5)
             let wobbleR = SKAction.rotate(byAngle: -0.12, duration: 0.5)
             wobbleL.timingMode = .easeInEaseOut
             wobbleR.timingMode = .easeInEaseOut
             bugNode.run(SKAction.repeatForever(SKAction.sequence([wobbleL, wobbleR])))
 
-            // Store mapping for later anchor removal
+            // Store mapping for anchor removal
             nodeAnchorMap[ObjectIdentifier(container)] = anchor
 
             return container
+        }
+
+        /// Build one "broken" glitch ring (circle with gap segments drawn as separate arcs).
+        private func makeGlitchRing(radius: CGFloat, lineWidth: CGFloat,
+                                    alpha: CGFloat, color: SKColor) -> SKNode {
+            let node = SKNode()
+            // 6 arc segments with gaps to give a broken / corrupted look
+            let segments   = 6
+            let gapFraction: CGFloat = 0.18
+            for i in 0..<segments {
+                let startAngle = CGFloat(i) / CGFloat(segments) * .pi * 2
+                let endAngle   = startAngle + (.pi * 2 / CGFloat(segments)) * (1 - gapFraction)
+                let path = CGMutablePath()
+                path.addArc(center: .zero,
+                            radius: radius,
+                            startAngle: startAngle,
+                            endAngle: endAngle,
+                            clockwise: false)
+                let arc = SKShapeNode(path: path)
+                arc.strokeColor = color
+                arc.fillColor   = .clear
+                arc.lineWidth   = lineWidth
+                arc.alpha       = alpha
+                node.addChild(arc)
+            }
+            return node
         }
 
         /// Fade the container in when ARKit first places it in the scene.

@@ -39,6 +39,8 @@ final class ARBugScene: SKScene {
     // MARK: Crosshair nodes
 
     private var crosshairRing: SKShapeNode!
+    private var lockOnRing: SKShapeNode!        // secondary ring drawn around locked bug
+    private var currentLockTarget: SKNode?      // bugContainer currently locked on
 
     // MARK: - Lifecycle
 
@@ -54,9 +56,11 @@ final class ARBugScene: SKScene {
         guard !gameEnded else { return }
         guard lastUpdate > 0 else { lastUpdate = currentTime; return }
 
-        let dt = min(currentTime - lastUpdate, 0.05)   // cap to avoid big jumps
+        let dt = min(currentTime - lastUpdate, 0.05)
         lastUpdate = currentTime
         timeRemaining = max(0, timeRemaining - dt)
+
+        updateLockOn()
 
         gameDelegate?.scene(self, didUpdateScore: score, timeRemaining: timeRemaining)
 
@@ -66,29 +70,24 @@ final class ARBugScene: SKScene {
     // MARK: - Public API
 
     /// The radius (in scene points) within which a bug must be from screen
-    /// centre to count as caught.  Exposed as a constant for easy tuning.
-    static let catchRadius: CGFloat = 120
+    /// centre to count as caught.  150 pt (~half the crosshair's visible area) gives
+    /// forgiving detection while still requiring the player to aim at the bug.
+    static let catchRadius: CGFloat = 150
 
     /// Called by GameManager when the player releases the slingshot.
-    /// `angle` and `power` come from the gesture; only `power` is used here
-    /// (for the visual throw strength).  Hit detection is always centre-based.
     func fireNet(angle: Float, power: Float) {
         guard !gameEnded else { return }
 
         playNetThrowAnimation()
 
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
-
-        // Find the closest "bugContainer" child within the catch zone.
-        // Radius is fixed; the crosshair gives clear visual feedback on aim.
         let catchRadius = ARBugScene.catchRadius
 
         var closest: SKNode?
         var closestDist = CGFloat.infinity
 
         for node in children where node.name == "bugContainer" {
-            let dist = hypot(node.position.x - center.x,
-                             node.position.y - center.y)
+            let dist = distanceFromCenter(node)
             if dist < catchRadius, dist < closestDist {
                 closestDist = dist
                 closest = node
@@ -103,12 +102,102 @@ final class ARBugScene: SKScene {
         }
     }
 
+    // MARK: - Private: helpers
+
+    private func distanceFromCenter(_ node: SKNode) -> CGFloat {
+        let cx = size.width  / 2
+        let cy = size.height / 2
+        return hypot(node.position.x - cx, node.position.y - cy)
+    }
+
+    // MARK: - Private: lock-on
+
+    private func updateLockOn() {
+        // Gather only active bug containers — skip entirely if none exist
+        let containers = children.filter { $0.name == "bugContainer" }
+        guard !containers.isEmpty else {
+            if currentLockTarget != nil {
+                currentLockTarget = nil
+                refreshLockOnRing(target: nil)
+            }
+            return
+        }
+
+        // Find closest active bug
+        var closest: SKNode?
+        var closestDist = CGFloat.infinity
+        for node in containers {
+            let dist = distanceFromCenter(node)
+            if dist < closestDist {
+                closestDist = dist
+                closest = node
+            }
+        }
+
+        let inRange = closestDist < ARBugScene.catchRadius
+        let target  = inRange ? closest : nil
+
+        if target !== currentLockTarget {
+            currentLockTarget = target
+            refreshLockOnRing(target: target)
+        } else if let t = target {
+            // Keep ring tracking the bug's 2D position
+            lockOnRing.position = t.position
+        }
+    }
+
+    private func refreshLockOnRing(target: SKNode?) {
+        lockOnRing.removeAllActions()
+        if let t = target {
+            // Snap to bug, flash orange then cycle
+            lockOnRing.position   = t.position
+            lockOnRing.setScale(1.8)
+            lockOnRing.alpha      = 0
+            lockOnRing.strokeColor = SKColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 1)
+
+            let appear  = SKAction.group([
+                SKAction.fadeIn(withDuration: 0.12),
+                SKAction.scale(to: 1.0, duration: 0.18)
+            ])
+            let pulse   = SKAction.sequence([
+                SKAction.scale(to: 1.08, duration: 0.30),
+                SKAction.scale(to: 1.00, duration: 0.30)
+            ])
+            lockOnRing.run(SKAction.sequence([
+                appear,
+                SKAction.repeatForever(pulse)
+            ]))
+
+            // Crosshair also turns orange while locked
+            crosshairRing.removeAction(forKey: "pulse")
+            crosshairRing.strokeColor = SKColor(red: 1.0, green: 0.6, blue: 0.0, alpha: 1)
+        } else {
+            lockOnRing.run(SKAction.sequence([
+                SKAction.fadeOut(withDuration: 0.15),
+                SKAction.run { [weak self] in self?.lockOnRing.setScale(0) }
+            ]))
+
+            // Restore crosshair to cyan idle pulse
+            let cyan  = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 0.85)
+            crosshairRing.strokeColor = cyan
+            let pulse = SKAction.sequence([
+                SKAction.scale(to: 1.07, duration: 0.85),
+                SKAction.scale(to: 1.00, duration: 0.85)
+            ])
+            crosshairRing.run(SKAction.repeatForever(pulse), withKey: "pulse")
+        }
+    }
+
     // MARK: - Private: game flow
+
+    /// Duration of the post-capture healing animation (seconds).
+    /// The ARAnchor is removed from the AR session after this interval, so this
+    /// value must be ≥ the longest constituent animation (heal ripple: 0.55 s + buffer).
+    private static let healingAnimationDuration: TimeInterval = 0.75
 
     private func endGame() {
         gameEnded = true
 
-        // Gently fade out all remaining bugs
         children
             .filter { $0.name == "bugContainer" }
             .forEach { node in
@@ -136,14 +225,18 @@ final class ARBugScene: SKScene {
     // MARK: - Private: capture
 
     private func catchBug(container: SKNode, bugNode: BugNode?) {
-        // Mark immediately to prevent double-capture
         container.name = "bugContainer_captured"
         let pts = bugNode?.points ?? 1
 
         // ── 1. Existing BugNode captured() animation ─────────────────────
         bugNode?.captured()
 
-        // ── 2. Large net expands from the bug's position ─────────────────
+        // ── 2. Space-restoration healing ripple (dissolves the aura) ─────
+        if let aura = container.childNode(withName: "corruptionAura") {
+            playHealAnimation(on: aura, at: container.position)
+        }
+
+        // ── 3. Large net expands from bug position ────────────────────────
         let netEmoji = SKLabelNode(text: "🕸️")
         netEmoji.fontSize  = 90
         netEmoji.position  = container.position
@@ -162,18 +255,18 @@ final class ARBugScene: SKScene {
             SKAction.removeFromParent()
         ]))
 
-        // ── 3. Brief white screen flash ───────────────────────────────────
+        // ── 4. Brief cyan-white screen flash (space restored) ─────────────
         let flash = SKShapeNode(rect: CGRect(origin: .zero, size: size))
-        flash.fillColor   = SKColor.white.withAlphaComponent(0.18)
+        flash.fillColor   = SKColor(red: 0.3, green: 1.0, blue: 0.9, alpha: 0.20)
         flash.strokeColor = .clear
         flash.zPosition   = 71
         addChild(flash)
         flash.run(SKAction.sequence([
-            SKAction.fadeAlpha(to: 0, duration: 0.28),
+            SKAction.fadeAlpha(to: 0, duration: 0.30),
             SKAction.removeFromParent()
         ]))
 
-        // ── 4. Score pop ──────────────────────────────────────────────────
+        // ── 5. Score pop ──────────────────────────────────────────────────
         let popText = pts == 5 ? "⭐+\(pts)pts" : "+\(pts)pts"
         let pop = SKLabelNode(text: popText)
         pop.fontName  = "HiraginoSans-W7"
@@ -181,8 +274,7 @@ final class ARBugScene: SKScene {
         pop.fontColor = pts == 5
             ? SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 1)
             : SKColor(red: 1,   green: 0.85, blue: 0,  alpha: 1)
-        pop.position  = CGPoint(x: container.position.x,
-                                y: container.position.y + 30)
+        pop.position  = CGPoint(x: container.position.x, y: container.position.y + 30)
         pop.zPosition = 65
         pop.setScale(0.4)
         addChild(pop)
@@ -201,15 +293,45 @@ final class ARBugScene: SKScene {
             SKAction.removeFromParent()
         ]))
 
-        // ── 5. Crosshair flashes green ────────────────────────────────────
+        // ── 6. Crosshair flashes green ────────────────────────────────────
         pulseCrosshair(success: true)
 
-        // ── 6. Tell ARGameView to remove the ARAnchor (after animation) ───
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+        // ── 7. Tell ARGameView to remove the ARAnchor (after animations) ──
+        DispatchQueue.main.asyncAfter(deadline: .now() + ARBugScene.healingAnimationDuration) { [weak self] in
             self?.onCaptureBug?(container)
         }
 
         score += pts
+    }
+
+    /// Healing ripple: corruption aura expands and dissipates in light.
+    private func playHealAnimation(on aura: SKNode, at position: CGPoint) {
+        // Fade out the glitch rings with an outward burst
+        aura.children.forEach { child in
+            child.run(SKAction.sequence([
+                SKAction.group([
+                    SKAction.scale(to: 2.5, duration: 0.50),
+                    SKAction.fadeOut(withDuration: 0.50)
+                ]),
+                SKAction.removeFromParent()
+            ]))
+        }
+
+        // Expanding "space restored" ring
+        let healRing = SKShapeNode(circleOfRadius: 20)
+        healRing.strokeColor = SKColor(red: 0.4, green: 1.0, blue: 0.8, alpha: 0.9)
+        healRing.fillColor   = .clear
+        healRing.lineWidth   = 3
+        healRing.position    = position
+        healRing.zPosition   = 68
+        addChild(healRing)
+        healRing.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.scale(to: 5.0, duration: 0.55),
+                SKAction.fadeOut(withDuration: 0.55)
+            ]),
+            SKAction.removeFromParent()
+        ]))
     }
 
     // MARK: - Private: throw / miss animations
@@ -236,7 +358,7 @@ final class ARBugScene: SKScene {
         pulseCrosshair(success: false)
 
         let miss = SKLabelNode(text: "MISS")
-        miss.fontName  = UIFont.systemFont(ofSize: 1).familyName  // system font fallback
+        // Use SKLabelNode's default font (Helvetica) — no explicit fontName assignment needed
         miss.fontSize  = 42
         miss.fontColor = SKColor(red: 1, green: 0.3, blue: 0.3, alpha: 1)
         miss.position  = CGPoint(x: center.x, y: center.y - 90)
@@ -277,7 +399,17 @@ final class ARBugScene: SKScene {
         let cy   = size.height / 2
         let cyan = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 0.85)
 
-        // Outer ring (also used for hit-pulse)
+        // Lock-on ring (hidden until a bug enters catch radius)
+        lockOnRing = SKShapeNode(circleOfRadius: 58)
+        lockOnRing.strokeColor = SKColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 1)
+        lockOnRing.fillColor   = .clear
+        lockOnRing.lineWidth   = 3.5
+        lockOnRing.position    = CGPoint(x: cx, y: cy)
+        lockOnRing.zPosition   = 52
+        lockOnRing.alpha       = 0
+        addChild(lockOnRing)
+
+        // Outer crosshair ring (idle pulse)
         crosshairRing = SKShapeNode(circleOfRadius: 54)
         crosshairRing.strokeColor = cyan
         crosshairRing.fillColor   = .clear
@@ -300,7 +432,7 @@ final class ARBugScene: SKScene {
         let dirs: [(CGFloat, CGFloat)] = [(0, 1), (0, -1), (1, 0), (-1, 0)]
         for (ox, oy) in dirs {
             let path = CGMutablePath()
-            path.move(to:    CGPoint(x: cx + ox * tickGap,            y: cy + oy * tickGap))
+            path.move(to: CGPoint(x: cx + ox * tickGap, y: cy + oy * tickGap))
             path.addLine(to: CGPoint(x: cx + ox * (tickGap + tickLen), y: cy + oy * (tickGap + tickLen)))
             let tick = SKShapeNode(path: path)
             tick.strokeColor = cyan
