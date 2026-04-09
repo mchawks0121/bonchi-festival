@@ -14,6 +14,18 @@
 		A54858852EF2579F00155732 /* bonchi_festivalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54858842EF2579F00155732 /* bonchi_festivalTests.swift */; };
 		A548588F2EF2579F00155732 /* bonchi_festivalUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A548588E2EF2579F00155732 /* bonchi_festivalUITests.swift */; };
 		A54858912EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54858902EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift */; };
+		BB100002DEADBEEF00100001 /* GameProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100001DEADBEEF00100001 /* GameProtocol.swift */; };
+		BB100004DEADBEEF00100001 /* MultipeerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100003DEADBEEF00100001 /* MultipeerSession.swift */; };
+		BB100006DEADBEEF00100001 /* GameManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100005DEADBEEF00100001 /* GameManager.swift */; };
+		BB100008DEADBEEF00100001 /* SlingshotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100007DEADBEEF00100001 /* SlingshotView.swift */; };
+		BB100016DEADBEEF00100001 /* ARGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100015DEADBEEF00100001 /* ARGameView.swift */; };
+		BB100017DEADBEEF00100001 /* ARBugScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100018DEADBEEF00100001 /* ARBugScene.swift */; };
+		BB10000ADEADBEEF00100001 /* WorldViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100009DEADBEEF00100001 /* WorldViewController.swift */; };
+		BB10000CDEADBEEF00100001 /* BugHunterScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB10000BDEADBEEF00100001 /* BugHunterScene.swift */; };
+		BB10000EDEADBEEF00100001 /* BugSpawner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB10000DDEADBEEF00100001 /* BugSpawner.swift */; };
+		BB100010DEADBEEF00100001 /* NetProjectile.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB10000FDEADBEEF00100001 /* NetProjectile.swift */; };
+		BB100012DEADBEEF00100001 /* ProjectorGameManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100011DEADBEEF00100001 /* ProjectorGameManager.swift */; };
+		BB100014DEADBEEF00100001 /* WaitingScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100013DEADBEEF00100001 /* WaitingScene.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -44,6 +56,19 @@
 		A548588A2EF2579F00155732 /* bonchi-festivalUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "bonchi-festivalUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A548588E2EF2579F00155732 /* bonchi_festivalUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = bonchi_festivalUITests.swift; sourceTree = "<group>"; };
 		A54858902EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = bonchi_festivalUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		BB100001DEADBEEF00100001 /* GameProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProtocol.swift; sourceTree = "<group>"; };
+		BB100003DEADBEEF00100001 /* MultipeerSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultipeerSession.swift; sourceTree = "<group>"; };
+		BB100005DEADBEEF00100001 /* GameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameManager.swift; sourceTree = "<group>"; };
+		BB100007DEADBEEF00100001 /* SlingshotView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlingshotView.swift; sourceTree = "<group>"; };
+		BB100015DEADBEEF00100001 /* ARGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARGameView.swift; sourceTree = "<group>"; };
+		BB100018DEADBEEF00100001 /* ARBugScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARBugScene.swift; sourceTree = "<group>"; };
+		BB100009DEADBEEF00100001 /* WorldViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldViewController.swift; sourceTree = "<group>"; };
+		BB10000BDEADBEEF00100001 /* BugHunterScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BugHunterScene.swift; sourceTree = "<group>"; };
+		BB10000DDEADBEEF00100001 /* BugSpawner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BugSpawner.swift; sourceTree = "<group>"; };
+		BB10000FDEADBEEF00100001 /* NetProjectile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetProjectile.swift; sourceTree = "<group>"; };
+		BB100011DEADBEEF00100001 /* ProjectorGameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectorGameManager.swift; sourceTree = "<group>"; };
+		BB100013DEADBEEF00100001 /* WaitingScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaitingScene.swift; sourceTree = "<group>"; };
+		BB200001DEADBEEF00200001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -95,9 +120,13 @@
 			isa = PBXGroup;
 			children = (
 				A54858732EF2579B00155732 /* AppDelegate.swift */,
+				BB200001DEADBEEF00200001 /* Info.plist */,
 				A54858752EF2579B00155732 /* ContentView.swift */,
 				A54858772EF2579F00155732 /* Assets.xcassets */,
 				A54858792EF2579F00155732 /* Preview Content */,
+				BB100020DEADBEEF00100001 /* Shared */,
+				BB100021DEADBEEF00100001 /* Controller */,
+				BB100022DEADBEEF00100001 /* World */,
 			);
 			path = "bonchi-festival";
 			sourceTree = "<group>";
@@ -125,6 +154,39 @@
 				A54858902EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift */,
 			);
 			path = "bonchi-festivalUITests";
+			sourceTree = "<group>";
+		};
+		BB100020DEADBEEF00100001 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				BB100001DEADBEEF00100001 /* GameProtocol.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		BB100021DEADBEEF00100001 /* Controller */ = {
+			isa = PBXGroup;
+			children = (
+				BB100003DEADBEEF00100001 /* MultipeerSession.swift */,
+				BB100005DEADBEEF00100001 /* GameManager.swift */,
+				BB100007DEADBEEF00100001 /* SlingshotView.swift */,
+				BB100015DEADBEEF00100001 /* ARGameView.swift */,
+				BB100018DEADBEEF00100001 /* ARBugScene.swift */,
+			);
+			path = Controller;
+			sourceTree = "<group>";
+		};
+		BB100022DEADBEEF00100001 /* World */ = {
+			isa = PBXGroup;
+			children = (
+				BB100009DEADBEEF00100001 /* WorldViewController.swift */,
+				BB10000BDEADBEEF00100001 /* BugHunterScene.swift */,
+				BB10000DDEADBEEF00100001 /* BugSpawner.swift */,
+				BB10000FDEADBEEF00100001 /* NetProjectile.swift */,
+				BB100011DEADBEEF00100001 /* ProjectorGameManager.swift */,
+				BB100013DEADBEEF00100001 /* WaitingScene.swift */,
+			);
+			path = World;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -259,6 +321,18 @@
 			files = (
 				A54858762EF2579B00155732 /* ContentView.swift in Sources */,
 				A54858742EF2579B00155732 /* AppDelegate.swift in Sources */,
+				BB100002DEADBEEF00100001 /* GameProtocol.swift in Sources */,
+				BB100004DEADBEEF00100001 /* MultipeerSession.swift in Sources */,
+				BB100006DEADBEEF00100001 /* GameManager.swift in Sources */,
+				BB100008DEADBEEF00100001 /* SlingshotView.swift in Sources */,
+				BB100016DEADBEEF00100001 /* ARGameView.swift in Sources */,
+				BB100017DEADBEEF00100001 /* ARBugScene.swift in Sources */,
+				BB10000ADEADBEEF00100001 /* WorldViewController.swift in Sources */,
+				BB10000CDEADBEEF00100001 /* BugHunterScene.swift in Sources */,
+				BB10000EDEADBEEF00100001 /* BugSpawner.swift in Sources */,
+				BB100010DEADBEEF00100001 /* NetProjectile.swift in Sources */,
+				BB100012DEADBEEF00100001 /* ProjectorGameManager.swift in Sources */,
+				BB100014DEADBEEF00100001 /* WaitingScene.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -424,14 +498,8 @@
 				DEVELOPMENT_ASSET_PATHS = "\"bonchi-festival/Preview Content\"";
 				DEVELOPMENT_TEAM = GP7Z3N223V;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "";
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
-				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "bonchi-festival/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -455,14 +523,8 @@
 				DEVELOPMENT_ASSET_PATHS = "\"bonchi-festival/Preview Content\"";
 				DEVELOPMENT_TEAM = GP7Z3N223V;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "";
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
-				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "bonchi-festival/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
