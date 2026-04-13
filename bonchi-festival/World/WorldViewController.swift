@@ -360,7 +360,7 @@ final class ProjectorBug3DCoordinator: NSObject {
         let destPos = randomCenterPosition3D(in: scnView)
         let exitPos = randomEdgePosition3D(in: scnView)
         let moveIn  = SCNAction.move(to: destPos, duration: Double.random(in: 6.0...10.0))
-        let linger  = SCNAction.wait(forDuration: Double.random(in: 1.5...3.5))
+        let linger  = SCNAction.wait(duration: Double.random(in: 1.5...3.5))
         let moveOut = SCNAction.move(to: exitPos, duration: Double.random(in: 3.0...5.0))
         let remove  = SCNAction.run { [weak self] _ in
             DispatchQueue.main.async { self?.removeBug(uuid: uuid) }
