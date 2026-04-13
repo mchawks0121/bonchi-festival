@@ -16,7 +16,23 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 | プロジェクター／クライアント | 🎮 | iPhone がコントローラーとして機能し、プロジェクターサーバーに操作を送信。 |
 | プロジェクター／サーバー | 📺 | プロジェクター表示デバイス。最大 3 台のクライアントの操作を受け取って大画面にゲームを表示。 |
 
-モードはスタート画面のカードをタップして選択します。
+モードはスタート画面（`WaitingView`）のカードをタップして選択します。  
+選択状態は `GameManager.GameMode` 列挙体（`.standalone` / `.projectorClient` / `.projectorServer`）で管理されます。
+
+---
+
+## 画面構成（iOS）
+
+| 画面 | SwiftUI View | 表示条件 |
+|------|--------------|---------|
+| 待機（モード選択） | `WaitingView` | `gameManager.state == .waiting` |
+| ゲーム中（AR） | `ARPlayingView` | `gameManager.state == .playing` かつ非サーバー |
+| ゲーム中（プロジェクターサーバー） | `ProjectorServerView` | `gameManager.state == .playing` かつ `.projectorServer` |
+| ゲーム終了 | `FinishedView` | `gameManager.state == .finished` |
+
+- `WaitingView` には、モード選択カード・接続状態ピル（プロジェクタークライアント時のみ）・「デバッグ開始」ボタン・バグ一覧カード・ミッション説明カードが含まれます。
+- `FinishedView` では最終スコアを大きく表示し、「再デバッグ」ボタンで待機画面に戻れます。
+- 背景はネイビー→黒のリニアグラデーション（デジタル腐敗テーマ）で統一。
 
 ---
 
@@ -27,8 +43,8 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 1. **狙いを定める** — iPhone を動かして画面中央の照準リングをバグに重ねます。  
    バグが照準内に入ると、ロックオンリング（オレンジ色）が表示されます。
 
-2. **引っ張る** — 画面下部のスリングショット部分を **下に向かってスワイプ** します。  
-   引っ張る量が強さ（power）になります。
+2. **引っ張る** — 画面のスリングショット（Y字型フォーク）を **任意の方向にスワイプ** します。  
+   引っ張る距離が強さ（power）になります（最大 220 pt）。
 
 3. **放す** — 指を離すと網が発射されます。  
    - **ロックオンしている場合**: 網はバグに向かって飛びます。  
@@ -45,11 +61,11 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 
 ## 出現バグ一覧
 
-| バグ | 名前 | ポイント | 出現率 | 移動速度 | 説明 |
-|------|------|---------|--------|---------|------|
-| 🐞 | Null (butterfly) | 1 pt | 約 60 % | 速い (110) | 軽微な未定義参照エラー。すばやく動き回るが低得点。 |
-| 🦠 | Virus (beetle) | 3 pt | 約 30 % | 普通 (70) | 自己増殖型ランタイムエラー。中程度の速度と得点。 |
-| 👾 | Glitch (stag) | 5 pt | 約 10 % | 遅い (45) | 致命的なデータ破壊バグ。大型で捕まえやすいが希少。 |
+| バグ | 名前 | ポイント | 出現率 | 移動速度 | フォントサイズ | 説明 |
+|------|------|---------|--------|---------|--------------|------|
+| 🐞 | Null (butterfly) | 1 pt | 約 60 % | 速い (110) | 40 pt | 軽微な未定義参照エラー。すばやく動き回るが低得点。 |
+| 🦠 | Virus (beetle) | 3 pt | 約 30 % | 普通 (70) | 55 pt | 自己増殖型ランタイムエラー。中程度の速度と得点。 |
+| 👾 | Glitch (stag) | 5 pt | 約 10 % | 遅い (45) | 70 pt | 致命的なデータ破壊バグ。大型で捕まえやすいが希少。 |
 
 ※ 出現率は開始直後の確率です。時間が経過しても比率は変わりませんが、スポーン間隔が短くなります。
 
@@ -65,7 +81,7 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 | スコア計算 | **クライアント（iOS）側のみ**で行う。プロジェクターはスコアを計算・表示しない |
 | スコア通知 | プロジェクターが `bugCaptured` メッセージで網を射出した iOS へバグ種類を通知 → iOS 側で加算 |
 | 最大同時接続 | **3 台**（4 台目以降は接続拒否） |
-| ゲーム終了 | タイムアップ後、プロジェクターは自動的に待機画面に戻る |
+| ゲーム終了 | タイムアップ後、プロジェクターは 4 秒後に自動的に待機画面に戻る |
 
 ---
 
@@ -73,7 +89,7 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 
 ### 接続方法
 - Multipeer Connectivity により、同一ローカルネットワーク上の iOS デバイスが自動検出・接続されます。
-- プロジェクターが広告（Advertise）し、iOS デバイスが招待を受け接続します。
+- プロジェクター・iOS デバイス双方がサービス名 `"bughunter-game"` で Advertise と Browse を行い、相互に検出・招待します。
 - 3 台に達した時点で、以降の接続要求は拒否されます。
 
 ### 独立プレイ
@@ -89,10 +105,11 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 | Player 2 | オレンジ | (1.0, 0.55, 0.0) |
 | Player 3 | マゼンタ | (1.0, 0.2, 0.8) |
 
-### 接続機器情報パネル
+### 接続機器情報パネル（ConnectedPlayersView）
 - プロジェクター画面の右下に半透明パネルを常時表示します。
 - 「接続中 N / 3」のカウントと各プレイヤーのデバイス名・カラードット（上記色）を表示します。
 - 未接続スロットは「待機中…」とグレーで表示します。
+- `WorldViewController` が `ProjectorGameManagerDelegate` を通じて更新を受け、`connectedPlayersView.update(players:)` を呼び出します。
 
 ---
 
@@ -109,30 +126,55 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 - 75 秒: 約 0.8 秒間隔
 - 90 秒: 最短 0.6 秒間隔
 
+スタンドアロンモード（`ARGameView.Coordinator`）とプロジェクターモード（`ProjectorBug3DCoordinator`）の両方で同じ式が適用されます。
+
 ---
 
 ## アーキテクチャ概要
 
 ```
-iOS（iPhone × 最大3台）
-├── ContentView.swift      … スタート／ゲーム中／終了画面のルーティング
+bonchi-festival/
+├── AppDelegate.swift          … UIWindow + UIHostingController(ContentView) の起動
+├── ContentView.swift          … SwiftUI ルート。GameManager.state に応じて画面を切り替え
+│                                  WaitingView / ARPlayingView / ProjectorServerView / FinishedView
+│                                  + ModeCard / BugLegendRow / WorldViewControllerWrapper
 ├── Controller/
-│   ├── GameManager.swift  … ゲーム状態・スコア管理、Multipeer 通信（bugCaptured 受信 → スコア加算）
-│   ├── ARGameView.swift   … ARSCNView (3D) + SKView 透過オーバーレイ
-│   ├── ARBugScene.swift   … SpriteKit シーン (AR 当たり判定・スコア)
-│   ├── Bug3DNode.swift    … SceneKit 3D バグモデル（蝶・甲虫・クワガタ）
-│   └── SlingshotView.swift … スワイプ操作 → 角度・強さ変換
-└── Shared/
-    └── GameProtocol.swift … 通信メッセージ型（bugCaptured 含む）、BugType 定義
-
-Projector（Mac / iPad）
-└── World/
-    ├── WorldViewController.swift      … SpriteKit/SceneKit ビュー管理・ConnectedPlayersView
-    ├── BugHunterScene.swift           … 3D バグゲームシーン（スコア計算なし）
-    ├── BugSpawner.swift               … BugNode の生成・経路制御
-    ├── NetProjectile.swift            … 飛んでくる網ノード（playerIndex 保持・プレイヤー色対応）
-    ├── ProjectorBug3DCoordinator.swift … SceneKit 3D バグ + SpriteKit プロキシ管理、捕獲通知
-    └── ProjectorGameManager.swift     … 最大3台の Multipeer 接続管理、bugCaptured 送信
+│   ├── GameManager.swift      … iOS 側ゲーム状態（GameState/GameMode 列挙）・スコア・タイマー管理
+│   │                             MultipeerSession のデリゲートとして bugCaptured 受信 → スコア加算
+│   │                             BugHunterSceneDelegate として ARBugScene のスコア/時間更新を受信
+│   ├── MultipeerSession.swift … iOS 側 Multipeer Connectivity ラッパー
+│   │                             Advertiser + Browser の両方として動作。サービス名 "bughunter-game"
+│   ├── ARGameView.swift       … UIViewRepresentable。UIView コンテナに ARSCNView (3D) + SKView (透過) を重ねる
+│   │                             内部 Coordinator: ARSCNViewDelegate。ARAnchor → Bug3DNode + 不可視プロキシ SKNode
+│   │                             毎フレーム 3D→2D 座標変換でプロキシ位置同期。距離ベーススケール調整
+│   ├── ARBugScene.swift       … SpriteKit 透過シーン。照準クロスヘア・ロックオンリング・捕獲アニメ
+│   │                             distortionLayer（グリッチバー × 12本）: バグ数に応じて強度が上昇
+│   │                             fireNet(angle:power:) で 2段階当たり判定（ロックオン優先 → 弾道判定）
+│   ├── Bug3DNode.swift        … SCNNode サブクラス。手続き的 PBR ジオメトリ
+│   │                             butterfly: 4枚翅・触角 / beetle: 光沢甲殻・6脚 / stag: 大顎・6脚
+│   │                             各バグ固有アニメ（羽ばたき/回転/頷き）＋共通ホバー
+│   └── SlingshotView.swift    … SwiftUI スリングショット UI（フルスクリーンオーバーレイ）
+│                                 任意方向スワイプ → angle(rad) / power(0–1) に変換
+│                                 SlingshotForkShape（Y 字）・ゴム紐・net 飛翔アニメ・PowerIndicatorView
+├── Shared/
+│   └── GameProtocol.swift     … Multipeer で共有するメッセージ型・BugType 定義
+│                                 MessageType / GameMessage / LaunchPayload / GameStatePayload
+│                                 BugCapturedPayload / BugType / PhysicsCategory
+└── World/                     … プロジェクター側（iPad / Mac Catalyst）
+    ├── WorldViewController.swift  … ルート UIViewController
+    │                                 SCNView (背面) + SKView 透過オーバーレイ (前面)
+    │                                 + ConnectedPlayersView (右下固定)
+    │                                 ProjectorBug3DCoordinator を内部クラスとして定義・管理
+    ├── WaitingScene.swift         … 待機画面 SKScene（暗い緑背景）
+    │                                 タイトル・浮遊バグ絵文字・接続待ちテキストのアニメ
+    ├── BugHunterScene.swift       … ゲーム中 SKScene（isProjectorMode=true で透過背景）
+    │                                 HUD（残り時間バー・タイムラベル）・ネット物理衝突判定
+    │                                 onBugCaptured コールバックで捕獲を ProjectorBug3DCoordinator へ通知
+    ├── BugSpawner.swift           … SpriteKit BugNode の生成・ベジェ経路制御（難易度曲線適用）
+    ├── NetProjectile.swift        … 網 SKNode（netLabel + ringNode + centerDot）
+    │                                 playerIndex 保持・プレイヤー色リング・arc 軌道・回転アニメ
+    └── ProjectorGameManager.swift … 最大3台の Multipeer 接続管理
+                                      sendBugCaptured(bugType:toPlayerAtSlot:) で特定プレイヤーに unicast
 ```
 
 ### 通信フロー（Multipeer Connectivity）
@@ -143,13 +185,13 @@ iOS Controller (×最大3台)               Projector Server
     │── startGame ──────────────────────────>│  (いずれかのクライアントが送信)
     │                                        │
     │── launch(angle, power, timestamp) ────>│  → playerIndex はサーバー側で peerID より特定
-    │                                        │  → 対応する色の網を発射
-    │                                        │  → 網がバグに当たる
-    │<── bugCaptured(bugType, playerIndex) ──│  ※ 網を射出したプレイヤーのみに送信
+    │                                        │  → 対応する色の NetProjectile を発射
+    │                                        │  → 網がプロキシ BugNode に接触
+    │<── bugCaptured(bugType, playerIndex) ──│  ※ 網を射出したプレイヤーのみに unicast
     │                                        │
     │  score += bugType.points               │
     │                                        │
-    │<── gameState(state, timeRemaining) ────│  (score は常に 0 — クライアントが独自管理)
+    │<── gameState(state, 0, timeRemaining) ─│  score は常に 0（iOS 側が独自管理）
     │                                        │
     │── resetGame ───────────────────────── >│
 ```
@@ -169,8 +211,76 @@ iOS Controller (×最大3台)               Projector Server
 - **スコア計算はクライアント（iOS）側のみ。**
 - プロジェクター側でバグが捕獲されると、`ProjectorGameManager.sendBugCaptured(bugType:toPlayerAtSlot:)` が網を射出したプレイヤーの peerID にだけ `bugCaptured` メッセージを送信します。
 - iOS 側 `GameManager` が `bugCaptured` を受信し、`score += bugType.points` で加算します。
-- スタンドアロンモードでは `ARBugScene` が直接 `BugHunterSceneDelegate` を通じてスコアを更新します。
-- プロジェクター側の `BugHunterScene` はスコアを保持しません。
+- スタンドアロンモードでは `ARBugScene.fireNet` 内でバグを直接捕獲し、`BugHunterSceneDelegate` を通じてスコアを更新します。
+- プロジェクタークライアントモードでは ARBugScene 上にバグがスポーンしないため、スコアは `bugCaptured` メッセージのみで加算されます。
+- プロジェクター側の `BugHunterScene` はスコアを保持しません（`GameStatePayload.score` 常に 0）。
+
+---
+
+## AR レイヤー詳細（スタンドアロン・クライアントモード）
+
+```
+ARSCNView (3D バグ)
+    └── Bug3DNode (SCNNode)
+          ├── 手続き的 PBR ジオメトリ（butterfly/beetle/stag）
+          └── 各種アニメーション（羽ばたき・回転・ホバー等）
+
+SKView (透過オーバーレイ) → ARBugScene
+    ├── 照準クロスヘア（画面中央固定）
+    ├── ロックオンリング（最近傍バグに追従、オレンジ）
+    ├── distortionLayer（グリッチバー × 12本、バグ数に比例して強化）
+    │     tint(紫赤)・赤/紫/シアン/オレンジのバーが独立フリッカー
+    ├── 不可視プロキシ bugContainer SKNode（3D 投影座標に毎フレーム同期）
+    └── 捕獲エフェクト（net スロー・ミス表示）
+```
+
+- `ARGameView.Coordinator` が `ARSCNViewDelegate` として毎フレーム `renderer(_:updateAtTime:)` を実行。
+- `arView.projectPoint(SCNVector3)` で 3D → UIKit 座標変換後、Y 軸反転で SpriteKit 座標に変換。
+- 距離ベーススケール: `scale = referenceDistance(2.0m) / actualDistance`（0.3〜3.0 でクランプ）。
+- `cachedViewHeight` パターンでレンダースレッドからの UIKit アクセスを回避。
+- 捕獲半径: `ARBugScene.catchRadius = 150 pt`（画面中央からの距離）。
+
+---
+
+## プロジェクター レイアウト
+
+```
+┌────────────────────────────────────────────────┐
+│  SCNView  — Bug3DNode（3D バグ）               │ ← 背面 (z=0)
+│  SKView   — BugHunterScene 透過オーバーレイ     │ ← 前面 (透過)
+│               HUD / 網 / 不可視プロキシ BugNode  │
+│  ConnectedPlayersView ──────────────── [右下]   │ ← 常時最前面 UIKit
+└────────────────────────────────────────────────┘
+```
+
+- **SCNView.backgroundColor**: `UIColor(red: 0.05, green: 0.12, blue: 0.05, alpha: 1)`（暗い緑）
+- **WaitingScene.backgroundColor**: `SKColor(red: 0.04, green: 0.08, blue: 0.04, alpha: 1)`（暗い緑）
+- `ProjectorBug3DCoordinator`（`WorldViewController.swift` 内に定義）: SCNScene に固定パース視点カメラを設置（cameraZ=3.5、FOV=65°）。Bug3DNode を `bugScaleMultiplier=10` でスケール拡大して表示。毎フレーム `scnView.projectPoint()` でプロキシ位置を同期。
+
+---
+
+## 物理衝突
+
+```swift
+// PhysicsCategory (GameProtocol.swift)
+static let bug: UInt32 = 0x1 << 0   // BugNode
+static let net: UInt32 = 0x1 << 1   // NetProjectile
+
+// BugNode
+physicsBody?.isDynamic          = false
+physicsBody?.categoryBitMask    = PhysicsCategory.bug
+physicsBody?.contactTestBitMask = PhysicsCategory.net
+physicsBody?.collisionBitMask   = 0
+
+// NetProjectile (circleOfRadius: 44 pt)
+physicsBody?.isDynamic          = true
+physicsBody?.affectedByGravity  = false
+physicsBody?.categoryBitMask    = PhysicsCategory.net
+physicsBody?.contactTestBitMask = PhysicsCategory.bug
+physicsBody?.collisionBitMask   = 0
+```
+
+接触 → `BugHunterScene.didBegin(_:)` → `onBugCaptured?(bugNode, netNode.playerIndex)`
 
 ---
 
@@ -181,7 +291,9 @@ iOS Controller (×最大3台)               Projector Server
 | Swift | 5.9 以上 |
 | iOS Deployment Target | iOS 17.0 以上 |
 | Xcode | 15 以上 |
-| フレームワーク | SwiftUI, ARKit, SceneKit, SpriteKit, MultipeerConnectivity |
+| フレームワーク | SwiftUI, UIKit, ARKit, SceneKit, SpriteKit, MultipeerConnectivity, Combine |
+| 外部ライブラリ | なし（Apple 標準フレームワークのみ） |
+| アセット | なし（すべて手続き的に生成） |
 
 ---
 
@@ -202,3 +314,4 @@ iOS Controller (×最大3台)               Projector Server
 - **ローカルネットワーク権限**: プロジェクターモードを使う場合、ローカルネットワークへのアクセスを許可してください（Multipeer Connectivity に必要）。
 - **明るい場所**: ARKit は十分な光量が必要です。暗い場所ではバグの位置精度が下がります。
 - **同時接続上限**: プロジェクターに接続できる iOS デバイスは最大 3 台です。4 台目以降は自動的に拒否されます。
+- **スレッド安全性**: SceneKit レンダースレッドから UIKit にアクセスしない（`cachedViewHeight` パターン）。Multipeer Connectivity コールバックは常に `DispatchQueue.main.async` でメインスレッドに戻す。
