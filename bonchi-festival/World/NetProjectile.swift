@@ -12,35 +12,55 @@ import SpriteKit
 /// An animated net emoji that flies across the scene, colliding with BugNodes.
 final class NetProjectile: SKNode {
 
+    /// Net / ring accent colors for each player slot (index 0–2).
+    static let playerColors: [SKColor] = [
+        SKColor(red: 0.0, green: 1.0, blue: 1.0, alpha: 1),   // Player 1: cyan
+        SKColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 1),  // Player 2: orange
+        SKColor(red: 1.0, green: 0.2,  blue: 0.8, alpha: 1),  // Player 3: magenta
+    ]
+
     /// Called when this net captures a bug; passes the captured BugNode.
     var onCapture: ((BugNode) -> Void)?
+
+    /// The player slot index (0-based) that fired this net.
+    /// Read by `BugHunterScene.didBegin(contact:)` to attribute the capture.
+    let playerIndex: Int
 
     private let netLabel: SKLabelNode
     private let ringNode: SKShapeNode
 
     // MARK: Init
 
-    override init() {
+    /// - Parameter playerIndex: 0-based slot index used to tint the ring (wraps at 3).
+    init(playerIndex: Int = 0) {
+        self.playerIndex = playerIndex
+        let color = NetProjectile.playerColors[playerIndex % NetProjectile.playerColors.count]
+
         netLabel = SKLabelNode(text: "🕸️")
         netLabel.fontSize = 64
         netLabel.verticalAlignmentMode   = .center
         netLabel.horizontalAlignmentMode = .center
 
         ringNode = SKShapeNode(circleOfRadius: 34)
-        ringNode.strokeColor = UIColor.white.withAlphaComponent(0.65)
-        ringNode.fillColor   = .clear
-        ringNode.lineWidth   = 2.5
+        ringNode.strokeColor = color.withAlphaComponent(0.75)
+        ringNode.fillColor   = color.withAlphaComponent(0.08)
+        ringNode.lineWidth   = 3.0
 
         super.init()
 
         addChild(netLabel)
         addChild(ringNode)
 
+        // Small filled dot at the center so the player color is always visible
+        let dot = SKShapeNode(circleOfRadius: 7)
+        dot.fillColor   = color
+        dot.strokeColor = .clear
+        dot.zPosition   = 1
+        addChild(dot)
+
         name = "net"
 
         // Physics body for contact detection.
-        // isDynamic = true (with gravity disabled) is required: SpriteKit only fires
-        // contact callbacks when at least one of the two bodies is dynamic.
         physicsBody = SKPhysicsBody(circleOfRadius: 44)
         physicsBody?.isDynamic          = true
         physicsBody?.affectedByGravity  = false

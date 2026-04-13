@@ -112,23 +112,16 @@ final class BugSpawner {
 
 // MARK: - BugNode
 
-/// An emoji-based SpriteKit node representing one bug.
+/// An invisible SpriteKit node that carries a physics body for net-collision detection.
+/// All visual rendering is handled by Bug3DNode (SceneKit); this node has no sprite.
 final class BugNode: SKNode {
 
     let bugType: BugType
     var points: Int { bugType.points }
 
-    private let label: SKLabelNode
-
     init(type: BugType) {
         self.bugType = type
-        label = SKLabelNode(text: type.emoji)
         super.init()
-
-        label.fontSize = type.size
-        label.verticalAlignmentMode   = .center
-        label.horizontalAlignmentMode = .center
-        addChild(label)
 
         name = "bug"
 
@@ -142,11 +135,9 @@ final class BugNode: SKNode {
 
     required init?(coder aDecoder: NSCoder) { fatalError("init(coder:) not implemented") }
 
-    /// Play capture animation then remove from scene.
+    /// Remove from scene immediately (no visual to animate).
     func captured() {
         removeAllActions()
-        let scaleUp = SKAction.scale(to: 1.5, duration: 0.10)
-        let fadeOut = SKAction.fadeOut(withDuration: 0.30)
-        run(SKAction.sequence([scaleUp, fadeOut, SKAction.removeFromParent()]))
+        removeFromParent()
     }
 }

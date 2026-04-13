@@ -92,11 +92,10 @@ final class ARBugScene: SKScene {
     func fireNet(angle: Float, power: Float) {
         guard !gameEnded else { return }
 
-        playNetThrowAnimation()
-
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let center      = CGPoint(x: size.width / 2, y: size.height / 2)
         let catchRadius = ARBugScene.catchRadius
 
+        // ── 1. Primary: lock-on capture (bug within catchRadius of screen centre) ──
         var closest: SKNode?
         var closestDist = CGFloat.infinity
 
@@ -107,6 +106,53 @@ final class ARBugScene: SKScene {
                 closest = node
             }
         }
+
+        // ── 2. Secondary: trajectory hit (any bug along the net's flight path) ──
+        if closest == nil {
+            let dirX: CGFloat = CGFloat(cos(angle))
+            let dirY: CGFloat = CGFloat(sin(angle))
+            // Net range grows with power: minimum 200 pt, up to 80 % of the longer side.
+            let netRange  = CGFloat(power) * max(size.width, size.height) * 0.8 + 200
+            // Half-width of the "hit band" around the flight line (generous to feel responsive).
+            let hitBand: CGFloat = 90
+
+            var bestProj = CGFloat.infinity
+            for node in children where node.name == "bugContainer" {
+                let dx = node.position.x - center.x
+                let dy = node.position.y - center.y
+                // Scalar projection onto flight direction (must be positive = in front).
+                let proj = dx * dirX + dy * dirY
+                guard proj > 0, proj <= netRange else { continue }
+                // Perpendicular distance from the flight line.
+                let perp = abs(dx * dirY - dy * dirX)
+                guard perp < hitBand else { continue }
+                // Prefer the bug the net reaches first.
+                if proj < bestProj {
+                    bestProj = proj
+                    closest = node
+                }
+            }
+        }
+
+        // ── Compute the visual fly-target so the animation matches the capture ──
+        let flyTarget: CGPoint
+        if let t = closest {
+            // Fly 55 % of the way to the bug so the net visibly travels toward it.
+            let frac: CGFloat = 0.55
+            flyTarget = CGPoint(
+                x: center.x + (t.position.x - center.x) * frac,
+                y: center.y + (t.position.y - center.y) * frac
+            )
+        } else {
+            // No target: fly in the actual launch direction.
+            let range = CGFloat(power) * 180 + 120
+            flyTarget = CGPoint(
+                x: center.x + CGFloat(cos(angle)) * range,
+                y: center.y + CGFloat(sin(angle)) * range
+            )
+        }
+
+        playNetThrowAnimation(toward: flyTarget)
 
         if let container = closest {
             let bugNode = container.children.first(where: { $0 is BugNode }) as? BugNode
@@ -402,7 +448,7 @@ final class ARBugScene: SKScene {
 
     // MARK: - Private: throw / miss animations
 
-    private func playNetThrowAnimation() {
+    private func playNetThrowAnimation(toward flyTarget: CGPoint) {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
 
         // Expanding ring that mimics the net mouth opening
@@ -430,20 +476,6 @@ final class ARBugScene: SKScene {
         net.setScale(0.2)
         net.alpha = 1.0
         addChild(net)
-
-        // Fly toward the locked-on bug if one is within range; otherwise throw straight up.
-        // Use 55 % of the distance so the net visibly travels toward the target but doesn't
-        // fully overlap it (the capture effect at the bug's position handles the overlap).
-        let targetDistanceFraction: CGFloat = 0.55
-        let flyTarget: CGPoint
-        if let target = currentLockTarget {
-            flyTarget = CGPoint(
-                x: center.x + (target.position.x - center.x) * targetDistanceFraction,
-                y: center.y + (target.position.y - center.y) * targetDistanceFraction
-            )
-        } else {
-            flyTarget = CGPoint(x: center.x, y: center.y + 130)
-        }
 
         let flyAndExpand = SKAction.group([
             SKAction.move(to: flyTarget, duration: 0.42),

@@ -14,7 +14,9 @@ import MultipeerConnectivity
 protocol ProjectorGameManagerDelegate: AnyObject {
     func managerDidReceiveStartGame(_ manager: ProjectorGameManager)
     func managerDidReceiveReset(_ manager: ProjectorGameManager)
-    func manager(_ manager: ProjectorGameManager, didReceiveLaunch payload: LaunchPayload)
+    func manager(_ manager: ProjectorGameManager, didReceiveLaunch payload: LaunchPayload, playerIndex: Int)
+    /// Called on the main thread whenever the set of connected players changes.
+    func manager(_ manager: ProjectorGameManager, didUpdateConnectedPlayers players: [(name: String, playerIndex: Int)])
 }
 
 // MARK: - ProjectorGameManager
@@ -25,10 +27,18 @@ final class ProjectorGameManager: NSObject {
     /// Must match `MultipeerSession.serviceType`.
     static let serviceType = "bughunter-game"
 
+    /// Maximum number of simultaneously connected clients.
+    static let maxPlayers = 3
+
     private let myPeerID = MCPeerID(displayName: "BugHunter-Projector")
     private var mcSession: MCSession!
     private var advertiser: MCNearbyServiceAdvertiser!
     private var browser: MCNearbyServiceBrowser!
+
+    /// Maps each connected peer to its assigned player slot (0, 1, or 2).
+    private var playerSlots: [MCPeerID: Int] = [:]
+    /// Tracks which slots are currently occupied.
+    private var usedSlots: Set<Int> = []
 
     weak var delegate: ProjectorGameManagerDelegate?
 
@@ -65,12 +75,35 @@ final class ProjectorGameManager: NSObject {
 
     // MARK: Outgoing
 
-    /// Send the current game state back to the iOS controller.
+    /// Send the current game state back to all connected iOS controllers.
     func sendGameState(_ payload: GameStatePayload) {
         let message = GameMessage.gameState(payload)
         guard !mcSession.connectedPeers.isEmpty,
               let data = try? JSONEncoder().encode(message) else { return }
         try? mcSession.send(data, toPeers: mcSession.connectedPeers, with: .reliable)
+    }
+
+    /// Send a bug-captured notification to the specific player peer so it can add points.
+    func sendBugCaptured(bugType: BugType, toPlayerAtSlot playerIndex: Int) {
+        guard let peer = playerSlots.first(where: { $0.value == playerIndex })?.key else { return }
+        let payload = BugCapturedPayload(bugType: bugType, playerIndex: playerIndex)
+        let message = GameMessage.bugCaptured(payload)
+        guard let data = try? JSONEncoder().encode(message) else { return }
+        try? mcSession.send(data, toPeers: [peer], with: .reliable)
+    }
+
+    // MARK: - Private helpers
+
+    /// Returns a snapshot of connected players sorted by slot index, for display.
+    private func connectedPlayerList() -> [(name: String, playerIndex: Int)] {
+        playerSlots
+            .map { (name: $0.key.displayName, playerIndex: $0.value) }
+            .sorted { $0.playerIndex < $1.playerIndex }
+    }
+
+    private func notifyPlayersUpdate() {
+        let players = connectedPlayerList()
+        delegate?.manager(self, didUpdateConnectedPlayers: players)
     }
 }
 
@@ -80,12 +113,33 @@ extension ProjectorGameManager: MCSessionDelegate {
 
     func session(_ session: MCSession,
                  peer peerID: MCPeerID,
-                 didChange state: MCSessionState) {}
+                 didChange state: MCSessionState) {
+        DispatchQueue.main.async {
+            switch state {
+            case .connected:
+                guard self.playerSlots[peerID] == nil else { break }
+                // Assign the lowest available slot
+                let slot = (0..<Self.maxPlayers).first { !self.usedSlots.contains($0) } ?? 0
+                self.playerSlots[peerID] = slot
+                self.usedSlots.insert(slot)
+                self.notifyPlayersUpdate()
+            case .notConnected:
+                if let slot = self.playerSlots[peerID] {
+                    self.usedSlots.remove(slot)
+                    self.playerSlots.removeValue(forKey: peerID)
+                    self.notifyPlayersUpdate()
+                }
+            default:
+                break
+            }
+        }
+    }
 
     func session(_ session: MCSession,
                  didReceive data: Data,
                  fromPeer peerID: MCPeerID) {
         guard let message = try? JSONDecoder().decode(GameMessage.self, from: data) else { return }
+        let playerIndex = playerSlots[peerID] ?? 0
         DispatchQueue.main.async {
             switch message.type {
             case .startGame:
@@ -94,7 +148,7 @@ extension ProjectorGameManager: MCSessionDelegate {
                 self.delegate?.managerDidReceiveReset(self)
             case .launch:
                 if let payload = message.launchPayload {
-                    self.delegate?.manager(self, didReceiveLaunch: payload)
+                    self.delegate?.manager(self, didReceiveLaunch: payload, playerIndex: playerIndex)
                 }
             default:
                 break
@@ -127,6 +181,11 @@ extension ProjectorGameManager: MCNearbyServiceAdvertiserDelegate {
                     didReceiveInvitationFromPeer peerID: MCPeerID,
                     withContext context: Data?,
                     invitationHandler: @escaping (Bool, MCSession?) -> Void) {
+        // Reject new connections once the player cap is reached
+        guard usedSlots.count < Self.maxPlayers else {
+            invitationHandler(false, nil)
+            return
+        }
         invitationHandler(true, mcSession)
     }
 }

@@ -23,18 +23,25 @@ final class BugHunterScene: SKScene {
     /// When `true` the scene background is transparent so the AR camera feed shows through.
     var isARMode: Bool = false
 
+    /// When `true` the scene is used as a transparent overlay over a SceneKit 3-D bug world
+    /// on the projector device.  Background becomes clear and BugSpawner is not started;
+    /// the 3-D coordinator adds invisible proxy BugNodes directly.
+    var isProjectorMode: Bool = false
+
+    /// Called (on the main thread) when a `BugNode` is captured via net physics contact.
+    /// Passes the captured node and the 0-based player slot index of the net that hit it.
+    /// The projector 3-D coordinator uses this to dismiss the corresponding Bug3DNode
+    /// and to notify the responsible iOS client.
+    var onBugCaptured: ((BugNode, Int) -> Void)?
+
     // MARK: State
 
-    private var score: Int = 0 {
-        didSet { updateHUD() }
-    }
     private var timeRemaining: Double = 90.0
     private var lastUpdate: TimeInterval = 0
 
     // MARK: Child nodes
 
     private var spawner: BugSpawner!
-    private var scoreLabel: SKLabelNode!
     private var timeLabel: SKLabelNode!
     private var timerBar: SKShapeNode!
     private let timerBarMaxWidth: CGFloat = 600
@@ -42,7 +49,7 @@ final class BugHunterScene: SKScene {
     // MARK: - Lifecycle
 
     override func didMove(to view: SKView) {
-        backgroundColor = isARMode
+        backgroundColor = (isARMode || isProjectorMode)
             ? .clear
             : SKColor(red: 0.05, green: 0.12, blue: 0.05, alpha: 1)
 
@@ -53,7 +60,6 @@ final class BugHunterScene: SKScene {
         setupHUD()
 
         spawner = BugSpawner(scene: self)
-        spawner.start()
     }
 
     // MARK: - Update
@@ -68,7 +74,7 @@ final class BugHunterScene: SKScene {
 
         updateTimerBar()
 
-        gameDelegate?.scene(self, didUpdateScore: score, timeRemaining: timeRemaining)
+        gameDelegate?.scene(self, didUpdateScore: 0, timeRemaining: timeRemaining)
 
         if timeRemaining <= 0 {
             endGame()
@@ -78,8 +84,9 @@ final class BugHunterScene: SKScene {
     // MARK: - Public API
 
     /// Called by WorldViewController when the iOS device fires the slingshot.
-    func fireNet(angle: Float, power: Float) {
-        let net = NetProjectile()
+    /// - Parameter playerIndex: 0-based player slot index used to tint the net.
+    func fireNet(angle: Float, power: Float, playerIndex: Int = 0) {
+        let net = NetProjectile(playerIndex: playerIndex)
         // Launch from the bottom-centre of the scene
         let origin = CGPoint(x: size.width / 2, y: 60)
         addChild(net)
@@ -93,70 +100,16 @@ final class BugHunterScene: SKScene {
         // Remove all remaining bugs
         children.filter { $0.name == "bug" }.forEach { $0.removeFromParent() }
 
-        let finalScore = score
-        gameDelegate?.sceneDidFinish(self, finalScore: finalScore)
-
-        showFinalScoreOverlay(finalScore)
-    }
-
-    private func showFinalScoreOverlay(_ finalScore: Int) {
-        let overlay = SKShapeNode(rect: CGRect(origin: .zero, size: size))
-        overlay.fillColor = SKColor.black.withAlphaComponent(0.55)
-        overlay.strokeColor = .clear
-        overlay.zPosition = 100
-        addChild(overlay)
-
-        let title = SKLabelNode(text: "デバッグ完了！")
-        title.fontName   = "HiraginoSans-W7"
-        title.fontSize   = 72
-        title.fontColor  = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 1)
-        title.position   = CGPoint(x: size.width / 2, y: size.height / 2 + 80)
-        title.zPosition  = 101
-        addChild(title)
-
-        let scoreLbl = SKLabelNode(text: "修正バグ: \(finalScore) pt")
-        scoreLbl.fontName  = "HiraginoSans-W7"
-        scoreLbl.fontSize  = 96
-        scoreLbl.fontColor = SKColor(red: 1, green: 0.85, blue: 0, alpha: 1)
-        scoreLbl.position  = CGPoint(x: size.width / 2, y: size.height / 2 - 40)
-        scoreLbl.zPosition = 101
-        addChild(scoreLbl)
-
-        // Animate in
-        let nodes: [SKNode] = [overlay, title, scoreLbl]
-        nodes.forEach { $0.alpha = 0 }
-        let fadeIn = SKAction.fadeIn(withDuration: 0.6)
-        nodes.forEach { $0.run(fadeIn) }
+        gameDelegate?.sceneDidFinish(self, finalScore: 0)
     }
 
     // MARK: - HUD Setup
 
     private func setupBackground() {
-        // Scattered glitch symbols to convey "world being corrupted by bugs"
-        for _ in 0..<28 {
-            let symbol = SKLabelNode(text: ["⚠️", "❌", "🔴", "⛔", "💀", "🔥"].randomElement()!)
-            symbol.fontSize  = CGFloat.random(in: 18...44)
-            symbol.position  = CGPoint(
-                x: CGFloat.random(in: 0...size.width),
-                y: CGFloat.random(in: 0...size.height)
-            )
-            symbol.alpha     = 0.15
-            symbol.zPosition = -1
-            addChild(symbol)
-        }
+        // Background decorations are handled by the SceneKit layer (SCNView) beneath this scene.
     }
 
     private func setupHUD() {
-        // Score label (top-left)
-        scoreLabel = SKLabelNode(text: "🔧 0")
-        scoreLabel.fontName  = "HiraginoSans-W7"
-        scoreLabel.fontSize  = 48
-        scoreLabel.fontColor = SKColor(red: 1, green: 0.85, blue: 0, alpha: 1)
-        scoreLabel.horizontalAlignmentMode = .left
-        scoreLabel.position  = CGPoint(x: 24, y: size.height - 72)
-        scoreLabel.zPosition = 10
-        addChild(scoreLabel)
-
         // Time label (top-right)
         timeLabel = SKLabelNode(text: "⏱ 90.0")
         timeLabel.fontName  = "HiraginoSans-W7"
@@ -187,10 +140,6 @@ final class BugHunterScene: SKScene {
         timerBar.strokeColor = .clear
         timerBar.zPosition   = 11
         addChild(timerBar)
-    }
-
-    private func updateHUD() {
-        scoreLabel.text = "🔧 \(score)"
     }
 
     private func updateTimerBar() {
@@ -230,26 +179,10 @@ extension BugHunterScene: SKPhysicsContactDelegate {
         bugNode.physicsBody = nil
         netNode.physicsBody = nil
 
-        let pts = bugNode.points
-
         // Capture animations
         bugNode.captured()
         netNode.playCapture()
 
-        // Score pop label
-        let popLabel = SKLabelNode(text: "+\(pts)pt")
-        popLabel.fontName  = "HiraginoSans-W7"
-        popLabel.fontSize  = 52
-        popLabel.fontColor = SKColor(red: 1, green: 0.85, blue: 0, alpha: 1)
-        popLabel.position  = bugNode.position
-        popLabel.zPosition = 50
-        addChild(popLabel)
-
-        let rise   = SKAction.moveBy(x: 0, y: 80, duration: 0.7)
-        let fade   = SKAction.fadeOut(withDuration: 0.7)
-        let remove = SKAction.removeFromParent()
-        popLabel.run(SKAction.sequence([SKAction.group([rise, fade]), remove]))
-
-        score += pts
+        onBugCaptured?(bugNode, netNode.playerIndex)
     }
 }
