@@ -16,12 +16,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
 
-        // Create the SwiftUI view that provides the window contents.
-        let contentView = ContentView()
-
-        // Use a UIHostingController as window root view controller.
         let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = UIHostingController(rootView: contentView)
+
+        if CommandLine.arguments.contains("--projector") {
+            // Projector device: present the SpriteKit world and wait for the iOS controller.
+            window.rootViewController = WorldViewController()
+        } else {
+            // iOS controller device (default): present the SwiftUI AR controller.
+            window.rootViewController = UIHostingController(rootView: ContentView())
+        }
+
         self.window = window
         window.makeKeyAndVisible()
         return true
