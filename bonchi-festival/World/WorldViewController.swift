@@ -157,10 +157,26 @@ final class ProjectorBug3DCoordinator: NSObject {
 
     private let scnScene  = SCNScene()
 
-    /// Camera sits at +Z looking toward –Z (SceneKit default).
-    /// `cameraZ` controls apparent bug size; `fieldOfView` determines the visible frustum.
+    /// Camera Z-position.  Bugs are placed at Z=0 (world origin plane) so the
+    /// viewing distance equals this value.  The visible frustum half-height at Z=0 is
+    /// approximately `cameraZ × tan(cameraFOV / 2)` ≈ 2.43 units.
     private static let cameraZ: Float = 3.5
+
+    /// Vertical field-of-view (degrees).  At 65° and cameraZ=3.5 the visible height at
+    /// Z=0 is ~4.86 units — enough room for bugs to wander across the whole screen.
     private static let cameraFOV: CGFloat = 65
+
+    /// Bug3DNode geometry is built at ~0.05–0.10-unit scale (designed for AR at 1–3 m).
+    /// Multiplying by this factor makes a bug occupy a comfortable ~20 % of screen height
+    /// in the ~4.86-unit tall projector world.
+    private static let bugScaleMultiplier: Float = 10
+
+    /// Minimum spawn interval (seconds) after the difficulty ramp is fully applied.
+    private static let minSpawnInterval: TimeInterval = 0.6
+    /// Initial spawn interval (seconds) at the start of a game round.
+    private static let initialSpawnInterval: TimeInterval = 1.8
+    /// Duration (seconds) over which the spawn interval ramps from initial to minimum.
+    private static let spawnAccelerationDuration: TimeInterval = 75.0
 
     private let cameraNode: SCNNode = {
         let n = SCNNode()
@@ -273,10 +289,9 @@ final class ProjectorBug3DCoordinator: NSObject {
         let bugType = randomBugType()
         let uuid    = UUID()
 
-        // Bug3DNode geometry is designed at ~0.05–0.10 m scale; multiply by 10 for
-        // the projector coordinate space where the visible world is ~4 units tall.
         let bug3D = Bug3DNode(type: bugType)
-        bug3D.scale    = SCNVector3(10, 10, 10)
+        let s = Self.bugScaleMultiplier
+        bug3D.scale    = SCNVector3(s, s, s)
         bug3D.position = randomEdgePosition3D(in: scnView)
         scnScene.rootNode.addChildNode(bug3D)
         bug3DNodes[uuid] = bug3D
@@ -304,11 +319,15 @@ final class ProjectorBug3DCoordinator: NSObject {
             self?.bugScene?.addChild(proxy)
         }
 
-        // Progressive spawn interval matching ARGameView: 1.8 s → 0.6 s over 90 s
+        // Progressive spawn interval: ramps from initialSpawnInterval down to minSpawnInterval
+        // over spawnAccelerationDuration seconds of play time (mirrors ARGameView).
         let now = Date()
         if let last = lastSpawnTime { spawnElapsed += now.timeIntervalSince(last) }
         lastSpawnTime = now
-        scheduleNextSpawn(delay: max(0.6, 1.8 - spawnElapsed / 75.0))
+        let nextDelay = min(Self.initialSpawnInterval,
+                            max(Self.minSpawnInterval,
+                                Self.initialSpawnInterval - spawnElapsed / Self.spawnAccelerationDuration))
+        scheduleNextSpawn(delay: nextDelay)
     }
 
     private func randomBugType() -> BugType {
@@ -331,6 +350,7 @@ final class ProjectorBug3DCoordinator: NSObject {
 
     private func randomEdgePosition3D(in view: SCNView) -> SCNVector3 {
         let (halfW, halfH) = visibleHalfExtents(in: view)
+        // Spawn 0.5 world-units beyond the visible frustum edge so bugs enter from off-screen.
         let margin: Float  = 0.5
         switch Int.random(in: 0..<4) {
         case 0: return SCNVector3( Float.random(in: -halfW...halfW),  halfH + margin, 0)
@@ -388,6 +408,8 @@ extension ProjectorBug3DCoordinator: SCNSceneRendererDelegate {
         for (uuid, bug3D) in bug3DNodes {
             guard let proxy = proxyNodes[uuid] else { continue }
             let projected = scnView.projectPoint(bug3D.worldPosition)
+            // projected.z is normalized depth in [0, 1]; values outside that range mean
+            // the bug is behind the camera or beyond the far clipping plane — skip those.
             guard projected.z > 0, projected.z < 1 else { continue }
             updates.append((proxy, CGPoint(
                 x: CGFloat(projected.x),
