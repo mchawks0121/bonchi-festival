@@ -68,6 +68,14 @@ final class WorldViewController: UIViewController {
 // MARK: - BugHunterSceneDelegate
 
 extension WorldViewController: BugHunterSceneDelegate {
+    func scene(_ scene: SKScene, didUpdateScore score: Int, timeRemaining: Double) {
+    
+    }
+    
+    func sceneDidFinish(_ scene: SKScene, finalScore: Int) {
+        
+    }
+    
 
     func scene(_ scene: BugHunterScene, didUpdateScore score: Int, timeRemaining: Double) {
         let payload = GameStatePayload(state: "playing", score: score, timeRemaining: timeRemaining)
