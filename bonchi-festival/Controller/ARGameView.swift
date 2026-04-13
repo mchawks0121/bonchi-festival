@@ -42,6 +42,8 @@ struct ARGameView: UIViewRepresentable {
         container.addSubview(arView)
         context.coordinator.arView = arView
         arView.delegate = context.coordinator
+        // Cache the view height for the render-thread projection
+        context.coordinator.cachedViewHeight = UIScreen.main.bounds.height
 
         let config = ARWorldTrackingConfiguration()
         arView.session.run(config)
@@ -94,9 +96,13 @@ extension ARGameView {
 
         // MARK: Dependencies
 
-        var gameManager: GameManager?
+        weak var gameManager: GameManager?
         weak var arView: ARSCNView?
         weak var skView: SKView?
+
+        /// Cached view height (set on main thread) used by the render-thread
+        /// position projection to avoid accessing UIKit from a background thread.
+        private var cachedViewHeight: CGFloat = UIScreen.main.bounds.height
 
         // MARK: Anchor bookkeeping
 
@@ -139,6 +145,9 @@ extension ARGameView {
             nodeAnchorMap.removeAll()
             anchorBug3DNodeMap.removeAll()
             anchorProxyNodeMap.removeAll()
+
+            // Cache view height on main thread for use during rendering
+            if let h = arView?.bounds.height, h > 0 { cachedViewHeight = h }
 
             // Wire capture callback so ARBugScene can trigger anchor removal
             gameManager?.arBugScene?.onCaptureBug = { [weak self] node in
@@ -277,9 +286,8 @@ extension ARGameView {
         func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
             guard let arView = self.arView else { return }
 
-            // Snapshot the view height; reading bounds here is safe in practice
-            // since it never changes during a gameplay session.
-            let viewHeight = arView.bounds.height
+            // Use the main-thread-cached view height to avoid accessing UIKit here.
+            let viewHeight = cachedViewHeight
 
             var updates: [(SKNode, CGPoint)] = []
             for (anchorID, bug3D) in anchorBug3DNodeMap {
