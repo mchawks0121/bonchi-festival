@@ -51,120 +51,128 @@ struct WaitingView: View {
     @EnvironmentObject var gameManager: GameManager
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 28) {
+        GeometryReader { geo in
+            // SE/mini class: height ≤ 700 pt (e.g. iPhone SE 667 pt, mini 780 pt safe-area adjusted)
+            let compact = geo.size.height < 750
+            ScrollView {
+                VStack(spacing: compact ? 16 : 28) {
 
-                Text("👾")
-                    .font(.system(size: 90))
-                    .padding(.top, 48)
+                    Text("👾")
+                        .font(.system(size: compact ? 60 : 90))
+                        .padding(.top, compact ? 20 : 48)
 
-                Text("君は、バグハンター")
-                    .font(.largeTitle.bold())
-                    .foregroundColor(.white)
-
-                Text("バグに侵食されたワールドを救え！")
-                    .font(.title3)
-                    .foregroundColor(Color(red: 0.4, green: 0.9, blue: 1.0).opacity(0.85))
-                    .multilineTextAlignment(.center)
-
-                // ── Mode selection ───────────────────────────────────────
-                VStack(spacing: 10) {
-                    Text("プレイモードを選択")
-                        .font(.caption.bold())
-                        .foregroundColor(.white.opacity(0.55))
-
-                    VStack(spacing: 10) {
-                        ModeCard(
-                            icon: "📱",
-                            title: "スタンドアロン",
-                            subtitle: "AR のみ（1台完結）",
-                            isSelected: gameManager.gameMode == .standalone
-                        )
-                        .onTapGesture { gameManager.selectMode(.standalone) }
-
-                        ModeCard(
-                            icon: "🎮",
-                            title: "プロジェクター",
-                            subtitle: "クライアント（コントローラー）",
-                            isSelected: gameManager.gameMode == .projectorClient
-                        )
-                        .onTapGesture { gameManager.selectMode(.projectorClient) }
-
-                        ModeCard(
-                            icon: "📺",
-                            title: "プロジェクター",
-                            subtitle: "サーバー（表示デバイス）",
-                            isSelected: gameManager.gameMode == .projectorServer
-                        )
-                        .onTapGesture { gameManager.selectMode(.projectorServer) }
-                    }
-                    .padding(.horizontal, 24)
-                }
-
-                // Connection status pill — only in projector client mode
-                if gameManager.gameMode == .projectorClient {
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(gameManager.isConnected ? Color.green : Color.orange)
-                            .frame(width: 12, height: 12)
-                        Text(gameManager.isConnected
-                             ? "プロジェクターに接続済み"
-                             : "プロジェクターを探しています…")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.85))
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(Capsule())
-                    .transition(.opacity.combined(with: .scale))
-                    .animation(.easeInOut(duration: 0.25), value: gameManager.isConnected)
-                }
-
-                // Start button
-                Button {
-                    withAnimation { gameManager.startGame() }
-                } label: {
-                    Text("デバッグ開始")
-                        .font(.title2.bold())
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 52)
-                        .padding(.vertical, 16)
-                        .background(Color(red: 0.2, green: 1.0, blue: 0.8))
-                        .clipShape(Capsule())
-                        .shadow(color: Color(red: 0.2, green: 1.0, blue: 0.8).opacity(0.6), radius: 16)
-                }
-
-                // Bug legend card
-                VStack(spacing: 12) {
-                    Text("出現バグ一覧")
-                        .font(.headline.bold())
+                    Text("君は、バグハンター")
+                        .font(compact ? .title2.bold() : .largeTitle.bold())
                         .foregroundColor(.white)
 
-                    HStack(spacing: 32) {
-                        BugLegendItem(emoji: "🐞", pts: 1, name: "Null")
-                        BugLegendItem(emoji: "🦠", pts: 3, name: "Virus")
-                        BugLegendItem(emoji: "👾", pts: 5, name: "Glitch")
-                    }
-                }
-                .padding(20)
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(18)
-                .padding(.horizontal, 24)
+                    Text("バグに侵食されたワールドを救え！")
+                        .font(compact ? .callout : .title3)
+                        .foregroundColor(Color(red: 0.4, green: 0.9, blue: 1.0).opacity(0.85))
+                        .multilineTextAlignment(.center)
 
-                // How to play
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("ミッション").font(.headline).foregroundColor(.white)
-                    Text("ワールドはバグに蝕まれている。\nスリングショットで網を飛ばし、バグを捕まえてデバッグせよ！\n制限時間は90秒。Glitchほど手強く、倒すほど価値がある。")
-                        .font(.body)
-                        .foregroundColor(.white.opacity(0.75))
-                        .multilineTextAlignment(.leading)
+                    // ── Mode selection ───────────────────────────────────────
+                    VStack(spacing: 8) {
+                        Text("プレイモードを選択")
+                            .font(.caption.bold())
+                            .foregroundColor(.white.opacity(0.55))
+
+                        VStack(spacing: 8) {
+                            ModeCard(
+                                icon: "📱",
+                                title: "スタンドアロン",
+                                subtitle: "AR のみ（1台完結）",
+                                isSelected: gameManager.gameMode == .standalone,
+                                compact: compact
+                            )
+                            .onTapGesture { gameManager.selectMode(.standalone) }
+
+                            ModeCard(
+                                icon: "🎮",
+                                title: "プロジェクター",
+                                subtitle: "クライアント（コントローラー）",
+                                isSelected: gameManager.gameMode == .projectorClient,
+                                compact: compact
+                            )
+                            .onTapGesture { gameManager.selectMode(.projectorClient) }
+
+                            ModeCard(
+                                icon: "📺",
+                                title: "プロジェクター",
+                                subtitle: "サーバー（表示デバイス）",
+                                isSelected: gameManager.gameMode == .projectorServer,
+                                compact: compact
+                            )
+                            .onTapGesture { gameManager.selectMode(.projectorServer) }
+                        }
+                        .padding(.horizontal, 24)
+                    }
+
+                    // Connection status pill — only in projector client mode
+                    if gameManager.gameMode == .projectorClient {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(gameManager.isConnected ? Color.green : Color.orange)
+                                .frame(width: 12, height: 12)
+                            Text(gameManager.isConnected
+                                 ? "プロジェクターに接続済み"
+                                 : "プロジェクターを探しています…")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.85))
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Capsule())
+                        .transition(.opacity.combined(with: .scale))
+                        .animation(.easeInOut(duration: 0.25), value: gameManager.isConnected)
+                    }
+
+                    // Start button
+                    Button {
+                        withAnimation { gameManager.startGame() }
+                    } label: {
+                        Text("デバッグ開始")
+                            .font(.title2.bold())
+                            .foregroundColor(.black)
+                            .padding(.horizontal, compact ? 36 : 52)
+                            .padding(.vertical, compact ? 12 : 16)
+                            .background(Color(red: 0.2, green: 1.0, blue: 0.8))
+                            .clipShape(Capsule())
+                            .shadow(color: Color(red: 0.2, green: 1.0, blue: 0.8).opacity(0.6), radius: 16)
+                    }
+
+                    // Bug legend card
+                    VStack(spacing: compact ? 8 : 12) {
+                        Text("出現バグ一覧")
+                            .font(.headline.bold())
+                            .foregroundColor(.white)
+
+                        HStack(spacing: compact ? 16 : 32) {
+                            BugLegendItem(emoji: "🐞", pts: 1, name: "Null", compact: compact)
+                            BugLegendItem(emoji: "🦠", pts: 3, name: "Virus", compact: compact)
+                            BugLegendItem(emoji: "👾", pts: 5, name: "Glitch", compact: compact)
+                        }
+                    }
+                    .padding(compact ? 14 : 20)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(18)
+                    .padding(.horizontal, 24)
+
+                    // How to play
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("ミッション").font(.headline).foregroundColor(.white)
+                        Text("ワールドはバグに蝕まれている。\nスリングショットで網を飛ばし、バグを捕まえてデバッグせよ！\n制限時間は90秒。Glitchほど手強く、倒すほど価値がある。")
+                            .font(compact ? .footnote : .body)
+                            .foregroundColor(.white.opacity(0.75))
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(compact ? 14 : 20)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(18)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 32)
                 }
-                .padding(20)
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(18)
-                .padding(.horizontal, 24)
-                .padding(.bottom, 32)
+                .frame(minWidth: geo.size.width)
             }
         }
     }
@@ -177,19 +185,42 @@ struct ModeCard: View {
     let title: String
     let subtitle: String
     let isSelected: Bool
+    var compact: Bool = false
 
     var body: some View {
-        VStack(spacing: 6) {
-            Text(icon).font(.system(size: 36))
-            Text(title)
-                .font(.caption.bold())
-                .foregroundColor(.white)
-            Text(subtitle)
-                .font(.caption2)
-                .foregroundColor(.white.opacity(0.6))
+        Group {
+            if compact {
+                // Horizontal layout for compact screens
+                HStack(spacing: 12) {
+                    Text(icon).font(.system(size: 28))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.caption.bold())
+                            .foregroundColor(.white)
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            } else {
+                // Vertical layout for regular screens
+                VStack(spacing: 6) {
+                    Text(icon).font(.system(size: 36))
+                    Text(title)
+                        .font(.caption.bold())
+                        .foregroundColor(.white)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
         .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(isSelected
@@ -213,10 +244,11 @@ struct BugLegendItem: View {
     let emoji: String
     let pts: Int
     let name: String
+    var compact: Bool = false
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(emoji).font(.system(size: 44))
+            Text(emoji).font(.system(size: compact ? 32 : 44))
             Text("\(pts) pt")
                 .font(.caption.bold())
                 .foregroundColor(.yellow)
@@ -345,6 +377,7 @@ struct ProjectorServerView: View {
             }
             .padding(.top, 56)
             .padding(.leading, 20)
+            .safeAreaInset(edge: .top) { Color.clear.frame(height: 0) }
         }
     }
 }
