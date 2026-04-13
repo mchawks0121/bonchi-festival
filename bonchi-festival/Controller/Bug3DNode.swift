@@ -40,7 +40,7 @@ final class Bug3DNode: SCNNode {
         let fade   = SCNAction.fadeOut(duration: 0.30)
         let remove = SCNAction.removeFromParentNode()
         grow.timingMode = .easeOut
-        run(SCNAction.sequence([SCNAction.group([grow, fade]), remove]))
+        runAction(SCNAction.sequence([SCNAction.group([grow, fade]), remove]))
     }
 
     // MARK: - Private: geometry
@@ -138,10 +138,10 @@ final class Bug3DNode: SCNNode {
     private func startAnimations() {
         // Start invisible then fade in
         opacity = 0
-        run(SCNAction.fadeIn(duration: 0.45))
+        runAction(SCNAction.fadeIn(duration: 0.45))
 
         // Continuous Y-rotation
-        run(SCNAction.repeatForever(
+        runAction(SCNAction.repeatForever(
             SCNAction.rotateBy(x: 0, y: .pi * 2, z: 0, duration: 3.0)
         ), forKey: "rotate")
 
@@ -150,7 +150,7 @@ final class Bug3DNode: SCNNode {
         let down = SCNAction.moveBy(x: 0, y: -0.03, z: 0, duration: Double.random(in: 0.60...0.80))
         up.timingMode   = .easeInEaseOut
         down.timingMode = .easeInEaseOut
-        run(SCNAction.repeatForever(SCNAction.sequence([up, down])), forKey: "hover")
+        runAction(SCNAction.repeatForever(SCNAction.sequence([up, down])), forKey: "hover")
     }
 
     // MARK: - Private: helpers
