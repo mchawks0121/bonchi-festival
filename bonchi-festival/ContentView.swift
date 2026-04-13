@@ -49,6 +49,7 @@ struct ContentView: View {
 
 struct WaitingView: View {
     @EnvironmentObject var gameManager: GameManager
+    @State private var showProjectorDisplay = false
 
     var body: some View {
         ScrollView {
@@ -156,8 +157,36 @@ struct WaitingView: View {
                 .background(Color.white.opacity(0.08))
                 .cornerRadius(18)
                 .padding(.horizontal, 24)
-                .padding(.bottom, 32)
+                .padding(.bottom, 8)
+
+                // ── Projector Display Mode ────────────────────────────────
+                VStack(spacing: 8) {
+                    Text("このデバイスをプロジェクターにする")
+                        .font(.caption.bold())
+                        .foregroundColor(.white.opacity(0.45))
+
+                    Button {
+                        showProjectorDisplay = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text("📺")
+                            Text("プロジェクター表示モードで起動")
+                                .font(.subheadline.bold())
+                        }
+                        .foregroundColor(.white.opacity(0.75))
+                        .padding(.horizontal, 28)
+                        .padding(.vertical, 12)
+                        .background(Color.white.opacity(0.10))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.20), lineWidth: 1))
+                    }
+                }
+                .padding(.bottom, 36)
             }
+        }
+        .fullScreenCover(isPresented: $showProjectorDisplay) {
+            WorldViewControllerRepresentable()
+                .ignoresSafeArea()
         }
     }
 }
