@@ -354,14 +354,14 @@ final class ProjectorBug3DCoordinator: NSObject {
             self?.bugScene?.addChild(proxy)
         }
 
-        // Progressive spawn interval: ramps from initialSpawnInterval down to minSpawnInterval
-        // over spawnAccelerationDuration seconds of play time (mirrors ARGameView).
+        // Progressive spawn interval: linearly interpolates from initialSpawnInterval to
+        // minSpawnInterval over spawnAccelerationDuration seconds, then stays at minimum.
         let now = Date()
         if let last = lastSpawnTime { spawnElapsed += now.timeIntervalSince(last) }
         lastSpawnTime = now
-        let nextDelay = min(Self.initialSpawnInterval,
-                            max(Self.minSpawnInterval,
-                                Self.initialSpawnInterval - spawnElapsed / Self.spawnAccelerationDuration))
+        let fraction   = min(1.0, spawnElapsed / Self.spawnAccelerationDuration)
+        let range      = Self.initialSpawnInterval - Self.minSpawnInterval
+        let nextDelay  = Self.initialSpawnInterval - fraction * range
         scheduleNextSpawn(delay: nextDelay)
     }
 
