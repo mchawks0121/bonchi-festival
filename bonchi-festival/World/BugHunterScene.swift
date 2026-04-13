@@ -82,8 +82,9 @@ final class BugHunterScene: SKScene {
     // MARK: - Public API
 
     /// Called by WorldViewController when the iOS device fires the slingshot.
-    func fireNet(angle: Float, power: Float) {
-        let net = NetProjectile()
+    /// - Parameter playerIndex: 0-based player slot index used to tint the net.
+    func fireNet(angle: Float, power: Float, playerIndex: Int = 0) {
+        let net = NetProjectile(playerIndex: playerIndex)
         // Launch from the bottom-centre of the scene
         let origin = CGPoint(x: size.width / 2, y: 60)
         addChild(net)
@@ -98,30 +99,6 @@ final class BugHunterScene: SKScene {
         children.filter { $0.name == "bug" }.forEach { $0.removeFromParent() }
 
         gameDelegate?.sceneDidFinish(self, finalScore: 0)
-
-        showFinalScoreOverlay()
-    }
-
-    private func showFinalScoreOverlay() {
-        let overlay = SKShapeNode(rect: CGRect(origin: .zero, size: size))
-        overlay.fillColor = SKColor.black.withAlphaComponent(0.55)
-        overlay.strokeColor = .clear
-        overlay.zPosition = 100
-        addChild(overlay)
-
-        let title = SKLabelNode(text: "デバッグ完了！")
-        title.fontName   = "HiraginoSans-W7"
-        title.fontSize   = 72
-        title.fontColor  = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 1)
-        title.position   = CGPoint(x: size.width / 2, y: size.height / 2 + 20)
-        title.zPosition  = 101
-        addChild(title)
-
-        // Animate in
-        let nodes: [SKNode] = [overlay, title]
-        nodes.forEach { $0.alpha = 0 }
-        let fadeIn = SKAction.fadeIn(withDuration: 0.6)
-        nodes.forEach { $0.run(fadeIn) }
     }
 
     // MARK: - HUD Setup

@@ -31,6 +31,9 @@ final class WorldViewController: UIViewController {
     private var bug3DCoordinator: ProjectorBug3DCoordinator?
     let projectorManager = ProjectorGameManager()
 
+    /// Overlay view displayed in the bottom-right corner showing connected iOS controllers.
+    private var connectedPlayersView: ConnectedPlayersView!
+
     /// Tracks the view size at the last layout pass so we can detect genuine changes.
     private var lastLayoutSize: CGSize = .zero
 
@@ -71,6 +74,16 @@ final class WorldViewController: UIViewController {
 
         projectorManager.delegate = self
         projectorManager.start()
+
+        // ── Connected players overlay (bottom-right, always on top) ───────
+        connectedPlayersView = ConnectedPlayersView()
+        connectedPlayersView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(connectedPlayersView)
+        NSLayoutConstraint.activate([
+            connectedPlayersView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            connectedPlayersView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+            connectedPlayersView.widthAnchor.constraint(equalToConstant: 220),
+        ])
         // Scene creation is deferred to viewDidLayoutSubviews so that skView.bounds
         // reflects the final, correct screen size.
     }
@@ -122,8 +135,8 @@ final class WorldViewController: UIViewController {
     }
 
     /// Forward a net-launch event to the active game scene.
-    func fireNet(angle: Float, power: Float) {
-        gameScene?.fireNet(angle: angle, power: power)
+    func fireNet(angle: Float, power: Float, playerIndex: Int) {
+        gameScene?.fireNet(angle: angle, power: power, playerIndex: playerIndex)
     }
 }
 
@@ -160,8 +173,12 @@ extension WorldViewController: ProjectorGameManagerDelegate {
         DispatchQueue.main.async { self.presentWaitingScene() }
     }
 
-    func manager(_ manager: ProjectorGameManager, didReceiveLaunch payload: LaunchPayload) {
-        DispatchQueue.main.async { self.fireNet(angle: payload.angle, power: payload.power) }
+    func manager(_ manager: ProjectorGameManager, didReceiveLaunch payload: LaunchPayload, playerIndex: Int) {
+        DispatchQueue.main.async { self.fireNet(angle: payload.angle, power: payload.power, playerIndex: playerIndex) }
+    }
+
+    func manager(_ manager: ProjectorGameManager, didUpdateConnectedPlayers players: [(name: String, playerIndex: Int)]) {
+        connectedPlayersView.update(players: players)
     }
 }
 
@@ -458,6 +475,117 @@ extension ProjectorBug3DCoordinator: SCNSceneRendererDelegate {
                 proxy.position = pos
             }
         }
+    }
+}
+
+// MARK: - ConnectedPlayersView
+
+/// A semi-transparent UIView displayed in the bottom-right corner of the projector screen
+/// showing the names and player-color indicators of all currently connected iOS controllers.
+final class ConnectedPlayersView: UIView {
+
+    /// Accent colors matching `NetProjectile.playerColors` (cyan, orange, magenta).
+    static let playerColors: [UIColor] = [
+        UIColor(red: 0.0, green: 1.0, blue: 1.0, alpha: 1),
+        UIColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 1),
+        UIColor(red: 1.0, green: 0.2,  blue: 0.8, alpha: 1),
+    ]
+
+    private let stackView = UIStackView()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor          = UIColor.black.withAlphaComponent(0.55)
+        layer.cornerRadius       = 12
+        layer.masksToBounds      = true
+
+        stackView.axis           = .vertical
+        stackView.spacing        = 6
+        stackView.alignment      = .leading
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stackView)
+
+        NSLayoutConstraint.activate([
+            stackView.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            stackView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+        ])
+
+        // Initial state: no players connected
+        update(players: [])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) not implemented") }
+
+    /// Refresh the panel with the current list of connected players.
+    func update(players: [(name: String, playerIndex: Int)]) {
+        stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+        let header = UILabel()
+        header.text      = "接続中 \(players.count) / \(ProjectorGameManager.maxPlayers)"
+        header.textColor = UIColor.white.withAlphaComponent(0.85)
+        header.font      = .systemFont(ofSize: 13, weight: .semibold)
+        stackView.addArrangedSubview(header)
+
+        for i in 0..<ProjectorGameManager.maxPlayers {
+            if let player = players.first(where: { $0.playerIndex == i }) {
+                stackView.addArrangedSubview(makeRow(name: player.name, slot: i))
+            } else {
+                stackView.addArrangedSubview(makeEmptyRow(slot: i))
+            }
+        }
+    }
+
+    // MARK: - Private helpers
+
+    private func makeRow(name: String, slot: Int) -> UIView {
+        let color     = Self.playerColors[slot % Self.playerColors.count]
+        let row       = UIStackView()
+        row.axis      = .horizontal
+        row.spacing   = 8
+        row.alignment = .center
+
+        let dot = makeDot(color: color)
+        let lbl = UILabel()
+        lbl.text      = name
+        lbl.textColor = .white
+        lbl.font      = .systemFont(ofSize: 13)
+        lbl.lineBreakMode = .byTruncatingMiddle
+
+        row.addArrangedSubview(dot)
+        row.addArrangedSubview(lbl)
+        return row
+    }
+
+    private func makeEmptyRow(slot: Int) -> UIView {
+        let color     = Self.playerColors[slot % Self.playerColors.count]
+        let row       = UIStackView()
+        row.axis      = .horizontal
+        row.spacing   = 8
+        row.alignment = .center
+
+        let dot = makeDot(color: color.withAlphaComponent(0.3))
+        let lbl = UILabel()
+        lbl.text      = "待機中..."
+        lbl.textColor = UIColor.white.withAlphaComponent(0.35)
+        lbl.font      = .systemFont(ofSize: 13)
+
+        row.addArrangedSubview(dot)
+        row.addArrangedSubview(lbl)
+        return row
+    }
+
+    private func makeDot(color: UIColor) -> UIView {
+        let dot = UIView()
+        dot.backgroundColor    = color
+        dot.layer.cornerRadius = 6
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            dot.widthAnchor.constraint(equalToConstant: 12),
+            dot.heightAnchor.constraint(equalToConstant: 12),
+        ])
+        return dot
     }
 }
 
