@@ -26,10 +26,12 @@ final class GameManager: ObservableObject {
         case finished = "finished"
     }
 
-    /// Whether the game runs standalone (AR-only) or tries to reach a projector.
-    enum GameMode {
+    /// Whether the game runs standalone (AR-only), as a projector controller (client),
+    /// or as the projector display (server).
+    enum GameMode: Equatable {
         case standalone
-        case projector
+        case projectorClient   // iOS controller that forwards launches to the projector
+        case projectorServer   // Projector display device that receives launches
     }
 
     @Published var state: GameState = .waiting
@@ -60,12 +62,12 @@ final class GameManager: ObservableObject {
 
     // MARK: Mode selection
 
-    /// Switch between standalone AR-only mode and projector-connected mode.
+    /// Switch between standalone, projector-client, and projector-server modes.
     func selectMode(_ mode: GameMode) {
         guard mode != gameMode else { return }
-        if gameMode == .projector { multipeerSession.stop() }
+        if gameMode == .projectorClient { multipeerSession.stop() }
         gameMode = mode
-        if mode == .projector { multipeerSession.start() }
+        if mode == .projectorClient { multipeerSession.start() }
     }
 
     // MARK: Actions
@@ -74,6 +76,10 @@ final class GameManager: ObservableObject {
     func startGame() {
         score = 0
         timeRemaining = 90.0
+        state = .playing
+
+        // Projector-server mode: WorldViewController manages all its own UI.
+        guard gameMode != .projectorServer else { return }
 
         let screenSize = UIScreen.main.bounds.size
         let scene = ARBugScene(size: screenSize)
@@ -81,8 +87,7 @@ final class GameManager: ObservableObject {
         scene.gameDelegate = self
         arBugScene = scene
 
-        state = .playing
-        if gameMode == .projector { multipeerSession.send(.startGame()) }
+        if gameMode == .projectorClient { multipeerSession.send(.startGame()) }
     }
 
     /// Reset everything back to the waiting screen.
@@ -91,7 +96,7 @@ final class GameManager: ObservableObject {
         score = 0
         timeRemaining = 90.0
         state = .waiting
-        if gameMode == .projector { multipeerSession.send(.resetGame()) }
+        if gameMode == .projectorClient { multipeerSession.send(.resetGame()) }
     }
 
     /// Fire the slingshot: launch on the local AR scene and forward to the projector.
@@ -99,8 +104,8 @@ final class GameManager: ObservableObject {
         // Fire locally on the on-device AR scene
         arBugScene?.fireNet(angle: angle, power: power)
 
-        // Also forward to the projector when in projector mode
-        if gameMode == .projector {
+        // Also forward to the projector when in client mode
+        if gameMode == .projectorClient {
             let payload = LaunchPayload(
                 angle: angle,
                 power: power,

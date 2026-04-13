@@ -17,15 +17,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
 
         let window = UIWindow(frame: UIScreen.main.bounds)
-
-        if CommandLine.arguments.contains("--projector") {
-            // Projector device: present the SpriteKit world and wait for the iOS controller.
-            window.rootViewController = WorldViewController()
-        } else {
-            // iOS controller device (default): present the SwiftUI AR controller.
-            window.rootViewController = UIHostingController(rootView: ContentView())
-        }
-
+        // Mode is now selected from the start screen — no command-line argument needed.
+        window.rootViewController = UIHostingController(rootView: ContentView())
         self.window = window
         window.makeKeyAndVisible()
         return true

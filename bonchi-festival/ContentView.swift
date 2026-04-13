@@ -73,28 +73,36 @@ struct WaitingView: View {
                         .font(.caption.bold())
                         .foregroundColor(.white.opacity(0.55))
 
-                    HStack(spacing: 14) {
+                    VStack(spacing: 10) {
                         ModeCard(
                             icon: "📱",
                             title: "スタンドアロン",
-                            subtitle: "AR のみ",
+                            subtitle: "AR のみ（1台完結）",
                             isSelected: gameManager.gameMode == .standalone
                         )
                         .onTapGesture { gameManager.selectMode(.standalone) }
 
                         ModeCard(
-                            icon: "📡",
-                            title: "プロジェクター",
-                            subtitle: "接続モード",
-                            isSelected: gameManager.gameMode == .projector
+                            icon: "🎮",
+                            title: "プロジェクターモード（クライアント）",
+                            subtitle: "iOSコントローラーとして接続",
+                            isSelected: gameManager.gameMode == .projectorClient
                         )
-                        .onTapGesture { gameManager.selectMode(.projector) }
+                        .onTapGesture { gameManager.selectMode(.projectorClient) }
+
+                        ModeCard(
+                            icon: "📺",
+                            title: "プロジェクターモード（サーバー）",
+                            subtitle: "プロジェクター表示デバイスとして起動",
+                            isSelected: gameManager.gameMode == .projectorServer
+                        )
+                        .onTapGesture { gameManager.selectMode(.projectorServer) }
                     }
                     .padding(.horizontal, 24)
                 }
 
-                // Connection status pill — only in projector mode
-                if gameManager.gameMode == .projector {
+                // Connection status pill — only in projector client mode
+                if gameManager.gameMode == .projectorClient {
                     HStack(spacing: 8) {
                         Circle()
                             .fill(gameManager.isConnected ? Color.green : Color.orange)
@@ -225,6 +233,22 @@ struct PlayingView: View {
     @EnvironmentObject var gameManager: GameManager
 
     var body: some View {
+        if gameManager.gameMode == .projectorServer {
+            ProjectorServerView()
+                .environmentObject(gameManager)
+        } else {
+            ARPlayingView()
+                .environmentObject(gameManager)
+        }
+    }
+}
+
+// MARK: - AR Playing Screen (standalone / projectorClient)
+
+struct ARPlayingView: View {
+    @EnvironmentObject var gameManager: GameManager
+
+    var body: some View {
         ZStack {
             // ── AR camera + SpriteKit bug world (full screen) ────────────
             ARGameView()
@@ -291,6 +315,47 @@ struct PlayingView: View {
         default:    return .red
         }
     }
+}
+
+// MARK: - Projector Server Playing Screen
+
+/// Wraps WorldViewController as a full-screen SwiftUI view for projector-server mode.
+/// WorldViewController manages all game scenes internally; we just add a back button.
+struct ProjectorServerView: View {
+    @EnvironmentObject var gameManager: GameManager
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            WorldViewControllerWrapper()
+                .ignoresSafeArea()
+
+            Button {
+                withAnimation { gameManager.resetGame() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left")
+                    Text("モード選択に戻る")
+                        .font(.caption.bold())
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.55))
+                .clipShape(Capsule())
+            }
+            .padding(.top, 56)
+            .padding(.leading, 20)
+        }
+    }
+}
+
+// MARK: - WorldViewController wrapper
+
+struct WorldViewControllerWrapper: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> WorldViewController {
+        WorldViewController()
+    }
+    func updateUIViewController(_ uiViewController: WorldViewController, context: Context) {}
 }
 
 // MARK: - Finished Screen
