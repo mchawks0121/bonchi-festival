@@ -121,6 +121,12 @@ extension ARGameView {
         private static let horizontalAngleRange: ClosedRange<Float> = -0.65...0.65  // ±~37°
         private static let verticalOffsetRange:  ClosedRange<Float> = -0.30...0.45
 
+        // MARK: Distance-based scale constants
+        /// Bugs are designed for this reference distance (m); scale = referenceDistance / actualDistance.
+        private static let referenceDistance: Float = 2.0
+        private static let minBugScale:       Float = 0.3
+        private static let maxBugScale:       Float = 3.0
+
         // MARK: Spawning
 
         private var isSpawning   = false
@@ -282,6 +288,8 @@ extension ARGameView {
 
         /// Projects all active Bug3DNode world positions into SpriteKit overlay
         /// coordinates and updates the corresponding proxy SKNode positions.
+        /// Also applies distance-based scaling so bugs appear larger as the camera
+        /// approaches them (scale = referenceDistance / cameraDistance).
         /// Called on the SceneKit rendering thread; UI writes are batched to main.
         func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
             guard let arView = self.arView else { return }
@@ -289,9 +297,28 @@ extension ARGameView {
             // Use the main-thread-cached view height to avoid accessing UIKit here.
             let viewHeight = cachedViewHeight
 
+            // Camera world position for distance-based scaling.
+            let cameraPos: simd_float3?
+            if let col = arView.session.currentFrame?.camera.transform.columns.3 {
+                cameraPos = simd_float3(col.x, col.y, col.z)
+            } else {
+                cameraPos = nil
+            }
+
             var updates: [(SKNode, CGPoint)] = []
             for (anchorID, bug3D) in anchorBug3DNodeMap {
                 guard let proxy = anchorProxyNodeMap[anchorID] else { continue }
+
+                // Distance-based scale: closer → larger.
+                if let cam = cameraPos {
+                    let wp = bug3D.simdWorldPosition
+                    let dist = simd_distance(cam, wp)
+                    let s = max(Coordinator.minBugScale,
+                               min(Coordinator.maxBugScale,
+                                   Coordinator.referenceDistance / max(dist, 0.1)))
+                    bug3D.simdScale = simd_float3(repeating: s)
+                }
+
                 let wp = bug3D.worldPosition
                 let projected = arView.projectPoint(SCNVector3(wp.x, wp.y, wp.z))
                 // Only include points in front of the camera (depth 0–1)
