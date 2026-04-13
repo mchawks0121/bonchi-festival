@@ -38,6 +38,8 @@ struct ARGameView: UIViewRepresentable {
         let arView = ARSCNView(frame: container.bounds)
         arView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         arView.autoenablesDefaultLighting = true
+        // Use ARKit's estimated scene lighting so PBR materials match the real environment
+        arView.automaticallyUpdatesLighting = true
         arView.scene = SCNScene()
         container.addSubview(arView)
         context.coordinator.arView = arView
