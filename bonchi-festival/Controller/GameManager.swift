@@ -122,14 +122,24 @@ extension GameManager: BugHunterSceneDelegate {
 
     func scene(_ scene: SKScene, didUpdateScore score: Int, timeRemaining: Double) {
         DispatchQueue.main.async {
-            self.score = score
+            // In projector-client mode the score is accumulated exclusively from
+            // `bugCaptured` messages sent by the projector.  The local ARBugScene
+            // runs with zero captured bugs (no AR spawning), so its score is always 0;
+            // syncing it here would wipe out every point earned via bugCaptured.
+            if self.gameMode == .standalone {
+                self.score = score
+            }
             self.timeRemaining = timeRemaining
         }
     }
 
     func sceneDidFinish(_ scene: SKScene, finalScore: Int) {
         DispatchQueue.main.async {
-            self.score = finalScore
+            // Same reasoning as above: preserve the bugCaptured-accumulated score
+            // in projector-client mode instead of overwriting with the scene's 0.
+            if self.gameMode == .standalone {
+                self.score = finalScore
+            }
             self.timeRemaining = 0
             self.state = .finished
         }
