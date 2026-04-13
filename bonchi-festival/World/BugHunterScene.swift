@@ -34,16 +34,12 @@ final class BugHunterScene: SKScene {
 
     // MARK: State
 
-    private var score: Int = 0 {
-        didSet { updateHUD() }
-    }
     private var timeRemaining: Double = 90.0
     private var lastUpdate: TimeInterval = 0
 
     // MARK: Child nodes
 
     private var spawner: BugSpawner!
-    private var scoreLabel: SKLabelNode!
     private var timeLabel: SKLabelNode!
     private var timerBar: SKShapeNode!
     private let timerBarMaxWidth: CGFloat = 600
@@ -76,7 +72,7 @@ final class BugHunterScene: SKScene {
 
         updateTimerBar()
 
-        gameDelegate?.scene(self, didUpdateScore: score, timeRemaining: timeRemaining)
+        gameDelegate?.scene(self, didUpdateScore: 0, timeRemaining: timeRemaining)
 
         if timeRemaining <= 0 {
             endGame()
@@ -101,13 +97,12 @@ final class BugHunterScene: SKScene {
         // Remove all remaining bugs
         children.filter { $0.name == "bug" }.forEach { $0.removeFromParent() }
 
-        let finalScore = score
-        gameDelegate?.sceneDidFinish(self, finalScore: finalScore)
+        gameDelegate?.sceneDidFinish(self, finalScore: 0)
 
-        showFinalScoreOverlay(finalScore)
+        showFinalScoreOverlay()
     }
 
-    private func showFinalScoreOverlay(_ finalScore: Int) {
+    private func showFinalScoreOverlay() {
         let overlay = SKShapeNode(rect: CGRect(origin: .zero, size: size))
         overlay.fillColor = SKColor.black.withAlphaComponent(0.55)
         overlay.strokeColor = .clear
@@ -118,20 +113,12 @@ final class BugHunterScene: SKScene {
         title.fontName   = "HiraginoSans-W7"
         title.fontSize   = 72
         title.fontColor  = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 1)
-        title.position   = CGPoint(x: size.width / 2, y: size.height / 2 + 80)
+        title.position   = CGPoint(x: size.width / 2, y: size.height / 2 + 20)
         title.zPosition  = 101
         addChild(title)
 
-        let scoreLbl = SKLabelNode(text: "修正バグ: \(finalScore) pt")
-        scoreLbl.fontName  = "HiraginoSans-W7"
-        scoreLbl.fontSize  = 96
-        scoreLbl.fontColor = SKColor(red: 1, green: 0.85, blue: 0, alpha: 1)
-        scoreLbl.position  = CGPoint(x: size.width / 2, y: size.height / 2 - 40)
-        scoreLbl.zPosition = 101
-        addChild(scoreLbl)
-
         // Animate in
-        let nodes: [SKNode] = [overlay, title, scoreLbl]
+        let nodes: [SKNode] = [overlay, title]
         nodes.forEach { $0.alpha = 0 }
         let fadeIn = SKAction.fadeIn(withDuration: 0.6)
         nodes.forEach { $0.run(fadeIn) }
@@ -155,16 +142,6 @@ final class BugHunterScene: SKScene {
     }
 
     private func setupHUD() {
-        // Score label (top-left)
-        scoreLabel = SKLabelNode(text: "🔧 0")
-        scoreLabel.fontName  = "HiraginoSans-W7"
-        scoreLabel.fontSize  = 48
-        scoreLabel.fontColor = SKColor(red: 1, green: 0.85, blue: 0, alpha: 1)
-        scoreLabel.horizontalAlignmentMode = .left
-        scoreLabel.position  = CGPoint(x: 24, y: size.height - 72)
-        scoreLabel.zPosition = 10
-        addChild(scoreLabel)
-
         // Time label (top-right)
         timeLabel = SKLabelNode(text: "⏱ 90.0")
         timeLabel.fontName  = "HiraginoSans-W7"
@@ -195,10 +172,6 @@ final class BugHunterScene: SKScene {
         timerBar.strokeColor = .clear
         timerBar.zPosition   = 11
         addChild(timerBar)
-    }
-
-    private func updateHUD() {
-        scoreLabel.text = "🔧 \(score)"
     }
 
     private func updateTimerBar() {
@@ -238,27 +211,10 @@ extension BugHunterScene: SKPhysicsContactDelegate {
         bugNode.physicsBody = nil
         netNode.physicsBody = nil
 
-        let pts = bugNode.points
-
         // Capture animations
         bugNode.captured()
         netNode.playCapture()
 
-        // Score pop label
-        let popLabel = SKLabelNode(text: "+\(pts)pt")
-        popLabel.fontName  = "HiraginoSans-W7"
-        popLabel.fontSize  = 52
-        popLabel.fontColor = SKColor(red: 1, green: 0.85, blue: 0, alpha: 1)
-        popLabel.position  = bugNode.position
-        popLabel.zPosition = 50
-        addChild(popLabel)
-
-        let rise   = SKAction.moveBy(x: 0, y: 80, duration: 0.7)
-        let fade   = SKAction.fadeOut(withDuration: 0.7)
-        let remove = SKAction.removeFromParent()
-        popLabel.run(SKAction.sequence([SKAction.group([rise, fade]), remove]))
-
-        score += pts
         onBugCaptured?(bugNode)
     }
 }
