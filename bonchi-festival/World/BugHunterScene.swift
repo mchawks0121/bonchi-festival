@@ -23,6 +23,15 @@ final class BugHunterScene: SKScene {
     /// When `true` the scene background is transparent so the AR camera feed shows through.
     var isARMode: Bool = false
 
+    /// When `true` the scene is used as a transparent overlay over a SceneKit 3-D bug world
+    /// on the projector device.  Background becomes clear and BugSpawner is not started;
+    /// the 3-D coordinator adds invisible proxy BugNodes directly.
+    var isProjectorMode: Bool = false
+
+    /// Called (on the main thread) when a `BugNode` is captured via net physics contact.
+    /// The projector 3-D coordinator uses this to dismiss the corresponding Bug3DNode.
+    var onBugCaptured: ((BugNode) -> Void)?
+
     // MARK: State
 
     private var score: Int = 0 {
@@ -42,7 +51,7 @@ final class BugHunterScene: SKScene {
     // MARK: - Lifecycle
 
     override func didMove(to view: SKView) {
-        backgroundColor = isARMode
+        backgroundColor = (isARMode || isProjectorMode)
             ? .clear
             : SKColor(red: 0.05, green: 0.12, blue: 0.05, alpha: 1)
 
@@ -53,7 +62,9 @@ final class BugHunterScene: SKScene {
         setupHUD()
 
         spawner = BugSpawner(scene: self)
-        spawner.start()
+        if !isProjectorMode {
+            spawner.start()
+        }
     }
 
     // MARK: - Update
@@ -251,5 +262,6 @@ extension BugHunterScene: SKPhysicsContactDelegate {
         popLabel.run(SKAction.sequence([SKAction.group([rise, fade]), remove]))
 
         score += pts
+        onBugCaptured?(bugNode)
     }
 }

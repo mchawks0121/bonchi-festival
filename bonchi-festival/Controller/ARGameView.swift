@@ -145,6 +145,8 @@ extension ARGameView {
         // MARK: - Spawning control
 
         func startSpawning() {
+            // In projector mode the bugs live on the projector screen, not on the iPhone.
+            guard gameManager?.gameMode == .standalone else { return }
             stopSpawning()
             isSpawning    = true
             spawnElapsed  = 0
