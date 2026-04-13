@@ -377,7 +377,6 @@ struct ProjectorServerView: View {
             }
             .padding(.top, 56)
             .padding(.leading, 20)
-            .safeAreaInset(edge: .top) { Color.clear.frame(height: 0) }
         }
     }
 }
