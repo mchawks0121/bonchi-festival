@@ -29,7 +29,7 @@ final class Bug3DNode: SCNNode {
         startAnimations()
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) not implemented") }
+    required init?(coder: NSCoder) { fatalError("Bug3DNode does not support NSCoding; use init(type:) instead") }
 
     // MARK: - Public
 

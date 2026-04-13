@@ -118,7 +118,7 @@ extension ARGameView {
         // MARK: Spawn geometry constants
         private static let minSpawnDistance:     Float  = 1.2
         private static let maxSpawnDistance:     Float  = 2.8
-        private static let horizontalAngleRange: ClosedRange<Float> = -0.65...0.65
+        private static let horizontalAngleRange: ClosedRange<Float> = -0.65...0.65  // ±~37°
         private static let verticalOffsetRange:  ClosedRange<Float> = -0.30...0.45
 
         // MARK: Spawning
