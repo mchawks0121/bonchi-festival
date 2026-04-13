@@ -2,19 +2,23 @@
 //  ARGameView.swift
 //  bonchi-festival
 //
-//  iOS Controller: SwiftUI wrapper for ARSKView.
+//  iOS Controller: SwiftUI wrapper for AR 3D gameplay.
 //
-//  The Coordinator implements ARSKViewDelegate so that each BugARAnchor
-//  (added to the AR session by the spawning timer) is mapped to a BugNode
-//  sprite.  ARKit updates the sprite's 2D position every frame to match the
-//  projected 3D anchor position, making bugs appear to inhabit real space.
+//  A container UIView holds two layers:
+//    • ARSCNView (back)  — SceneKit 3-D scene rendered on top of the AR camera.
+//      Each bug anchor is mapped to a Bug3DNode by the Coordinator.
+//    • SKView (front, transparent) — presents ARBugScene for the crosshair,
+//      lock-on ring, and score/timer HUD.
 //
-//  The player moves their phone to aim the crosshair (drawn by ARBugScene)
-//  at a bug, then releases the slingshot to throw the net.
+//  Every frame the Coordinator projects each Bug3DNode's world position into
+//  viewport (UIKit) coordinates and updates a proxy SKNode ("bugContainer")
+//  in the SpriteKit overlay.  ARBugScene uses those proxy positions for its
+//  existing lock-on and capture logic unchanged.
 //
 
 import SwiftUI
 import ARKit
+import SceneKit
 import SpriteKit
 
 // MARK: - ARGameView
@@ -27,40 +31,55 @@ struct ARGameView: UIViewRepresentable {
 
     // MARK: UIViewRepresentable
 
-    func makeUIView(context: Context) -> ARSKView {
-        let arView = ARSKView(frame: .zero)
-        arView.ignoresSiblingOrder = true
-        arView.delegate = context.coordinator
-        context.coordinator.arView = arView
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView(frame: UIScreen.main.bounds)
 
-        // Start world tracking (no plane detection needed)
+        // ── 3-D AR layer (back) ───────────────────────────────────────────
+        let arView = ARSCNView(frame: container.bounds)
+        arView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        arView.autoenablesDefaultLighting = true
+        arView.scene = SCNScene()
+        container.addSubview(arView)
+        context.coordinator.arView = arView
+        arView.delegate = context.coordinator
+
         let config = ARWorldTrackingConfiguration()
         arView.session.run(config)
 
-        // Present scene if the game has already started
+        // ── SpriteKit overlay — crosshair / HUD (front, transparent) ─────
+        let skView = SKView(frame: container.bounds)
+        skView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        skView.backgroundColor = .clear
+        skView.isOpaque = false
+        skView.allowsTransparency = true
+        container.addSubview(skView)
+        context.coordinator.skView = skView
+
         if let scene = gameManager.arBugScene {
             scene.scaleMode = .resizeFill
-            arView.presentScene(scene)
+            skView.presentScene(scene)
             context.coordinator.startSpawning()
         }
 
-        return arView
+        return container
     }
 
-    func updateUIView(_ uiView: ARSKView, context: Context) {
-        if let scene = gameManager.arBugScene, uiView.scene !== scene {
-            // New game started — present fresh scene and begin spawning
+    func updateUIView(_ uiView: UIView, context: Context) {
+        let coordinator = context.coordinator
+        if let scene = gameManager.arBugScene,
+           coordinator.skView?.scene !== scene {
             scene.scaleMode = .resizeFill
-            uiView.presentScene(scene, transition: SKTransition.fade(withDuration: 0.25))
-            context.coordinator.startSpawning()
+            coordinator.skView?.presentScene(scene,
+                                             transition: SKTransition.fade(withDuration: 0.25))
+            coordinator.startSpawning()
         } else if gameManager.arBugScene == nil {
-            context.coordinator.stopSpawning()
+            coordinator.stopSpawning()
         }
     }
 
-    static func dismantleUIView(_ uiView: ARSKView, coordinator: Coordinator) {
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
         coordinator.stopSpawning()
-        uiView.session.pause()
+        coordinator.arView?.session.pause()
     }
 }
 
@@ -68,31 +87,37 @@ struct ARGameView: UIViewRepresentable {
 
 extension ARGameView {
 
-    /// Drives AR-anchor-based bug spawning and maps anchors → BugNode sprites.
-    final class Coordinator: NSObject, ARSKViewDelegate {
+    /// Drives AR-anchor-based bug spawning and maps each anchor to a
+    /// Bug3DNode (SceneKit visual) and a proxy SKNode (SpriteKit overlay,
+    /// used by ARBugScene for lock-on and proximity capture detection).
+    final class Coordinator: NSObject, ARSCNViewDelegate {
 
         // MARK: Dependencies
 
-        weak var gameManager: GameManager?
-        weak var arView: ARSKView?
+        var gameManager: GameManager?
+        weak var arView: ARSCNView?
+        weak var skView: SKView?
 
         // MARK: Anchor bookkeeping
 
-        /// Maps anchor UUID → BugType (consulted in view(_:nodeFor:))
+        /// Maps anchor UUID → BugType
         private var bugAnchorMap: [UUID: BugType] = [:]
-
-        /// Maps node ObjectIdentifier → ARAnchor (for capture removal)
+        /// Maps proxy SKNode identity → ARAnchor (for capture removal)
         private var nodeAnchorMap: [ObjectIdentifier: ARAnchor] = [:]
+        /// Maps anchor UUID → Bug3DNode (for capture animation)
+        private var anchorBug3DNodeMap: [UUID: Bug3DNode] = [:]
+        /// Maps anchor UUID → proxy SKNode (for per-frame position sync)
+        private var anchorProxyNodeMap: [UUID: SKNode] = [:]
 
         // MARK: Spawn geometry constants
         private static let minSpawnDistance:     Float  = 1.2
         private static let maxSpawnDistance:     Float  = 2.8
-        private static let horizontalAngleRange: ClosedRange<Float> = -0.65...0.65  // ±~37 °
+        private static let horizontalAngleRange: ClosedRange<Float> = -0.65...0.65
         private static let verticalOffsetRange:  ClosedRange<Float> = -0.30...0.45
 
         // MARK: Spawning
 
-        private var isSpawning  = false
+        private var isSpawning   = false
         private var spawnTimer: Timer?
         /// Seconds elapsed since spawning started (used for difficulty ramp).
         private var spawnElapsed: TimeInterval = 0
@@ -109,10 +134,11 @@ extension ARGameView {
             stopSpawning()
             isSpawning    = true
             spawnElapsed  = 0
-            // Initialize to now so the initial 0.9 s delay is counted in spawnElapsed
-        lastSpawnTime = Date()
+            lastSpawnTime = Date()
             bugAnchorMap.removeAll()
             nodeAnchorMap.removeAll()
+            anchorBug3DNodeMap.removeAll()
+            anchorProxyNodeMap.removeAll()
 
             // Wire capture callback so ARBugScene can trigger anchor removal
             gameManager?.arBugScene?.onCaptureBug = { [weak self] node in
@@ -126,6 +152,13 @@ extension ARGameView {
             isSpawning = false
             spawnTimer?.invalidate()
             spawnTimer = nil
+
+            // Remove all 3-D bug nodes from the SceneKit scene
+            anchorBug3DNodeMap.values.forEach { $0.removeFromParentNode() }
+            anchorBug3DNodeMap.removeAll()
+            anchorProxyNodeMap.removeAll()
+            bugAnchorMap.removeAll()
+            nodeAnchorMap.removeAll()
         }
 
         private func scheduleNextSpawn(delay: TimeInterval) {
@@ -145,7 +178,7 @@ extension ARGameView {
                 return
             }
 
-            let bugType  = randomBugType()
+            let bugType         = randomBugType()
             let distance        = Float.random(in: Coordinator.minSpawnDistance...Coordinator.maxSpawnDistance)
             let horizontalAngle = Float.random(in: Coordinator.horizontalAngleRange)
             let verticalOffset  = Float.random(in: Coordinator.verticalOffsetRange)
@@ -189,50 +222,95 @@ extension ARGameView {
 
         private func handleCapture(of node: SKNode) {
             guard let anchor = nodeAnchorMap[ObjectIdentifier(node)] else { return }
+
+            // Play dismissal animation on the 3-D visual
+            anchorBug3DNodeMap[anchor.identifier]?.captured()
+
+            // Clean up all maps
             nodeAnchorMap.removeValue(forKey: ObjectIdentifier(node))
+            anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
+            anchorProxyNodeMap.removeValue(forKey: anchor.identifier)
             bugAnchorMap.removeValue(forKey: anchor.identifier)
+
+            // Remove proxy from the SpriteKit overlay and the AR anchor
+            node.removeFromParent()
             arView?.session.remove(anchor: anchor)
         }
 
-        // MARK: - ARSKViewDelegate
+        // MARK: - ARSCNViewDelegate
 
-        func view(_ view: ARSKView, nodeFor anchor: ARAnchor) -> SKNode? {
+        /// Returns a Bug3DNode for each bug anchor; also creates an invisible proxy
+        /// SKNode and adds it to the ARBugScene overlay for lock-on / capture detection.
+        func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
             guard let bugType = bugAnchorMap[anchor.identifier] else { return nil }
 
-            // Container node — its 2D position is updated by ARKit every frame
-            let container = SKNode()
-            container.name = "bugContainer"
+            // 3-D visual node placed at the anchor's world transform
+            let bug3D = Bug3DNode(type: bugType)
+            anchorBug3DNodeMap[anchor.identifier] = bug3D
 
-            // ── Visual bug node (child; animated independently) ────────────
-            let bugNode = BugNode(type: bugType)
-            bugNode.physicsBody = nil
-            container.addChild(bugNode)
+            // Proxy SKNode in the SpriteKit overlay — used by ARBugScene for
+            // lock-on tracking and proximity-based capture detection.
+            // An invisible BugNode child preserves the correct `points` value.
+            let proxy = SKNode()
+            proxy.name = "bugContainer"
+            let invisibleBug = BugNode(type: bugType)
+            invisibleBug.physicsBody = nil
+            invisibleBug.alpha = 0
+            proxy.addChild(invisibleBug)
 
-            // Gentle vertical bob
-            let bobUp   = SKAction.moveBy(x: 0, y: 10, duration: 0.65)
-            let bobDown = SKAction.moveBy(x: 0, y: -10, duration: 0.65)
-            bobUp.timingMode   = .easeInEaseOut
-            bobDown.timingMode = .easeInEaseOut
-            bugNode.run(SKAction.repeatForever(SKAction.sequence([bobUp, bobDown])))
+            anchorProxyNodeMap[anchor.identifier] = proxy
+            nodeAnchorMap[ObjectIdentifier(proxy)] = anchor
 
-            // Idle wobble
-            let wobbleL = SKAction.rotate(byAngle:  0.12, duration: 0.5)
-            let wobbleR = SKAction.rotate(byAngle: -0.12, duration: 0.5)
-            wobbleL.timingMode = .easeInEaseOut
-            wobbleR.timingMode = .easeInEaseOut
-            bugNode.run(SKAction.repeatForever(SKAction.sequence([wobbleL, wobbleR])))
+            DispatchQueue.main.async { [weak self] in
+                guard let scene = self?.gameManager?.arBugScene else { return }
+                proxy.alpha = 0
+                scene.addChild(proxy)
+                proxy.run(SKAction.fadeIn(withDuration: 0.5))
+            }
 
-            // Store mapping for anchor removal
-            nodeAnchorMap[ObjectIdentifier(container)] = anchor
-
-            return container
+            return bug3D
         }
 
-        /// Fade the container in when ARKit first places it in the scene.
-        func view(_ view: ARSKView, didAdd node: SKNode, for anchor: ARAnchor) {
-            guard node.name == "bugContainer" else { return }
-            node.alpha = 0
-            node.run(SKAction.fadeIn(withDuration: 0.5))
+        /// Projects all active Bug3DNode world positions into SpriteKit overlay
+        /// coordinates and updates the corresponding proxy SKNode positions.
+        /// Called on the SceneKit rendering thread; UI writes are batched to main.
+        func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+            guard let arView = self.arView else { return }
+
+            // Snapshot the view height; reading bounds here is safe in practice
+            // since it never changes during a gameplay session.
+            let viewHeight = arView.bounds.height
+
+            var updates: [(SKNode, CGPoint)] = []
+            for (anchorID, bug3D) in anchorBug3DNodeMap {
+                guard let proxy = anchorProxyNodeMap[anchorID] else { continue }
+                let wp = bug3D.worldPosition
+                let projected = arView.projectPoint(SCNVector3(wp.x, wp.y, wp.z))
+                // Only include points in front of the camera (depth 0–1)
+                guard projected.z > 0, projected.z < 1 else { continue }
+                // Convert UIKit viewport coords → SpriteKit coords (flip Y)
+                updates.append((proxy, CGPoint(
+                    x: CGFloat(projected.x),
+                    y: viewHeight - CGFloat(projected.y)
+                )))
+            }
+
+            guard !updates.isEmpty else { return }
+            DispatchQueue.main.async {
+                for (proxy, pos) in updates {
+                    proxy.position = pos
+                }
+            }
+        }
+
+        /// Cleans up proxy when ARKit removes an anchor externally (e.g. session reset).
+        func renderer(_ renderer: SCNSceneRenderer, didRemove node: SCNNode, for anchor: ARAnchor) {
+            guard let proxy = anchorProxyNodeMap[anchor.identifier] else { return }
+            DispatchQueue.main.async { proxy.removeFromParent() }
+            anchorProxyNodeMap.removeValue(forKey: anchor.identifier)
+            anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
+            nodeAnchorMap.removeValue(forKey: ObjectIdentifier(proxy))
+            bugAnchorMap.removeValue(forKey: anchor.identifier)
         }
     }
 }

@@ -20,6 +20,7 @@
 		BB100008DEADBEEF00100001 /* SlingshotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100007DEADBEEF00100001 /* SlingshotView.swift */; };
 		BB100016DEADBEEF00100001 /* ARGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100015DEADBEEF00100001 /* ARGameView.swift */; };
 		BB100017DEADBEEF00100001 /* ARBugScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100018DEADBEEF00100001 /* ARBugScene.swift */; };
+		BB100023DEADBEEF00100001 /* Bug3DNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100019DEADBEEF00100001 /* Bug3DNode.swift */; };
 		BB10000ADEADBEEF00100001 /* WorldViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100009DEADBEEF00100001 /* WorldViewController.swift */; };
 		BB10000CDEADBEEF00100001 /* BugHunterScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB10000BDEADBEEF00100001 /* BugHunterScene.swift */; };
 		BB10000EDEADBEEF00100001 /* BugSpawner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB10000DDEADBEEF00100001 /* BugSpawner.swift */; };
@@ -62,6 +63,7 @@
 		BB100007DEADBEEF00100001 /* SlingshotView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlingshotView.swift; sourceTree = "<group>"; };
 		BB100015DEADBEEF00100001 /* ARGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARGameView.swift; sourceTree = "<group>"; };
 		BB100018DEADBEEF00100001 /* ARBugScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARBugScene.swift; sourceTree = "<group>"; };
+		BB100019DEADBEEF00100001 /* Bug3DNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bug3DNode.swift; sourceTree = "<group>"; };
 		BB100009DEADBEEF00100001 /* WorldViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldViewController.swift; sourceTree = "<group>"; };
 		BB10000BDEADBEEF00100001 /* BugHunterScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BugHunterScene.swift; sourceTree = "<group>"; };
 		BB10000DDEADBEEF00100001 /* BugSpawner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BugSpawner.swift; sourceTree = "<group>"; };
@@ -172,6 +174,7 @@
 				BB100007DEADBEEF00100001 /* SlingshotView.swift */,
 				BB100015DEADBEEF00100001 /* ARGameView.swift */,
 				BB100018DEADBEEF00100001 /* ARBugScene.swift */,
+				BB100019DEADBEEF00100001 /* Bug3DNode.swift */,
 			);
 			path = Controller;
 			sourceTree = "<group>";
@@ -327,6 +330,7 @@
 				BB100008DEADBEEF00100001 /* SlingshotView.swift in Sources */,
 				BB100016DEADBEEF00100001 /* ARGameView.swift in Sources */,
 				BB100017DEADBEEF00100001 /* ARBugScene.swift in Sources */,
+				BB100023DEADBEEF00100001 /* Bug3DNode.swift in Sources */,
 				BB10000ADEADBEEF00100001 /* WorldViewController.swift in Sources */,
 				BB10000CDEADBEEF00100001 /* BugHunterScene.swift in Sources */,
 				BB10000EDEADBEEF00100001 /* BugSpawner.swift in Sources */,
