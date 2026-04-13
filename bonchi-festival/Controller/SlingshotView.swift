@@ -134,9 +134,11 @@ struct SlingshotView: View {
 
     private func fireSlingshot(forkCenter: CGPoint, sceneSize: CGSize) {
         let power  = Float(normalizedPower)
-        // Pulling left launches right, pulling down launches up
+        // Pulling left launches right; pulling DOWN launches UP.
+        // SwiftUI Y increases downward, SpriteKit Y increases upward, so
+        // dragOffset.height > 0 (pulled down) must produce a positive dy (up in SpriteKit).
         let dx     = -dragOffset.width
-        let dy     = -dragOffset.height
+        let dy     =  dragOffset.height   // intentionally NOT negated
         let angle  = Float(atan2(dy, dx))
 
         gameManager.sendLaunch(angle: angle, power: power)
