@@ -43,7 +43,7 @@ struct ARGameView: UIViewRepresentable {
         context.coordinator.arView = arView
         arView.delegate = context.coordinator
         // Cache the view height for the render-thread projection
-        context.coordinator.cachedViewHeight = UIScreen.main.bounds.height
+        // context.coordinator.cachedViewHeight = UIScreen.main.bounds.height
 
         let config = ARWorldTrackingConfiguration()
         arView.session.run(config)

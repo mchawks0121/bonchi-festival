@@ -20,7 +20,7 @@ final class NetProjectile: SKNode {
 
     // MARK: Init
 
-    init() {
+    override init() {
         netLabel = SKLabelNode(text: "🕸️")
         netLabel.fontSize = 64
         netLabel.verticalAlignmentMode   = .center
