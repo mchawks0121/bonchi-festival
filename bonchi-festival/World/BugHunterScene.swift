@@ -106,18 +106,7 @@ final class BugHunterScene: SKScene {
     // MARK: - HUD Setup
 
     private func setupBackground() {
-        // Scattered glitch symbols to convey "world being corrupted by bugs"
-        for _ in 0..<28 {
-            let symbol = SKLabelNode(text: ["⚠️", "❌", "🔴", "⛔", "💀", "🔥"].randomElement()!)
-            symbol.fontSize  = CGFloat.random(in: 18...44)
-            symbol.position  = CGPoint(
-                x: CGFloat.random(in: 0...size.width),
-                y: CGFloat.random(in: 0...size.height)
-            )
-            symbol.alpha     = 0.15
-            symbol.zPosition = -1
-            addChild(symbol)
-        }
+        // Background decorations are handled by the SceneKit layer (SCNView) beneath this scene.
     }
 
     private func setupHUD() {
