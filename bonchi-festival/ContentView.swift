@@ -147,10 +147,10 @@ struct WaitingView: View {
                             .font(.headline.bold())
                             .foregroundColor(.white)
 
-                        HStack(spacing: compact ? 16 : 32) {
-                            BugLegendItem(emoji: "🐞", pts: 1, name: "Null", compact: compact)
-                            BugLegendItem(emoji: "🦠", pts: 3, name: "Virus", compact: compact)
-                            BugLegendItem(emoji: "👾", pts: 5, name: "Glitch", compact: compact)
+                        VStack(spacing: compact ? 6 : 8) {
+                            ForEach(BugType.allCases, id: \.rawValue) { bug in
+                                BugLegendRow(bug: bug, compact: compact)
+                            }
                         }
                     }
                     .padding(compact ? 14 : 20)
@@ -240,22 +240,45 @@ struct ModeCard: View {
     }
 }
 
-struct BugLegendItem: View {
-    let emoji: String
-    let pts: Int
-    let name: String
+struct BugLegendRow: View {
+    let bug: BugType
     var compact: Bool = false
 
     var body: some View {
-        VStack(spacing: 4) {
-            Text(emoji).font(.system(size: compact ? 32 : 44))
-            Text("\(pts) pt")
-                .font(.caption.bold())
-                .foregroundColor(.yellow)
-            Text(name)
-                .font(.caption2)
-                .foregroundColor(.white.opacity(0.7))
+        HStack(spacing: 12) {
+            Text(bug.emoji)
+                .font(.system(size: compact ? 28 : 36))
+                .frame(width: compact ? 36 : 44)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(bug.displayName)
+                        .font(.caption.bold())
+                        .foregroundColor(.white)
+                    Text(bug.rarityLabel)
+                        .font(.caption2)
+                        .foregroundColor(.yellow)
+                }
+                Text(bug.lore)
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.55))
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(bug.points) pt")
+                    .font(.caption.bold())
+                    .foregroundColor(.yellow)
+                Text(bug.speedLabel)
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.6))
+            }
         }
+        .padding(.vertical, compact ? 4 : 6)
+        .padding(.horizontal, 8)
+        .background(Color.white.opacity(0.05))
+        .cornerRadius(10)
     }
 }
 

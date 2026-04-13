@@ -114,6 +114,34 @@ enum BugType: String, CaseIterable {
         case .stag:      return 70
         }
     }
+
+    /// Human-readable speed label for the bug legend.
+    var speedLabel: String {
+        switch self {
+        case .butterfly: return "速い"
+        case .beetle:    return "普通"
+        case .stag:      return "遅い"
+        }
+    }
+
+    /// Human-readable rarity label (based on spawn probability).
+    /// butterfly 60 %, beetle 30 %, stag 10 %.
+    var rarityLabel: String {
+        switch self {
+        case .butterfly: return "★☆☆"
+        case .beetle:    return "★★☆"
+        case .stag:      return "★★★"
+        }
+    }
+
+    /// Short lore description for the bug legend.
+    var lore: String {
+        switch self {
+        case .butterfly: return "軽微な未定義参照エラー"
+        case .beetle:    return "自己増殖型ランタイムエラー"
+        case .stag:      return "致命的なデータ破壊バグ"
+        }
+    }
 }
 
 // MARK: - Physics categories (used by both BugSpawner and NetProjectile)
