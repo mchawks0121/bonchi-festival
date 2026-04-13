@@ -29,8 +29,10 @@ final class BugHunterScene: SKScene {
     var isProjectorMode: Bool = false
 
     /// Called (on the main thread) when a `BugNode` is captured via net physics contact.
-    /// The projector 3-D coordinator uses this to dismiss the corresponding Bug3DNode.
-    var onBugCaptured: ((BugNode) -> Void)?
+    /// Passes the captured node and the 0-based player slot index of the net that hit it.
+    /// The projector 3-D coordinator uses this to dismiss the corresponding Bug3DNode
+    /// and to notify the responsible iOS client.
+    var onBugCaptured: ((BugNode, Int) -> Void)?
 
     // MARK: State
 
@@ -192,6 +194,6 @@ extension BugHunterScene: SKPhysicsContactDelegate {
         bugNode.captured()
         netNode.playCapture()
 
-        onBugCaptured?(bugNode)
+        onBugCaptured?(bugNode, netNode.playerIndex)
     }
 }

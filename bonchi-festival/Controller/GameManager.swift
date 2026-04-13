@@ -141,8 +141,20 @@ extension GameManager: BugHunterSceneDelegate {
 extension GameManager: MultipeerSessionDelegate {
 
     func session(_ session: MultipeerSession, didReceive message: GameMessage, from peer: MCPeerID) {
-        // iOS drives its own game state from the local AR scene.
-        // Projector gameState messages are intentionally ignored.
+        switch message.type {
+        case .bugCaptured:
+            // The projector notifies this specific iOS client that a bug it captured.
+            // Add the bug's point value to the local score.
+            if let payload = message.bugCapturedPayload {
+                DispatchQueue.main.async {
+                    self.score += payload.bugType.points
+                }
+            }
+        default:
+            // All other inbound projector messages (gameState, etc.) are intentionally ignored;
+            // iOS drives its own timer and state from the local AR scene / UI.
+            break
+        }
     }
 
     func session(_ session: MultipeerSession, peerDidConnect peer: MCPeerID) {

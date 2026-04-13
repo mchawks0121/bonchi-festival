@@ -130,6 +130,10 @@ final class WorldViewController: UIViewController {
         // invisible proxy BugNodes synced in the SpriteKit overlay.
         let coordinator = ProjectorBug3DCoordinator()
         coordinator.attach(to: scnView, bugScene: scene)
+        // When a bug is captured, notify the responsible iOS client so it can add points.
+        coordinator.onCaptureNotify = { [weak self] bugType, playerIndex in
+            self?.projectorManager.sendBugCaptured(bugType: bugType, toPlayerAtSlot: playerIndex)
+        }
         coordinator.startSpawning()
         bug3DCoordinator = coordinator
     }
@@ -234,7 +238,6 @@ final class ProjectorBug3DCoordinator: NSObject {
     }()
 
     // MARK: Bug tracking (accessed from both main thread and SceneKit render thread)
-
     private var bug3DNodes:  [UUID: Bug3DNode] = [:]
     private var proxyNodes:  [UUID: BugNode]   = [:]
     /// Reverse map: ObjectIdentifier(proxy BugNode) → bug UUID.
@@ -249,6 +252,11 @@ final class ProjectorBug3DCoordinator: NSObject {
 
     /// Cached on the main thread so the render thread can read it safely.
     private var cachedViewSize: CGSize = UIScreen.main.bounds.size
+
+    /// Called on the main thread when a bug is captured, with the bug type and the
+    /// player slot index of the net that hit it.  Set by `WorldViewController` to
+    /// forward the event to `ProjectorGameManager.sendBugCaptured`.
+    var onCaptureNotify: ((BugType, Int) -> Void)?
 
     // MARK: - Init / attach
 
@@ -266,8 +274,8 @@ final class ProjectorBug3DCoordinator: NSObject {
         scnView.isPlaying = true   // keep rendering even with no camera movement
         if scnView.bounds.size.height > 0 { cachedViewSize = scnView.bounds.size }
 
-        bugScene.onBugCaptured = { [weak self] proxy in
-            self?.handleCapture(of: proxy)
+        bugScene.onBugCaptured = { [weak self] proxy, playerIndex in
+            self?.handleCapture(of: proxy, playerIndex: playerIndex)
         }
     }
 
@@ -424,12 +432,14 @@ final class ProjectorBug3DCoordinator: NSObject {
     // MARK: - Capture
 
     /// Called by `BugHunterScene.onBugCaptured` when a proxy is hit by the net.
-    private func handleCapture(of proxy: BugNode) {
+    private func handleCapture(of proxy: BugNode, playerIndex: Int) {
         guard let uuid = proxyToUUID[ObjectIdentifier(proxy)] else { return }
         bug3DNodes[uuid]?.captured()
+        let bugType = proxy.bugType
         bug3DNodes.removeValue(forKey: uuid)
         proxyNodes.removeValue(forKey: uuid)
         proxyToUUID.removeValue(forKey: ObjectIdentifier(proxy))
+        onCaptureNotify?(bugType, playerIndex)
     }
 
     /// Called when a bug exits the screen naturally (end of its movement sequence).

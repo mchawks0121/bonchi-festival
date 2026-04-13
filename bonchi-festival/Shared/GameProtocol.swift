@@ -17,6 +17,7 @@ enum MessageType: String, Codable {
     case gameState    // Projector → iOS: game state update
     case startGame    // iOS → Projector: start the game
     case resetGame    // iOS → Projector: reset to waiting screen
+    case bugCaptured  // Projector → iOS: a net hit a bug (score notification)
 }
 
 /// Top-level wrapper for every Multipeer message.
@@ -24,21 +25,26 @@ struct GameMessage: Codable {
     let type: MessageType
     let launchPayload: LaunchPayload?
     let gameStatePayload: GameStatePayload?
+    let bugCapturedPayload: BugCapturedPayload?
 
     static func launch(_ payload: LaunchPayload) -> GameMessage {
-        GameMessage(type: .launch, launchPayload: payload, gameStatePayload: nil)
+        GameMessage(type: .launch, launchPayload: payload, gameStatePayload: nil, bugCapturedPayload: nil)
     }
 
     static func gameState(_ payload: GameStatePayload) -> GameMessage {
-        GameMessage(type: .gameState, launchPayload: nil, gameStatePayload: payload)
+        GameMessage(type: .gameState, launchPayload: nil, gameStatePayload: payload, bugCapturedPayload: nil)
     }
 
     static func startGame() -> GameMessage {
-        GameMessage(type: .startGame, launchPayload: nil, gameStatePayload: nil)
+        GameMessage(type: .startGame, launchPayload: nil, gameStatePayload: nil, bugCapturedPayload: nil)
     }
 
     static func resetGame() -> GameMessage {
-        GameMessage(type: .resetGame, launchPayload: nil, gameStatePayload: nil)
+        GameMessage(type: .resetGame, launchPayload: nil, gameStatePayload: nil, bugCapturedPayload: nil)
+    }
+
+    static func bugCaptured(_ payload: BugCapturedPayload) -> GameMessage {
+        GameMessage(type: .bugCaptured, launchPayload: nil, gameStatePayload: nil, bugCapturedPayload: payload)
     }
 }
 
@@ -62,12 +68,20 @@ struct GameStatePayload: Codable {
     let timeRemaining: Double
 }
 
+/// Sent from the Projector to a specific iOS controller when its net captures a bug.
+struct BugCapturedPayload: Codable {
+    /// The type of bug that was captured (determines the points awarded).
+    let bugType: BugType
+    /// The player slot index that fired the net (0-based).
+    let playerIndex: Int
+}
+
 // MARK: - Bug types
 
 /// The three classes of bugs that infect the world.
 /// Lore: these are digital anomalies corrupting the world's code.
 /// Bug hunters must net them all to restore the world to a clean state.
-enum BugType: String, CaseIterable {
+enum BugType: String, CaseIterable, Codable {
     case butterfly = "butterfly"   // 1 pt – fastest of the three  (Null Bug  — minor undefined reference)
     case beetle    = "beetle"      // 3 pt – medium speed          (Virus Bug — self-replicating runtime error)
     case stag      = "stag"        // 5 pt – slowest, largest      (Glitch    — critical corruption, hard to catch)

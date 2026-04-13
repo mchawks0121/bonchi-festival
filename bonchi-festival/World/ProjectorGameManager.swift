@@ -83,6 +83,15 @@ final class ProjectorGameManager: NSObject {
         try? mcSession.send(data, toPeers: mcSession.connectedPeers, with: .reliable)
     }
 
+    /// Send a bug-captured notification to the specific player peer so it can add points.
+    func sendBugCaptured(bugType: BugType, toPlayerAtSlot playerIndex: Int) {
+        guard let peer = playerSlots.first(where: { $0.value == playerIndex })?.key else { return }
+        let payload = BugCapturedPayload(bugType: bugType, playerIndex: playerIndex)
+        let message = GameMessage.bugCaptured(payload)
+        guard let data = try? JSONEncoder().encode(message) else { return }
+        try? mcSession.send(data, toPeers: [peer], with: .reliable)
+    }
+
     // MARK: - Private helpers
 
     /// Returns a snapshot of connected players sorted by slot index, for display.

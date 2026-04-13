@@ -22,6 +22,10 @@ final class NetProjectile: SKNode {
     /// Called when this net captures a bug; passes the captured BugNode.
     var onCapture: ((BugNode) -> Void)?
 
+    /// The player slot index (0-based) that fired this net.
+    /// Read by `BugHunterScene.didBegin(contact:)` to attribute the capture.
+    let playerIndex: Int
+
     private let netLabel: SKLabelNode
     private let ringNode: SKShapeNode
 
@@ -29,6 +33,7 @@ final class NetProjectile: SKNode {
 
     /// - Parameter playerIndex: 0-based slot index used to tint the ring (wraps at 3).
     init(playerIndex: Int = 0) {
+        self.playerIndex = playerIndex
         let color = NetProjectile.playerColors[playerIndex % NetProjectile.playerColors.count]
 
         netLabel = SKLabelNode(text: "🕸️")
