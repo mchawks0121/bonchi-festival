@@ -62,9 +62,6 @@ final class BugHunterScene: SKScene {
         setupHUD()
 
         spawner = BugSpawner(scene: self)
-        if !isProjectorMode {
-            spawner.start()
-        }
     }
 
     // MARK: - Update
