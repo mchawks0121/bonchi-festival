@@ -116,6 +116,7 @@ enum BugType: String, CaseIterable {
     }
 
     /// Human-readable speed label for the bug legend.
+    /// Corresponds to `speed` values: butterfly=110, beetle=70, stag=45.
     var speedLabel: String {
         switch self {
         case .butterfly: return "速い"
