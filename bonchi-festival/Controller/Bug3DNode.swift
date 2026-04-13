@@ -36,11 +36,9 @@ final class Bug3DNode: SCNNode {
     /// Scale-up / fade-out animation played when the bug is captured.
     func captured() {
         removeAllActions()
-        let grow   = SCNAction.scale(to: 2.2, duration: 0.18)
-        let fade   = SCNAction.fadeOut(duration: 0.30)
+        let fade   = SCNAction.fadeOut(duration: 0.05)
         let remove = SCNAction.removeFromParentNode()
-        grow.timingMode = .easeOut
-        runAction(SCNAction.sequence([SCNAction.group([grow, fade]), remove]))
+        runAction(SCNAction.sequence([fade, remove]))
     }
 
     // MARK: - Private: geometry

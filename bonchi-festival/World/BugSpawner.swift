@@ -145,8 +145,7 @@ final class BugNode: SKNode {
     /// Play capture animation then remove from scene.
     func captured() {
         removeAllActions()
-        let scaleUp = SKAction.scale(to: 1.5, duration: 0.10)
-        let fadeOut = SKAction.fadeOut(withDuration: 0.30)
-        run(SKAction.sequence([scaleUp, fadeOut, SKAction.removeFromParent()]))
+        let fadeOut = SKAction.fadeOut(withDuration: 0.05)
+        run(SKAction.sequence([fadeOut, SKAction.removeFromParent()]))
     }
 }
