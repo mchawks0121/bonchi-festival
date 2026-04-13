@@ -83,7 +83,7 @@ final class Bug3DNode: SCNNode {
             uPivot.name = sign > 0 ? "uwR" : "uwL"
             let uWing = SCNNode(geometry: uGeo)
             uWing.position    = SCNVector3(sign * 0.048, 0.006, 0)
-            uWing.eulerAngles = SCNVector3(0, 0, sign * .pi / 14)
+            uWing.eulerAngles = SCNVector3(0, 0, sign * Float.pi / 14)
             uPivot.addChildNode(uWing)
             addChildNode(uPivot)
 
@@ -93,7 +93,7 @@ final class Bug3DNode: SCNNode {
             lPivot.name = sign > 0 ? "lwR" : "lwL"
             let lWing = SCNNode(geometry: lGeo)
             lWing.position    = SCNVector3(sign * 0.033, -0.010, 0)
-            lWing.eulerAngles = SCNVector3(0, 0, sign * .pi / 16)
+            lWing.eulerAngles = SCNVector3(0, 0, sign * Float.pi / 16)
             lPivot.addChildNode(lWing)
             addChildNode(lPivot)
         }
@@ -106,7 +106,7 @@ final class Bug3DNode: SCNNode {
             shaft.materials = [aMat]
             let shaftNode = SCNNode(geometry: shaft)
             shaftNode.position    = SCNVector3(sign * 0.010, 0.051, 0)
-            shaftNode.eulerAngles = SCNVector3(0, 0, sign * .pi / 7)
+            shaftNode.eulerAngles = SCNVector3(0, 0, sign * Float.pi / 7)
             let tipGeo = SCNSphere(radius: 0.004)
             tipGeo.materials = [aMat]
             let tip = SCNNode(geometry: tipGeo)
@@ -133,7 +133,7 @@ final class Bug3DNode: SCNNode {
         sutGeo.materials = [pbr(UIColor(red: 0.18, green: 0.02, blue: 0.02, alpha: 1),
                                   roughness: 0.08, metalness: 0.72)]
         let suture = SCNNode(geometry: sutGeo)
-        suture.eulerAngles = SCNVector3(.pi / 2, 0, 0)
+        suture.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
         suture.position    = SCNVector3(0, 0.022, 0)
         addChildNode(suture)
 
@@ -160,7 +160,7 @@ final class Bug3DNode: SCNNode {
         let legMat = pbr(UIColor(red: 0.22, green: 0.04, blue: 0.04, alpha: 1),
                           roughness: 0.40, metalness: 0.28)
         for (legZ, angle): (Float, Float) in
-                [(0.010, .pi / 2.2), (-0.025, .pi / 2.5), (-0.052, .pi / 2.3)] {
+                [(0.010, Float.pi / 2.2), (-0.025, Float.pi / 2.5), (-0.052, Float.pi / 2.3)] {
             for sign: Float in [-1.0, 1.0] {
                 addLeg(at: SCNVector3(sign * 0.042, -0.012, legZ),
                        sign: sign, mat: legMat, outAngle: angle)
@@ -175,7 +175,7 @@ final class Bug3DNode: SCNNode {
             shaft.materials = [aMat]
             let shaftNode = SCNNode(geometry: shaft)
             shaftNode.position    = SCNVector3(sign * 0.010, 0.008, -0.080)
-            shaftNode.eulerAngles = SCNVector3(-.pi / 8, 0, sign * .pi / 6)
+            shaftNode.eulerAngles = SCNVector3(-Float.pi / 8, 0, sign * Float.pi / 6)
             let tipGeo = SCNSphere(radius: 0.003)
             tipGeo.materials = [aMat]
             let tip = SCNNode(geometry: tipGeo)
@@ -223,12 +223,12 @@ final class Bug3DNode: SCNNode {
         for sign: Float in [-1.0, 1.0] {
             let mand = SCNNode(geometry: mandGeo)
             mand.position    = SCNVector3(sign * 0.022, 0.106, 0.010)
-            mand.eulerAngles = SCNVector3(.pi / 2.2, 0, sign * .pi / 8)
+            mand.eulerAngles = SCNVector3(Float.pi / 2.2, 0, sign * Float.pi / 8)
             addChildNode(mand)
             // Inner tooth on each mandible
             let tooth = SCNNode(geometry: toothGeo)
             tooth.position    = SCNVector3(sign * 0.006, 0, -0.012)
-            tooth.eulerAngles = SCNVector3(-.pi / 3, 0, 0)
+            tooth.eulerAngles = SCNVector3(-Float.pi / 3, 0, 0)
             mand.addChildNode(tooth)
         }
 
@@ -236,7 +236,7 @@ final class Bug3DNode: SCNNode {
         let legMat = pbr(UIColor(red: 0.12, green: 0.07, blue: 0.02, alpha: 1),
                           roughness: 0.35, metalness: 0.35)
         for (legY, angle): (Float, Float) in
-                [(0.038, .pi / 2.6), (0.008, .pi / 2.5), (-0.024, .pi / 2.4)] {
+                [(0.038, Float.pi / 2.6), (0.008, Float.pi / 2.5), (-0.024, Float.pi / 2.4)] {
             for sign: Float in [-1.0, 1.0] {
                 addLeg(at: SCNVector3(sign * 0.030, legY, 0),
                        sign: sign, mat: legMat, outAngle: angle)
@@ -251,7 +251,7 @@ final class Bug3DNode: SCNNode {
             shaft.materials = [aMat]
             let shaftNode = SCNNode(geometry: shaft)
             shaftNode.position    = SCNVector3(sign * 0.015, 0.090, 0.012)
-            shaftNode.eulerAngles = SCNVector3(-.pi / 5, 0, sign * .pi / 5)
+            shaftNode.eulerAngles = SCNVector3(-Float.pi / 5, 0, sign * Float.pi / 5)
             let tipGeo = SCNSphere(radius: 0.003)
             tipGeo.materials = [aMat]
             let tip = SCNNode(geometry: tipGeo)
@@ -278,7 +278,7 @@ final class Bug3DNode: SCNNode {
     private func addLeg(at origin: SCNVector3, sign: Float, mat: SCNMaterial, outAngle: Float) {
         let upperLen: Float = 0.026
         let lowerLen: Float = 0.022
-        let lowerAngle = outAngle + .pi / 6
+        let lowerAngle = outAngle + Float.pi / 6
 
         // Upper segment centered at origin, tilted outward/downward
         let upperGeo = SCNCylinder(radius: 0.0040, height: CGFloat(upperLen))
@@ -350,19 +350,19 @@ final class Bug3DNode: SCNNode {
 
         // Slow body drift so the player sees both wing surfaces
         runAction(SCNAction.repeatForever(
-            SCNAction.rotateBy(x: 0, y: .pi * 2, z: 0, duration: 9.0)
+            SCNAction.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: 9.0)
         ), forKey: "drift")
     }
 
     private func startBeetleAnimations() {
         // Moderate Y-rotation
         runAction(SCNAction.repeatForever(
-            SCNAction.rotateBy(x: 0, y: .pi * 2, z: 0, duration: 5.5)
+            SCNAction.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: 5.5)
         ), forKey: "rotate")
 
         // Side-to-side rock imitating a crawling gait
-        let r = SCNAction.rotateBy(x: 0, y: 0, z:  .pi / 18, duration: 0.38)
-        let l = SCNAction.rotateBy(x: 0, y: 0, z: -.pi / 18, duration: 0.38)
+        let r = SCNAction.rotateBy(x: 0, y: 0, z:  CGFloat.pi / 18, duration: 0.38)
+        let l = SCNAction.rotateBy(x: 0, y: 0, z: -CGFloat.pi / 18, duration: 0.38)
         r.timingMode = .easeInEaseOut
         l.timingMode = .easeInEaseOut
         runAction(SCNAction.repeatForever(.sequence([r, l])), forKey: "rock")
@@ -371,12 +371,12 @@ final class Bug3DNode: SCNNode {
     private func startStagAnimations() {
         // Slow, heavy Y-rotation
         runAction(SCNAction.repeatForever(
-            SCNAction.rotateBy(x: 0, y: .pi * 2, z: 0, duration: 7.5)
+            SCNAction.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: 7.5)
         ), forKey: "rotate")
 
         // Slow nod — threat display with mandibles
-        let nod  = SCNAction.rotateBy(x:  .pi / 22, y: 0, z: 0, duration: 1.4)
-        let lift = SCNAction.rotateBy(x: -.pi / 22, y: 0, z: 0, duration: 1.4)
+        let nod  = SCNAction.rotateBy(x:  CGFloat.pi / 22, y: 0, z: 0, duration: 1.4)
+        let lift = SCNAction.rotateBy(x: -CGFloat.pi / 22, y: 0, z: 0, duration: 1.4)
         nod.timingMode  = .easeInEaseOut
         lift.timingMode = .easeInEaseOut
         runAction(SCNAction.repeatForever(.sequence([nod, lift])), forKey: "nod")
