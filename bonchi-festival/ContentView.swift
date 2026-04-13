@@ -84,16 +84,16 @@ struct WaitingView: View {
 
                         ModeCard(
                             icon: "🎮",
-                            title: "プロジェクターモード（クライアント）",
-                            subtitle: "iOSコントローラーとして接続",
+                            title: "プロジェクター",
+                            subtitle: "クライアント（コントローラー）",
                             isSelected: gameManager.gameMode == .projectorClient
                         )
                         .onTapGesture { gameManager.selectMode(.projectorClient) }
 
                         ModeCard(
                             icon: "📺",
-                            title: "プロジェクターモード（サーバー）",
-                            subtitle: "プロジェクター表示デバイスとして起動",
+                            title: "プロジェクター",
+                            subtitle: "サーバー（表示デバイス）",
                             isSelected: gameManager.gameMode == .projectorServer
                         )
                         .onTapGesture { gameManager.selectMode(.projectorServer) }
