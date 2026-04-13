@@ -31,6 +31,9 @@ final class WorldViewController: UIViewController {
     private var bug3DCoordinator: ProjectorBug3DCoordinator?
     let projectorManager = ProjectorGameManager()
 
+    /// Tracks the view size at the last layout pass so we can detect genuine changes.
+    private var lastLayoutSize: CGSize = .zero
+
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
@@ -38,15 +41,15 @@ final class WorldViewController: UIViewController {
         view.backgroundColor = .black
 
         // ── SceneKit layer (back) — renders 3-D bugs during gameplay ──────
-        scnView = SCNView(frame: view.bounds)
-        scnView.autoresizingMask    = [.flexibleWidth, .flexibleHeight]
+        scnView = SCNView(frame: .zero)
+        scnView.translatesAutoresizingMaskIntoConstraints = false
         scnView.backgroundColor    = UIColor(red: 0.05, green: 0.12, blue: 0.05, alpha: 1)
         scnView.autoenablesDefaultLighting = false
         view.addSubview(scnView)
 
         // ── SpriteKit layer (front, transparent) — HUD + net + proxy nodes ─
-        skView = SKView(frame: view.bounds)
-        skView.autoresizingMask    = [.flexibleWidth, .flexibleHeight]
+        skView = SKView(frame: .zero)
+        skView.translatesAutoresizingMaskIntoConstraints = false
         skView.ignoresSiblingOrder = true
         skView.backgroundColor    = .clear
         skView.isOpaque           = false
@@ -56,10 +59,36 @@ final class WorldViewController: UIViewController {
         // skView.showsNodeCount   = true
         view.addSubview(skView)
 
+        // Pin both views to fill the entire view controller root view.
+        for subview in [scnView!, skView!] {
+            NSLayoutConstraint.activate([
+                subview.topAnchor.constraint(equalTo: view.topAnchor),
+                subview.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                subview.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                subview.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+        }
+
         projectorManager.delegate = self
         projectorManager.start()
+        // Scene creation is deferred to viewDidLayoutSubviews so that skView.bounds
+        // reflects the final, correct screen size.
+    }
 
-        presentWaitingScene()
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+
+        let newSize = view.bounds.size
+        guard newSize.width > 0, newSize.height > 0, newSize != lastLayoutSize else { return }
+        lastLayoutSize = newSize
+
+        // Update the 3-D coordinator's cached view size used for 3D→2D projection.
+        bug3DCoordinator?.updateCachedViewSize(newSize)
+
+        // First layout: present the waiting scene with the now-correct size.
+        if skView.scene == nil {
+            presentWaitingScene()
+        }
     }
 
     override var prefersStatusBarHidden: Bool { true }
@@ -247,6 +276,12 @@ final class ProjectorBug3DCoordinator: NSObject {
     }
 
     // MARK: - Lifecycle
+
+    /// Update the cached view size used for 3D→2D projection.
+    /// Call this whenever the view controller's view changes size (e.g., rotation, external display).
+    func updateCachedViewSize(_ size: CGSize) {
+        cachedViewSize = size
+    }
 
     func startSpawning() {
         stopSpawning()
