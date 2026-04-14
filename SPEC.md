@@ -153,9 +153,14 @@ bonchi-festival/
 │   ├── Bug3DNode.swift        … SCNNode サブクラス。手続き的 PBR ジオメトリ
 │   │                             butterfly: 4枚翅・触角 / beetle: 光沢甲殻・6脚 / stag: 大顎・6脚
 │   │                             各バグ固有アニメ（羽ばたき/回転/頷き）＋共通ホバー
-│   └── SlingshotView.swift    … SwiftUI スリングショット UI（フルスクリーンオーバーレイ）
-│                                 任意方向スワイプ → angle(rad) / power(0–1) に変換
-│                                 SlingshotForkShape（Y 字）・ゴム紐・net 飛翔アニメ・PowerIndicatorView
+│   ├── SlingshotView.swift    … SwiftUI スリングショット UI（フルスクリーンオーバーレイ）
+│   │                             任意方向スワイプ → angle(rad) / power(0–1) に変換
+│   │                             SlingshotForkShape（Y 字）・ゴム紐・net 飛翔アニメ・PowerIndicatorView
+│   └── SoundManager.swift     … AVAudioEngine ベースの手続き型サウンドエフェクト（シングルトン）
+│                                 PCM サイン波バッファをランタイムで生成。外部音声ファイル不要。
+│                                 6 ノードプールで複数音の同時再生をサポート。
+│                                 playThrow() / playCapture(points:) / playMiss() / playLockOn()
+│                                 playGameStart() / playGameEnd()
 ├── Shared/
 │   └── GameProtocol.swift     … Multipeer で共有するメッセージ型・BugType 定義
 │                                 MessageType / GameMessage / LaunchPayload / GameStatePayload
@@ -291,9 +296,29 @@ physicsBody?.collisionBitMask   = 0
 | Swift | 5.9 以上 |
 | iOS Deployment Target | iOS 17.0 以上 |
 | Xcode | 15 以上 |
-| フレームワーク | SwiftUI, UIKit, ARKit, SceneKit, SpriteKit, MultipeerConnectivity, Combine |
+| フレームワーク | SwiftUI, UIKit, ARKit, SceneKit, SpriteKit, MultipeerConnectivity, Combine, AVFoundation |
 | 外部ライブラリ | なし（Apple 標準フレームワークのみ） |
 | アセット | なし（すべて手続き的に生成） |
+
+---
+
+## サウンドエフェクト
+
+`SoundManager`（`Controller/SoundManager.swift`）が AVAudioEngine を使って PCM サイン波バッファをランタイムで合成します。  
+外部音声ファイルは一切使用しません。
+
+| イベント | 効果音 | 呼び出し箇所 |
+|---------|--------|------------|
+| 網を発射 | 高→低周波スイープ（シュッ） | `ARBugScene.fireNet`, `BugHunterScene.fireNet` |
+| バグ捕獲 | 上昇アルペジオ（1pt: 2音, 3pt: 3音, 5pt: 4音） | `ARBugScene.catchBug`, `BugHunterScene.didBegin` |
+| ミス | 低→さらに低のスイープ（ズドン） | `ARBugScene.playMissAnimation` |
+| ロックオン | 短ビープ（目標変化時のみ発火） | `ARBugScene.refreshLockOnRing` |
+| ゲーム開始 | C5→E5→G5→C6 上昇ファンファーレ | `GameManager.startGame` |
+| ゲーム終了 | G5→E5→C5→G4 下降メロディ | `ARBugScene.endGame`, `BugHunterScene.endGame` |
+
+- `AVAudioSession.Category.ambient` を使用。他アプリの音楽と混在し、サイレントスイッチでも消音されない。
+- 複数音の同時再生は 6 ノードのラウンドロビンプールで管理。
+- ノートシーケンスは `DispatchQueue.asyncAfter` でスケジューリング（スレッドプールをブロックしない）。
 
 ---
 

@@ -77,6 +77,7 @@ final class GameManager: ObservableObject {
         score = 0
         timeRemaining = 90.0
         state = .playing
+        SoundManager.shared.playGameStart()
 
         // Projector-server mode: WorldViewController manages all its own UI.
         guard gameMode != .projectorServer else { return }

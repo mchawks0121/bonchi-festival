@@ -138,16 +138,31 @@ bonchi-festival/
 │   │     全共通: フェードイン (0.45s) + ホバー (±1.8cm, 0.65〜0.85s サイクル)
 │   │     captured(): removeAllActions() + SCNAction.fadeOut(0.05s) → removeFromParentNode
 │   │
-│   └── SlingshotView.swift
-│         SwiftUI フルスクリーンオーバーレイ。DragGesture で操作を検出。
-│         フォーク位置: 画面高さの 62% (forkYRatio=0.62)
-│         最大ドラッグ距離: 220pt (maxDragDistance)。任意方向スワイプ可。
-│         angle = atan2(dragOffset.height, -dragOffset.width)（SpriteKit 座標系に変換）
-│         power = min(dragLength / 220, 1.0)
-│         SlingshotForkShape — Y 字 Shape（stem + 2本のフォーク）
-│         ゴム紐: leftFork → pullPoint と rightFork → pullPoint を Path で描画
-│         PowerIndicatorView — 水平バー (緑/黄/赤)、power に応じてリアルタイム更新
-│         net 飛翔アニメ: 発射方向に 🕸️ 絵文字が飛ぶ (scale 0.3→1.8→fade, 回転 270°〜810°)
+│   ├── SlingshotView.swift
+│   │     SwiftUI フルスクリーンオーバーレイ。DragGesture で操作を検出。
+│   │     フォーク位置: 画面高さの 62% (forkYRatio=0.62)
+│   │     最大ドラッグ距離: 220pt (maxDragDistance)。任意方向スワイプ可。
+│   │     angle = atan2(dragOffset.height, -dragOffset.width)（SpriteKit 座標系に変換）
+│   │     power = min(dragLength / 220, 1.0)
+│   │     SlingshotForkShape — Y 字 Shape（stem + 2本のフォーク）
+│   │     ゴム紐: leftFork → pullPoint と rightFork → pullPoint を Path で描画
+│   │     PowerIndicatorView — 水平バー (緑/黄/赤)、power に応じてリアルタイム更新
+│   │     net 飛翔アニメ: 発射方向に 🕸️ 絵文字が飛ぶ (scale 0.3→1.8→fade, 回転 270°〜810°)
+│   │
+│   └── SoundManager.swift
+│         AVAudioEngine + AVAudioPlayerNode × 6 によるシングルトンのサウンドマネージャ。
+│         外部音声ファイルなし。PCM サイン波バッファをランタイムで生成。
+│         makeTone(frequency:duration:amplitude:fadeIn:fadeOut:) — 純音（サイン波 + 線形エンベロープ）
+│         makeSweep(startFreq:endFreq:duration:amplitude:) — 周波数グライドサイン波
+│         playSequence(_:noteDuration:noteGap:amplitude:) — DispatchQueue.asyncAfter でノートを順次発音
+│         公開 API:
+│           playThrow()              — 高→低スイープ（網発射時）
+│           playCapture(points:)     — 上昇アルペジオ（捕獲時。ポイント数で音数変化）
+│           playMiss()               — 下降スイープ（ミス時）
+│           playLockOn()             — 短ビープ（ロックオン取得時）
+│           playGameStart()          — C5→E5→G5→C6 ファンファーレ（ゲーム開始時）
+│           playGameEnd()            — G5→E5→C5→G4 下降メロディ（ゲーム終了時）
+│         AVAudioSession.Category.ambient: 他アプリ音楽と共存、サイレントスイッチ非対応
 │
 ├── Shared/
 │   └── GameProtocol.swift
@@ -393,7 +408,7 @@ physicsBody?.collisionBitMask   = 0
 - **コメント**: 日本語・英語どちらでも可。`// MARK: -` でセクション分け。
 - **ファイル分割**: iOS 側は `Controller/`、プロジェクター側は `World/`、共有型は `Shared/`。
 - **依存ライブラリ**: 追加しない。Apple 標準フレームワークのみ使用。
-- **アセット**: 外部画像・サウンドファイルなし。すべて手続き的に生成（`CGPath`, `SKShapeNode`, `SCNGeometry` 等）。
+- **アセット**: 外部画像・サウンドファイルなし。すべて手続き的に生成（`CGPath`, `SKShapeNode`, `SCNGeometry`, PCM バッファ等）。
 
 ---
 
@@ -404,7 +419,7 @@ physicsBody?.collisionBitMask   = 0
 | Swift | 5.9 以上 |
 | iOS Deployment Target | iOS 17.0 以上 |
 | Xcode | 15 以上 |
-| フレームワーク | SwiftUI, UIKit, ARKit, SceneKit, SpriteKit, MultipeerConnectivity, Combine |
+| フレームワーク | SwiftUI, UIKit, ARKit, SceneKit, SpriteKit, MultipeerConnectivity, Combine, AVFoundation |
 
 ---
 
@@ -466,6 +481,18 @@ m.diffuse.contents   = UIColor(red: 0.55, green: 0.08, blue: 0.08, alpha: 1)
 m.roughness.contents = NSNumber(value: 0.14)
 m.metalness.contents = NSNumber(value: 0.62)
 m.lightingModel      = .physicallyBased
+```
+
+### SoundManager（サウンドエフェクト再生）
+
+```swift
+// 単音再生（ARBugScene 等から直接呼び出す）
+SoundManager.shared.playThrow()
+SoundManager.shared.playCapture(points: bugNode.points)
+SoundManager.shared.playMiss()
+SoundManager.shared.playLockOn()
+SoundManager.shared.playGameStart()
+SoundManager.shared.playGameEnd()
 ```
 
 ---
