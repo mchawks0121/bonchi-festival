@@ -91,6 +91,7 @@ final class BugHunterScene: SKScene {
         let origin = CGPoint(x: size.width / 2, y: 60)
         addChild(net)
         net.launch(angle: angle, power: power, from: origin, sceneSize: size)
+        SoundManager.shared.playThrow()
     }
 
     // MARK: - Private
@@ -99,6 +100,7 @@ final class BugHunterScene: SKScene {
         spawner.stop()
         // Remove all remaining bugs
         children.filter { $0.name == "bug" }.forEach { $0.removeFromParent() }
+        SoundManager.shared.playGameEnd()
 
         gameDelegate?.sceneDidFinish(self, finalScore: 0)
     }
@@ -182,6 +184,7 @@ extension BugHunterScene: SKPhysicsContactDelegate {
         // Capture animations
         bugNode.captured()
         netNode.playCapture()
+        SoundManager.shared.playCapture(points: bugNode.points)
 
         onBugCaptured?(bugNode, netNode.playerIndex)
     }

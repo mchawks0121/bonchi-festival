@@ -91,6 +91,7 @@ final class ARBugScene: SKScene {
     /// Called by GameManager when the player releases the slingshot.
     func fireNet(angle: Float, power: Float) {
         guard !gameEnded else { return }
+        SoundManager.shared.playThrow()
 
         let center      = CGPoint(x: size.width / 2, y: size.height / 2)
         let catchRadius = ARBugScene.catchRadius
@@ -272,6 +273,9 @@ final class ARBugScene: SKScene {
     private func refreshLockOnRing(target: SKNode?) {
         lockOnRing.removeAllActions()
         if let t = target {
+            // `refreshLockOnRing` is only called when the target changes (see `updateLockOn`),
+            // so the sound fires at most once per new lock-on acquisition.
+            SoundManager.shared.playLockOn()
             // Snap to bug, flash orange then cycle
             lockOnRing.position   = t.position
             lockOnRing.setScale(1.8)
@@ -320,6 +324,7 @@ final class ARBugScene: SKScene {
 
     private func endGame() {
         gameEnded = true
+        SoundManager.shared.playGameEnd()
 
         children
             .filter { $0.name == "bugContainer" }
@@ -353,6 +358,7 @@ final class ARBugScene: SKScene {
     private func catchBug(container: SKNode, bugNode: BugNode?) {
         container.name = "bugContainer_captured"
         let pts = bugNode?.points ?? 1
+        SoundManager.shared.playCapture(points: pts)
 
         // ── 1. Existing BugNode captured() animation ─────────────────────
         bugNode?.captured()
@@ -494,6 +500,7 @@ final class ARBugScene: SKScene {
 
     private func playMissAnimation(near center: CGPoint) {
         pulseCrosshair(success: false)
+        SoundManager.shared.playMiss()
 
         let miss = SKLabelNode(text: "MISS")
         // Use SKLabelNode's default font (Helvetica) — no explicit fontName assignment needed
