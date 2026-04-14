@@ -7,6 +7,13 @@
 
 import SwiftUI
 
+// MARK: - Design tokens
+
+private let accentCyan   = Color(red: 0.2,  green: 1.0, blue: 0.8)
+private let accentBlue   = Color(red: 0.4,  green: 0.9, blue: 1.0)
+private let bgTop        = Color(red: 0.04, green: 0.02, blue: 0.14)
+private let bgBottom     = Color(red: 0.01, green: 0.01, blue: 0.08)
+
 // MARK: - Root
 
 struct ContentView: View {
@@ -17,10 +24,7 @@ struct ContentView: View {
         ZStack {
             // Digital-corruption gradient: deep navy → almost-black
             LinearGradient(
-                colors: [
-                    Color(red: 0.04, green: 0.02, blue: 0.14),
-                    Color(red: 0.01, green: 0.01, blue: 0.08)
-                ],
+                colors: [bgTop, bgBottom],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -57,28 +61,47 @@ struct WaitingView: View {
             ScrollView {
                 VStack(spacing: compact ? 16 : 28) {
 
-                    Text("👾")
-                        .font(.system(size: compact ? 60 : 90))
+                    // ── Hero logo ────────────────────────────────────────────
+                    HeroLogo(compact: compact)
                         .padding(.top, compact ? 20 : 48)
 
-                    Text("君は、バグハンター")
-                        .font(compact ? .title2.bold() : .largeTitle.bold())
-                        .foregroundColor(.white)
+                    // ── Title ────────────────────────────────────────────────
+                    VStack(spacing: compact ? 4 : 8) {
+                        Text("BUG HUNTER")
+                            .font(.system(
+                                size: compact ? 28 : 38,
+                                weight: .black,
+                                design: .monospaced
+                            ))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [accentCyan, accentBlue],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .tracking(2)
 
-                    Text("バグに侵食されたワールドを救え！")
-                        .font(compact ? .callout : .title3)
-                        .foregroundColor(Color(red: 0.4, green: 0.9, blue: 1.0).opacity(0.85))
-                        .multilineTextAlignment(.center)
+                        Text("君は、バグハンター")
+                            .font(compact ? .subheadline.bold() : .title3.bold())
+                            .foregroundColor(.white.opacity(0.9))
+
+                        Text("バグに侵食されたワールドを救え")
+                            .font(compact ? .caption : .callout)
+                            .foregroundColor(accentBlue.opacity(0.75))
+                            .multilineTextAlignment(.center)
+                    }
 
                     // ── Mode selection ───────────────────────────────────────
-                    VStack(spacing: 8) {
-                        Text("プレイモードを選択")
-                            .font(.caption.bold())
-                            .foregroundColor(.white.opacity(0.55))
+                    VStack(spacing: compact ? 6 : 10) {
+                        Text("PLAY MODE")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.4))
+                            .tracking(3)
 
                         VStack(spacing: 8) {
                             ModeCard(
-                                icon: "📱",
+                                symbol: "iphone",
                                 title: "スタンドアロン",
                                 subtitle: "AR のみ（1台完結）",
                                 isSelected: gameManager.gameMode == .standalone,
@@ -87,7 +110,7 @@ struct WaitingView: View {
                             .onTapGesture { gameManager.selectMode(.standalone) }
 
                             ModeCard(
-                                icon: "🎮",
+                                symbol: "gamecontroller",
                                 title: "プロジェクター",
                                 subtitle: "クライアント（コントローラー）",
                                 isSelected: gameManager.gameMode == .projectorClient,
@@ -96,7 +119,7 @@ struct WaitingView: View {
                             .onTapGesture { gameManager.selectMode(.projectorClient) }
 
                             ModeCard(
-                                icon: "📺",
+                                symbol: "tv",
                                 title: "プロジェクター",
                                 subtitle: "サーバー（表示デバイス）",
                                 isSelected: gameManager.gameMode == .projectorServer,
@@ -112,16 +135,19 @@ struct WaitingView: View {
                         HStack(spacing: 8) {
                             Circle()
                                 .fill(gameManager.isConnected ? Color.green : Color.orange)
-                                .frame(width: 12, height: 12)
+                                .frame(width: 8, height: 8)
                             Text(gameManager.isConnected
                                  ? "プロジェクターに接続済み"
                                  : "プロジェクターを探しています…")
-                                .font(.caption)
+                                .font(.system(size: 12, weight: .medium, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.85))
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.12))
+                        .background(Color.white.opacity(0.1))
+                        .overlay(
+                            Capsule().stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
                         .clipShape(Capsule())
                         .transition(.opacity.combined(with: .scale))
                         .animation(.easeInOut(duration: 0.25), value: gameManager.isConnected)
@@ -131,21 +157,35 @@ struct WaitingView: View {
                     Button {
                         withAnimation { gameManager.startGame() }
                     } label: {
-                        Text("デバッグ開始")
-                            .font(.title2.bold())
-                            .foregroundColor(.black)
-                            .padding(.horizontal, compact ? 36 : 52)
-                            .padding(.vertical, compact ? 12 : 16)
-                            .background(Color(red: 0.2, green: 1.0, blue: 0.8))
-                            .clipShape(Capsule())
-                            .shadow(color: Color(red: 0.2, green: 1.0, blue: 0.8).opacity(0.6), radius: 16)
+                        HStack(spacing: 8) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: compact ? 14 : 16, weight: .bold))
+                            Text("バグ狩り開始")
+                                .font(.system(size: compact ? 16 : 18, weight: .bold, design: .default))
+                        }
+                        .foregroundColor(.black)
+                        .padding(.horizontal, compact ? 36 : 52)
+                        .padding(.vertical, compact ? 13 : 17)
+                        .background(accentCyan)
+                        .clipShape(Capsule())
+                        .shadow(color: accentCyan.opacity(0.55), radius: 20, y: 4)
                     }
 
                     // Bug legend card
                     VStack(spacing: compact ? 8 : 12) {
-                        Text("出現バグ一覧")
-                            .font(.headline.bold())
-                            .foregroundColor(.white)
+                        HStack {
+                            Text("THREAT INDEX")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(accentCyan.opacity(0.8))
+                                .tracking(2)
+                            Spacer()
+                            Text("出現バグ一覧")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.4))
+                        }
+
+                        Divider()
+                            .background(Color.white.opacity(0.12))
 
                         VStack(spacing: compact ? 6 : 8) {
                             ForEach(BugType.allCases, id: \.rawValue) { bug in
@@ -154,21 +194,42 @@ struct WaitingView: View {
                         }
                     }
                     .padding(compact ? 14 : 20)
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Color.white.opacity(0.06))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
                     .padding(.horizontal, 24)
 
-                    // How to play
+                    // Mission card
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("ミッション").font(.headline).foregroundColor(.white)
-                        Text("ワールドはバグに蝕まれている。\nスリングショットで網を飛ばし、バグを捕まえてデバッグせよ！\n制限時間は90秒。Glitchほど手強く、倒すほど価値がある。")
+                        HStack {
+                            Image(systemName: "terminal.fill")
+                                .font(.caption.bold())
+                                .foregroundColor(accentCyan)
+                            Text("MISSION")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(accentCyan)
+                                .tracking(2)
+                        }
+                        Text("ワールドはバグに蝕まれている。\nスリングショットで網を飛ばし、バグを捕まえろ！\n制限時間は90秒。Glitchほど手強く、倒すほど価値がある。")
                             .font(compact ? .footnote : .body)
                             .foregroundColor(.white.opacity(0.75))
                             .multilineTextAlignment(.leading)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(compact ? 14 : 20)
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(Color.white.opacity(0.06))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    )
                     .padding(.horizontal, 24)
                     .padding(.bottom, 32)
                 }
@@ -178,65 +239,112 @@ struct WaitingView: View {
     }
 }
 
+// MARK: - Hero Logo
+
+private struct HeroLogo: View {
+    let compact: Bool
+
+    private let outerSize: CGFloat
+    private let innerSize: CGFloat
+    private let iconSize: CGFloat
+
+    init(compact: Bool) {
+        self.compact = compact
+        self.outerSize = compact ? 88 : 118
+        self.innerSize = compact ? 66 : 90
+        self.iconSize  = compact ? 32 : 44
+    }
+
+    var body: some View {
+        ZStack {
+            // Outer glow ring
+            Circle()
+                .stroke(accentCyan.opacity(0.18), lineWidth: 1)
+                .frame(width: outerSize, height: outerSize)
+            // Inner filled circle
+            Circle()
+                .fill(accentCyan.opacity(0.08))
+                .frame(width: innerSize, height: innerSize)
+            Circle()
+                .stroke(accentCyan.opacity(0.35), lineWidth: 1.5)
+                .frame(width: innerSize, height: innerSize)
+            // Icon
+            Image(systemName: "ant.fill")
+                .font(.system(size: iconSize, weight: .medium))
+                .foregroundStyle(accentCyan)
+        }
+    }
+}
+
 // MARK: - Mode Card
 
 struct ModeCard: View {
-    let icon: String
+    let symbol: String
     let title: String
     let subtitle: String
     let isSelected: Bool
     var compact: Bool = false
 
     var body: some View {
-        Group {
-            if compact {
-                // Horizontal layout for compact screens
-                HStack(spacing: 12) {
-                    Text(icon).font(.system(size: 28))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title)
-                            .font(.caption.bold())
-                            .foregroundColor(.white)
-                        Text(subtitle)
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-            } else {
-                // Vertical layout for regular screens
-                VStack(spacing: 6) {
-                    Text(icon).font(.system(size: 36))
-                    Text(title)
-                        .font(.caption.bold())
-                        .foregroundColor(.white)
-                    Text(subtitle)
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.6))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
+        HStack(spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: compact ? 20 : 24, weight: .medium))
+                .foregroundStyle(isSelected ? accentCyan : .white.opacity(0.55))
+                .frame(width: compact ? 28 : 34)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: compact ? 13 : 15, weight: .semibold))
+                    .foregroundColor(.white)
+                Text(subtitle)
+                    .font(.system(size: compact ? 10 : 12))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+
+            Spacer()
+
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(accentCyan)
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, compact ? 12 : 14)
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(isSelected
-                      ? Color(red: 0.2, green: 1.0, blue: 0.8).opacity(0.18)
-                      : Color.white.opacity(0.07))
+                      ? accentCyan.opacity(0.12)
+                      : Color.white.opacity(0.06))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .stroke(
-                    isSelected
-                        ? Color(red: 0.2, green: 1.0, blue: 0.8)
-                        : Color.white.opacity(0.15),
-                    lineWidth: isSelected ? 2 : 1
+                    isSelected ? accentCyan : Color.white.opacity(0.12),
+                    lineWidth: isSelected ? 1.5 : 1
                 )
         )
         .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+}
+
+// MARK: - Bug Legend Row
+
+private extension BugType {
+    var symbolName: String {
+        switch self {
+        case .butterfly: return "exclamationmark.circle.fill"
+        case .beetle:    return "xmark.octagon.fill"
+        case .stag:      return "bolt.fill"
+        }
+    }
+    var symbolColor: Color {
+        switch self {
+        case .butterfly: return Color(red: 0.3, green: 0.9, blue: 1.0)
+        case .beetle:    return Color(red: 1.0, green: 0.6, blue: 0.2)
+        case .stag:      return Color(red: 1.0, green: 0.3, blue: 0.5)
+        }
     }
 }
 
@@ -246,39 +354,47 @@ struct BugLegendRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(bug.emoji)
-                .font(.system(size: compact ? 28 : 36))
-                .frame(width: compact ? 36 : 44)
+            // Threat icon badge
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(bug.symbolColor.opacity(0.12))
+                    .frame(width: compact ? 34 : 42, height: compact ? 34 : 42)
+                Image(systemName: bug.symbolName)
+                    .font(.system(size: compact ? 16 : 20, weight: .semibold))
+                    .foregroundStyle(bug.symbolColor)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(bug.displayName)
-                        .font(.caption.bold())
+                        .font(.system(size: compact ? 11 : 13, weight: .bold))
                         .foregroundColor(.white)
                     Text(bug.rarityLabel)
-                        .font(.caption2)
-                        .foregroundColor(.yellow)
+                        .font(.system(size: compact ? 9 : 11))
+                        .foregroundColor(.yellow.opacity(0.85))
                 }
                 Text(bug.lore)
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.55))
+                    .font(.system(size: compact ? 9 : 11))
+                    .foregroundColor(.white.opacity(0.5))
             }
 
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(bug.points) pt")
-                    .font(.caption.bold())
+                    .font(.system(size: compact ? 11 : 13, weight: .bold, design: .monospaced))
                     .foregroundColor(.yellow)
                 Text(bug.speedLabel)
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.6))
+                    .font(.system(size: compact ? 9 : 11))
+                    .foregroundColor(.white.opacity(0.5))
             }
         }
         .padding(.vertical, compact ? 4 : 6)
         .padding(.horizontal, 8)
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.white.opacity(0.04))
+        )
     }
 }
 
@@ -421,34 +537,60 @@ struct FinishedView: View {
     var body: some View {
         VStack(spacing: 30) {
 
-            Text("🔧").font(.system(size: 72))
+            // Result badge
+            ZStack {
+                Circle()
+                    .stroke(accentCyan.opacity(0.25), lineWidth: 1)
+                    .frame(width: 110, height: 110)
+                Circle()
+                    .fill(accentCyan.opacity(0.08))
+                    .frame(width: 88, height: 88)
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 40, weight: .medium))
+                    .foregroundStyle(accentCyan)
+            }
 
-            Text("デバッグ完了！")
-                .font(.largeTitle.bold())
-                .foregroundColor(Color(red: 0.2, green: 1.0, blue: 0.8))
+            VStack(spacing: 6) {
+                Text("MISSION CLEAR")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundColor(accentCyan.opacity(0.8))
+                    .tracking(3)
+                Text("ミッション完了")
+                    .font(.largeTitle.bold())
+                    .foregroundColor(.white)
+            }
 
-            Text("修正したバグ").font(.title3).foregroundColor(.white.opacity(0.65))
+            VStack(spacing: 4) {
+                Text("捕まえたバグ")
+                    .font(.caption.bold())
+                    .foregroundColor(.white.opacity(0.5))
+                    .tracking(1)
 
-            HStack(alignment: .lastTextBaseline, spacing: 8) {
-                Text("\(gameManager.score)")
-                    .font(.system(size: 96, weight: .black, design: .rounded))
-                    .foregroundColor(.yellow)
-                Text("pt")
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundColor(.yellow.opacity(0.8))
+                HStack(alignment: .lastTextBaseline, spacing: 6) {
+                    Text("\(gameManager.score)")
+                        .font(.system(size: 88, weight: .black, design: .rounded))
+                        .foregroundColor(.yellow)
+                    Text("pt")
+                        .font(.system(size: 36, weight: .bold, design: .monospaced))
+                        .foregroundColor(.yellow.opacity(0.7))
+                }
             }
 
             Button {
                 withAnimation { gameManager.resetGame() }
             } label: {
-                Text("再デバッグ")
-                    .font(.title2.bold())
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 52)
-                    .padding(.vertical, 16)
-                    .background(Color(red: 0.2, green: 1.0, blue: 0.8))
-                    .clipShape(Capsule())
-                    .shadow(color: Color(red: 0.2, green: 1.0, blue: 0.8).opacity(0.5), radius: 12)
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 15, weight: .bold))
+                    Text("もう一度")
+                        .font(.system(size: 17, weight: .bold))
+                }
+                .foregroundColor(.black)
+                .padding(.horizontal, 52)
+                .padding(.vertical, 16)
+                .background(accentCyan)
+                .clipShape(Capsule())
+                .shadow(color: accentCyan.opacity(0.5), radius: 16, y: 4)
             }
         }
         .padding()
