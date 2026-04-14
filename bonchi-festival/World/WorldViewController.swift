@@ -98,9 +98,11 @@ final class WorldViewController: UIViewController {
         // Update the 3-D coordinator's cached view size used for 3D→2D projection.
         bug3DCoordinator?.updateCachedViewSize(newSize)
 
-        // First layout: present the waiting scene with the now-correct size.
+        // First layout: start the 3-D game immediately so the projector display
+        // is 3D from the moment the view appears, without requiring an iOS client
+        // to send a startGame message first.
         if skView.scene == nil {
-            presentWaitingScene()
+            startGame()
         }
     }
 
@@ -119,6 +121,13 @@ final class WorldViewController: UIViewController {
     }
 
     private func startGame() {
+        // Stop and release any previously running coordinator synchronously
+        // (stopSpawning invalidates its timer and removes all nodes on the main thread)
+        // before creating a new one to avoid resource leaks or stale callbacks.
+        bug3DCoordinator?.stopSpawning()
+        bug3DCoordinator = nil
+        gameScene = nil
+
         let scene = BugHunterScene(size: skView.bounds.size)
         scene.scaleMode      = .resizeFill
         scene.isProjectorMode = true   // transparent bg; BugSpawner not auto-started
