@@ -160,7 +160,7 @@ struct WaitingView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "play.fill")
                                 .font(.system(size: compact ? 14 : 16, weight: .bold))
-                            Text("デバッグ開始")
+                            Text("バグ狩り開始")
                                 .font(.system(size: compact ? 16 : 18, weight: .bold, design: .default))
                         }
                         .foregroundColor(.black)
@@ -215,7 +215,7 @@ struct WaitingView: View {
                                 .foregroundColor(accentCyan)
                                 .tracking(2)
                         }
-                        Text("ワールドはバグに蝕まれている。\nスリングショットで網を飛ばし、バグを捕まえてデバッグせよ！\n制限時間は90秒。Glitchほど手強く、倒すほど価値がある。")
+                        Text("ワールドはバグに蝕まれている。\nスリングショットで網を飛ばし、バグを捕まえろ！\n制限時間は90秒。Glitchほど手強く、倒すほど価値がある。")
                             .font(compact ? .footnote : .body)
                             .foregroundColor(.white.opacity(0.75))
                             .multilineTextAlignment(.leading)
@@ -551,17 +551,17 @@ struct FinishedView: View {
             }
 
             VStack(spacing: 6) {
-                Text("DEBUG COMPLETE")
+                Text("MISSION CLEAR")
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
                     .foregroundColor(accentCyan.opacity(0.8))
                     .tracking(3)
-                Text("デバッグ完了")
+                Text("ミッション完了")
                     .font(.largeTitle.bold())
                     .foregroundColor(.white)
             }
 
             VStack(spacing: 4) {
-                Text("修正したバグ")
+                Text("捕まえたバグ")
                     .font(.caption.bold())
                     .foregroundColor(.white.opacity(0.5))
                     .tracking(1)
@@ -582,7 +582,7 @@ struct FinishedView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.counterclockwise")
                         .font(.system(size: 15, weight: .bold))
-                    Text("再デバッグ")
+                    Text("もう一度")
                         .font(.system(size: 17, weight: .bold))
                 }
                 .foregroundColor(.black)
