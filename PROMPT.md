@@ -90,7 +90,7 @@ bonchi-festival/
 │   │       ARSCNView (背面) — SceneKit で 3D バグを描画。ARWorldTrackingConfiguration 使用。
 │   │       SKView (前面, 透過) — ARBugScene を presentScene する。allowsTransparency = true。
 │   │     内部 Coordinator クラス (ARSCNViewDelegate):
-│   │       startSpawning() / stopSpawning() — standalone のみバグをスポーン
+│   │       startSpawning() / stopSpawning() — standalone + projectorClient でバグをスポーン（projectorServer のみ除外）
 │   │       spawnBug() — カメラ前方 1.2〜2.8m, 水平 ±37°, 垂直オフセット -0.3〜0.45m に ARAnchor 配置
 │   │       randomBugType() — butterfly 60% / beetle 30% / stag 10%
 │   │       renderer(_:nodeFor:) — ARAnchor → Bug3DNode (SCNNode) + 不可視プロキシ SKNode を生成
@@ -178,9 +178,10 @@ bonchi-festival/
 └── World/
     ├── WorldViewController.swift
     │     UIViewController。SCNView + SKView + ConnectedPlayersView の配置・管理。
-    │     viewDidLayoutSubviews で初回レイアウト後に presentWaitingScene() を呼ぶ。
-    │     presentWaitingScene(): bug3DCoordinator?.stopSpawning() → nil、WaitingScene に遷移
-    │     startGame(): BugHunterScene(isProjectorMode=true) 生成、ProjectorBug3DCoordinator.attach()+startSpawning()
+    │     viewDidLayoutSubviews で初回レイアウト後に startGame() を直接呼び出す（3D を即時表示）。
+    │     presentWaitingScene(): bug3DCoordinator?.stopSpawning() のみ（coordinator は nil にしない）。
+    │       WaitingScene(isProjectorOverlay=true) を透過背景オーバーレイとして提示 → SceneKit 3D 環境が常に見える。
+    │     startGame(): 既存 coordinator を stopSpawning()+nil 後、BugHunterScene(isProjectorMode=true) 生成、ProjectorBug3DCoordinator.attach()+startSpawning()
     │     fireNet(angle:power:playerIndex:): gameScene?.fireNet() に転送
     │     BugHunterSceneDelegate:
     │       didUpdateScore → sendGameState(payload) (score=0 固定)
@@ -196,7 +197,8 @@ bonchi-festival/
     │       attach(to:bugScene:) / startSpawning() / stopSpawning() / updateCachedViewSize(_:)
     │
     ├── WaitingScene.swift
-    │     SKScene (backgroundColor = SKColor(red:0.04, green:0.08, blue:0.04, alpha:1) 暗い緑)
+    │     SKScene。isProjectorOverlay=true のとき backgroundColor=.clear（SceneKit 3D 層が透過して見える）。
+    │     isProjectorOverlay=false のとき backgroundColor = 暗い緑（スタンドアロン用）。
     │     タイトル "君は、バグハンター 🦟" (HiraginoSans-W7, 80pt) + パルスアニメ
     │     サブタイトル "You are the Bug Hunter" (W3, 40pt)
     │     浮遊バグ絵文字 (🦋/🐛/🪲 × ポイント表示) — 独立した上下フロートアニメ
@@ -439,8 +441,8 @@ physicsBody?.collisionBitMask   = 0
 ## 既知の制約・注意事項
 
 - `SCNView` と `SKView` を重ねるとき、`SKView.allowsTransparency = true` かつ `SKView.isOpaque = false` が必須。
-- `WaitingScene` 表示中は `SCNView` に `SCNScene` が設定されていない（ProjectorBug3DCoordinator = nil）。
-- `ProjectorBug3DCoordinator` の生成・破棄はシーン遷移ごとに行う。`stopSpawning()` を呼び出してから `nil` にする。
+- `WaitingScene` は `isProjectorOverlay = true` のとき `backgroundColor = .clear` になる。SCNView は常に有効なままで、WaitingScene は透過オーバーレイとして表示される。
+- `ProjectorBug3DCoordinator` の生成・破棄は `startGame()` 呼び出し時のみ行う。`presentWaitingScene()` では coordinator を nil にせず `stopSpawning()` のみ呼ぶ。
 - Multipeer Connectivity のコールバックはバックグラウンドスレッドで届く。UI 操作は必ず `DispatchQueue.main.async`。
 - ARKit は実機専用。シミュレーターでは `ARSession` が起動しない。
 - `ProjectorBug3DCoordinator` は `WorldViewController.swift` 内で `final class` として定義されている（別ファイルではない）。

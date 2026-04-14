@@ -145,9 +145,9 @@ extension ARGameView {
         // MARK: - Spawning control
 
         func startSpawning() {
-            // Bugs spawn on the iPhone only in standalone mode.
-            // In projector mode the 3-D bugs live on the projector screen instead.
-            guard gameManager?.gameMode == .standalone else { return }
+            // Bugs spawn on the iPhone in standalone mode AND in projectorClient mode.
+            // In projectorServer mode this device IS the projector, so no AR spawning.
+            guard gameManager?.gameMode != .projectorServer else { return }
             stopSpawning()
             isSpawning    = true
             spawnElapsed  = 0

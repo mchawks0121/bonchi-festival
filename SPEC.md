@@ -146,6 +146,7 @@ bonchi-festival/
 │   │                             Advertiser + Browser の両方として動作。サービス名 "bughunter-game"
 │   ├── ARGameView.swift       … UIViewRepresentable。UIView コンテナに ARSCNView (3D) + SKView (透過) を重ねる
 │   │                             内部 Coordinator: ARSCNViewDelegate。ARAnchor → Bug3DNode + 不可視プロキシ SKNode
+│   │                             startSpawning(): standalone + projectorClient でバグをスポーン（projectorServer のみ除外）
 │   │                             毎フレーム 3D→2D 座標変換でプロキシ位置同期。距離ベーススケール調整
 │   ├── ARBugScene.swift       … SpriteKit 透過シーン。照準クロスヘア・ロックオンリング・捕獲アニメ
 │   │                             distortionLayer（グリッチバー × 12本）: バグ数に応じて強度が上昇
@@ -167,10 +168,13 @@ bonchi-festival/
 │                                 BugCapturedPayload / BugType / PhysicsCategory
 └── World/                     … プロジェクター側（iPad / Mac Catalyst）
     ├── WorldViewController.swift  … ルート UIViewController
-    │                                 SCNView (背面) + SKView 透過オーバーレイ (前面)
+    │                                 SCNView (背面、常時アクティブ) + SKView 透過オーバーレイ (前面)
     │                                 + ConnectedPlayersView (右下固定)
     │                                 ProjectorBug3DCoordinator を内部クラスとして定義・管理
-    ├── WaitingScene.swift         … 待機画面 SKScene（暗い緑背景）
+    │                                 初回レイアウト時に startGame() を直接呼び出す（3D 即時表示）
+    │                                 presentWaitingScene(): coordinator を nil にせず stopSpawning() のみ。
+    │                                   WaitingScene(isProjectorOverlay=true) を透過オーバーレイとして表示
+    ├── WaitingScene.swift         … 待機画面 SKScene。isProjectorOverlay=true のとき透過背景（SceneKit 3D が見える）
     │                                 タイトル・浮遊バグ絵文字・接続待ちテキストのアニメ
     ├── BugHunterScene.swift       … ゲーム中 SKScene（isProjectorMode=true で透過背景）
     │                                 HUD（残り時間バー・タイムラベル）・ネット物理衝突判定
@@ -217,7 +221,7 @@ iOS Controller (×最大3台)               Projector Server
 - プロジェクター側でバグが捕獲されると、`ProjectorGameManager.sendBugCaptured(bugType:toPlayerAtSlot:)` が網を射出したプレイヤーの peerID にだけ `bugCaptured` メッセージを送信します。
 - iOS 側 `GameManager` が `bugCaptured` を受信し、`score += bugType.points` で加算します。
 - スタンドアロンモードでは `ARBugScene.fireNet` 内でバグを直接捕獲し、`BugHunterSceneDelegate` を通じてスコアを更新します。
-- プロジェクタークライアントモードでは ARBugScene 上にバグがスポーンしないため、スコアは `bugCaptured` メッセージのみで加算されます。
+- プロジェクタークライアントモードでは iOS 側の ARSCNView でも 3D バグがスポーンする（`startSpawning()` が standalone と同様に実行される）。スコアは `bugCaptured` メッセージのみで加算される（ローカル捕獲はスコアに反映しない）。
 - プロジェクター側の `BugHunterScene` はスコアを保持しません（`GameStatePayload.score` 常に 0）。
 
 ---
@@ -251,15 +255,16 @@ SKView (透過オーバーレイ) → ARBugScene
 
 ```
 ┌────────────────────────────────────────────────┐
-│  SCNView  — Bug3DNode（3D バグ）               │ ← 背面 (z=0)
-│  SKView   — BugHunterScene 透過オーバーレイ     │ ← 前面 (透過)
-│               HUD / 網 / 不可視プロキシ BugNode  │
+│  SCNView  — Bug3DNode（3D バグ）常時アクティブ  │ ← 背面 (z=0)
+│  SKView   — BugHunterScene または WaitingScene  │ ← 前面（常に透過 bg）
+│               (透過背景) HUD / 網 / プロキシ等   │
 │  ConnectedPlayersView ──────────────── [右下]   │ ← 常時最前面 UIKit
 └────────────────────────────────────────────────┘
 ```
 
 - **SCNView.backgroundColor**: `UIColor(red: 0.05, green: 0.12, blue: 0.05, alpha: 1)`（暗い緑）
-- **WaitingScene.backgroundColor**: `SKColor(red: 0.04, green: 0.08, blue: 0.04, alpha: 1)`（暗い緑）
+- **WaitingScene**: `isProjectorOverlay = true` → `backgroundColor = .clear`（3D 環境を常に見せる）
+- **BugHunterScene**: `isProjectorMode = true` → `backgroundColor = .clear`
 - `ProjectorBug3DCoordinator`（`WorldViewController.swift` 内に定義）: SCNScene に固定パース視点カメラを設置（cameraZ=3.5、FOV=65°）。Bug3DNode を `bugScaleMultiplier=10` でスケール拡大して表示。毎フレーム `scnView.projectPoint()` でプロキシ位置を同期。
 
 ---
