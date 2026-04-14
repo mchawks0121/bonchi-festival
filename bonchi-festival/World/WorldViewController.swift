@@ -11,9 +11,9 @@
 //    │  SCNView  – 3-D Bug3DNode world      │  (background, always present)
 //    │  SKView   – HUD / net / proxy nodes  │  (transparent overlay)
 //    └─────────────────────────────────────┘
-//  During WaitingScene the SKScene has its own solid background and covers the SCNView.
-//  During BugHunterScene (isProjectorMode=true) the SKScene background is clear so the
-//  SceneKit 3-D bugs show through.
+//  Both during WaitingScene (isProjectorOverlay=true) and during BugHunterScene
+//  (isProjectorMode=true) the SKScene background is clear so the SceneKit 3-D
+//  environment always shows through.  The projector display is fully 3-D at all times.
 //
 
 import UIKit
@@ -112,10 +112,15 @@ final class WorldViewController: UIViewController {
     // MARK: - Scene Transitions
 
     private func presentWaitingScene() {
+        // Stop spawning new bugs but keep the SceneKit 3-D environment (coordinator +
+        // scene) alive so the projector display remains fully 3-D.  Setting only
+        // gameScene = nil releases the BugHunterScene; the SCNView keeps rendering.
         bug3DCoordinator?.stopSpawning()
-        bug3DCoordinator = nil
         gameScene = nil
+
+        // Present a transparent SpriteKit overlay so the 3-D layer shows through.
         let scene = WaitingScene(size: skView.bounds.size)
+        scene.isProjectorOverlay = true   // transparent bg over 3-D SceneKit layer
         scene.scaleMode = .resizeFill
         skView.presentScene(scene, transition: SKTransition.fade(withDuration: 0.4))
     }

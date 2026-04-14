@@ -9,10 +9,20 @@
 import SpriteKit
 
 /// Simple animated waiting screen shown on the projector before the game starts.
+///
+/// When `isProjectorOverlay` is `true` the background is transparent so the
+/// SceneKit 3-D layer beneath shows through.  This ensures the projector display
+/// is always fully 3-D — even during the inter-round waiting state.
 final class WaitingScene: SKScene {
 
+    /// Set to `true` when this scene is used as a transparent overlay over a
+    /// SceneKit 3-D background (projector mode).  Set to `false` for standalone use.
+    var isProjectorOverlay: Bool = false
+
     override func didMove(to view: SKView) {
-        backgroundColor = SKColor(red: 0.04, green: 0.08, blue: 0.04, alpha: 1)
+        backgroundColor = isProjectorOverlay
+            ? .clear
+            : SKColor(red: 0.04, green: 0.08, blue: 0.04, alpha: 1)
 
         setupTitle()
         setupFloatingBugs()
