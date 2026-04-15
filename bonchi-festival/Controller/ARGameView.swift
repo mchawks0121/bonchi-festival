@@ -40,12 +40,23 @@ struct ARGameView: UIViewRepresentable {
         arView.autoenablesDefaultLighting = true
         // Use ARKit's estimated scene lighting so PBR materials match the real environment
         arView.automaticallyUpdatesLighting = true
+        // Smooth geometry edges for higher visual quality (リアルさ).
+        arView.antialiasingMode = .multisampling4X
         arView.scene = SCNScene()
+        // Boost IBL intensity so PBR metalness/roughness render correctly under typical
+        // indoor lighting conditions estimated by ARKit (empirically tuned value).
+        arView.scene.lightingEnvironment.intensity = Coordinator.pbrLightingIntensity
         container.addSubview(arView)
         context.coordinator.arView = arView
         arView.delegate = context.coordinator
         // Cache the view height for the render-thread projection
         // context.coordinator.cachedViewHeight = UIScreen.main.bounds.height
+
+        // Pre-warm USDZ asset cache before the first bug spawns (即時性).
+        // The first spawn is delayed ≥ 0.9 s; assets typically load in < 0.5 s on device.
+        // If loading hasn't completed by spawn time, Bug3DNode automatically falls back
+        // to procedural geometry — subsequent bugs will use the USDZ once cached.
+        Bug3DNode.preloadAssets()
 
         let config = ARWorldTrackingConfiguration()
         arView.session.run(config)
@@ -128,6 +139,11 @@ extension ARGameView {
         private static let referenceDistance: Float = 2.0
         private static let minBugScale:       Float = 0.3
         private static let maxBugScale:       Float = 3.0
+
+        // MARK: Rendering quality constants
+        /// IBL intensity multiplier for the AR scene. Empirically tuned so PBR metalness/
+        /// roughness values render correctly under typical indoor lighting estimated by ARKit.
+        static let pbrLightingIntensity: CGFloat = 1.5
 
         // MARK: Spawning
 
@@ -285,7 +301,8 @@ extension ARGameView {
                 guard let scene = self?.gameManager?.arBugScene else { return }
                 proxy.alpha = 0
                 scene.addChild(proxy)
-                proxy.run(SKAction.fadeIn(withDuration: 0.5))
+                // Match the shorter Bug3DNode fade-in for a unified appearance (即時性).
+                proxy.run(SKAction.fadeIn(withDuration: 0.25))
             }
 
             return bug3D

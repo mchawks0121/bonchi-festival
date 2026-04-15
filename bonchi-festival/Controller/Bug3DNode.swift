@@ -17,7 +17,7 @@
 //  development before the assets are added to the project.
 //
 //  All nodes hover vertically and have per-type animations.
-//  Calling captured() triggers a scale-up / fade-out dismissal animation.
+//  Calling captured() triggers a glitch-flash / fade-out dismissal animation.
 //
 
 import SceneKit
@@ -32,9 +32,68 @@ final class Bug3DNode: SCNNode {
     /// True when a USDZ model was successfully loaded from the app bundle.
     private var usdzLoaded = false
 
-    /// Uniform scale applied to USDZ reference nodes so they appear at an
-    /// insect-appropriate size at the 2 m reference distance used by ARGameView.
-    private static let usdzScale: Float = 0.006
+    // MARK: - Asset preloading (immediacy 即時性)
+
+    /// Per-type scale factors that produce a visually appropriate size at the
+    /// 2 m reference distance used by ARGameView.Coordinator.
+    /// Each USDZ from the Apple Quick Look gallery has a different intrinsic size, so
+    /// per-type constants are needed rather than a single global value.
+    /// Exhaustive switch ensures a new BugType will cause a compile error rather than
+    /// silently rendering at the wrong scale.
+    private static func usdzScale(for type: BugType) -> Float {
+        switch type {
+        case .butterfly: return 0.005   // toy_biplane — compact flying toy
+        case .beetle:    return 0.004   // gramophone  — dome-shaped object
+        case .stag:      return 0.004   // toy_drummer — animated character
+        }
+    }
+
+    /// Thread safety for the preload cache and in-progress tracking.
+    private static let cacheLock = NSLock()
+    /// Keyed by BugType.rawValue; populated by preloadAssets() before any bug spawns.
+    private static var sceneCache: [String: SCNScene] = [:]
+    /// Tracks assets currently being loaded so concurrent callers skip duplicate I/O.
+    private static var loadingInProgress = Set<String>()
+
+    /// Loads all three USDZ scenes off the main thread so that the first bug
+    /// instantiation can clone from memory rather than reading from disk.
+    /// Call this once early in the app lifecycle (e.g. from ARGameView.makeUIView).
+    static func preloadAssets() {
+        let mapping: [(BugType, String)] = [
+            (.butterfly, "toy_biplane"),
+            (.beetle,    "gramophone"),
+            (.stag,      "toy_drummer"),
+        ]
+        DispatchQueue.global(qos: .userInitiated).async {
+            for (type, name) in mapping {
+                // Under the lock: skip if already cached or currently loading.
+                // Marking in-progress inside the lock prevents duplicate I/O.
+                cacheLock.lock()
+                let skip = sceneCache[type.rawValue] != nil
+                              || loadingInProgress.contains(type.rawValue)
+                if !skip { loadingInProgress.insert(type.rawValue) }
+                cacheLock.unlock()
+                guard !skip else { continue }
+
+                guard let url = Bundle.main.url(forResource: name, withExtension: "usdz"),
+                      let scene = try? SCNScene(url: url, options: [
+                          SCNSceneSource.LoadingOption.animationImportPolicy:
+                              SCNSceneSource.AnimationImportPolicy.playRepeatedly
+                      ]) else {
+                    // Load failed — clear the in-progress marker so a retry is possible.
+                    cacheLock.lock()
+                    loadingInProgress.remove(type.rawValue)
+                    cacheLock.unlock()
+                    continue
+                }
+
+                cacheLock.lock()
+                sceneCache[type.rawValue] = scene
+                loadingInProgress.remove(type.rawValue)
+                cacheLock.unlock()
+            }
+        }
+    }
 
     init(type: BugType) {
         self.bugType = type
@@ -48,43 +107,47 @@ final class Bug3DNode: SCNNode {
 
     // MARK: - Public
 
-    /// Scale-up / fade-out animation played when the bug is captured.
+    /// Glitch-flash + dissolve animation played when the bug is captured.
+    /// Rapid blinks suit the digital-corruption theme and give clear visual feedback.
     func captured() {
         removeAllActions()
-        let fade   = SCNAction.fadeOut(duration: 0.05)
+        let blinkDur: TimeInterval = 0.06
+        // Three rapid opacity toggles simulate a digital glitch before dissolving.
+        let blink = SCNAction.sequence([
+            SCNAction.fadeOpacity(to: 0.0, duration: blinkDur * 0.35),
+            SCNAction.fadeOpacity(to: 1.0, duration: blinkDur * 0.25),
+            SCNAction.fadeOpacity(to: 0.0, duration: blinkDur * 0.20),
+            SCNAction.fadeOpacity(to: 0.8, duration: blinkDur * 0.20),
+        ])
+        let dissolve = SCNAction.fadeOut(duration: 0.18)
+        dissolve.timingMode = .easeIn
         let remove = SCNAction.removeFromParentNode()
-        runAction(SCNAction.sequence([fade, remove]))
+        runAction(SCNAction.sequence([blink, dissolve, remove]))
     }
 
     // MARK: - Private: USDZ loading
 
-    /// Attempts to load the USDZ model for this bug type from the app bundle.
-    /// The USDZ files are obtained from Apple's AR Quick Look gallery:
-    ///   https://developer.apple.com/jp/augmented-reality/quick-look/
-    ///
-    /// Expected filenames in the bundle:
-    ///   butterfly → toy_biplane.usdz
-    ///   beetle    → gramophone.usdz
-    ///   stag      → toy_drummer.usdz
-    ///
-    /// Returns `true` if the model was loaded successfully, `false` otherwise.
+    /// Attempts to load the USDZ model for this bug type from the preload cache.
+    /// Returns `true` if a cached scene was found and cloned successfully.
+    /// Returns `false` when the cache is empty (preload still in progress or asset
+    /// not available); the caller then builds procedural geometry as a fallback.
     private func loadUSDZModel() -> Bool {
-        let modelName: String
-        switch bugType {
-        case .butterfly: modelName = "toy_biplane"
-        case .beetle:    modelName = "gramophone"
-        case .stag:      modelName = "toy_drummer"
-        }
+        cacheLock.lock()
+        let cached = Bug3DNode.sceneCache[bugType.rawValue]
+        cacheLock.unlock()
 
-        guard let url = Bundle.main.url(forResource: modelName, withExtension: "usdz"),
-              let refNode = SCNReferenceNode(url: url) else {
-            return false
-        }
+        guard let cachedScene = cached else { return false }
 
-        refNode.load()
-        let s = Bug3DNode.usdzScale
-        refNode.scale = SCNVector3(s, s, s)
-        addChildNode(refNode)
+        // Clone the cached scene's root so each bug gets its own independent
+        // node hierarchy and animation state.
+        let modelRoot = cachedScene.rootNode.clone()
+        let s = Bug3DNode.usdzScale(for: bugType)
+        modelRoot.scale = SCNVector3(s, s, s)
+        // Ensure all descendants cast shadows for ground contact realism.
+        modelRoot.enumerateChildNodes { node, _ in
+            node.castsShadow = true
+        }
+        addChildNode(modelRoot)
         return true
     }
 
@@ -99,18 +162,21 @@ final class Bug3DNode: SCNNode {
     }
 
     /// Butterfly (蝶) — slender abdomen, 4 translucent wings, ball-tipped antennae.
+    /// Emissive tint: electric cyan-blue (Null Bug / undefined reference theme).
     private func setupButterfly() {
-        // Abdomen: slender vertical capsule
+        // Abdomen: slender vertical capsule — faint cyan emission (null-reference glow)
         let bodyGeo = SCNCapsule(capRadius: 0.009, height: 0.048)
         bodyGeo.materials = [pbr(UIColor(red: 0.10, green: 0.05, blue: 0.01, alpha: 1),
-                                  roughness: 0.65, metalness: 0.02)]
+                                  roughness: 0.65, metalness: 0.02,
+                                  emission: UIColor(red: 0.0, green: 0.14, blue: 0.35, alpha: 1))]
         geometry = bodyGeo
 
         // Head
         addSphere(radius: 0.011,
                   at: SCNVector3(0, 0.033, 0),
                   mat: pbr(UIColor(red: 0.10, green: 0.05, blue: 0.01, alpha: 1),
-                            roughness: 0.60, metalness: 0.02))
+                            roughness: 0.60, metalness: 0.02,
+                            emission: UIColor(red: 0.0, green: 0.10, blue: 0.28, alpha: 1)))
 
         // Upper wings (larger, monarch orange)
         let uGeo = SCNPlane(width: 0.095, height: 0.070)
@@ -162,9 +228,11 @@ final class Bug3DNode: SCNNode {
     }
 
     /// Beetle (甲虫) — glossy dome elytra, suture, compound eyes, 6 segmented legs.
+    /// Emissive tint: toxic green (Virus Bug / self-replicating runtime error theme).
     private func setupBeetle() {
         let shellMat = pbr(UIColor(red: 0.55, green: 0.08, blue: 0.08, alpha: 1),
-                            roughness: 0.14, metalness: 0.62)
+                            roughness: 0.14, metalness: 0.62,
+                            emission: UIColor(red: 0.0, green: 0.18, blue: 0.04, alpha: 1))
 
         // Main body: sphere shaped into a flattened dome
         let bodyGeo = SCNSphere(radius: 0.040)
@@ -231,9 +299,11 @@ final class Bug3DNode: SCNNode {
     }
 
     /// Stag beetle (クワガタ) — dark metallic body, prominent mandibles (大顎), 6 legs.
+    /// Emissive tint: hot red/orange (Glitch Bug / critical data corruption theme).
     private func setupStag() {
         let darkMat = pbr(UIColor(red: 0.14, green: 0.08, blue: 0.02, alpha: 1),
-                           roughness: 0.20, metalness: 0.65)
+                           roughness: 0.20, metalness: 0.65,
+                           emission: UIColor(red: 0.28, green: 0.05, blue: 0.0, alpha: 1))
 
         // Abdomen: vertical capsule
         let bodyGeo = SCNCapsule(capRadius: 0.028, height: 0.068)
@@ -350,8 +420,9 @@ final class Bug3DNode: SCNNode {
     // MARK: - Private: animations
 
     private func startAnimations() {
+        // Start invisible; fade in quickly for immediate presence (即時性).
         opacity = 0
-        runAction(SCNAction.fadeIn(duration: 0.45))
+        runAction(SCNAction.fadeIn(duration: 0.25))
 
         if usdzLoaded {
             // Play all animation tracks baked into the USDZ file.
@@ -378,13 +449,28 @@ final class Bug3DNode: SCNNode {
             }
         }
 
-        // Gentle hover shared by all types (±1.8 cm)
+        // Primary hover: vertical sine with easeInEaseOut (±1.8 cm, random period).
         let hovDur = Double.random(in: 0.65...0.85)
         let up   = SCNAction.moveBy(x: 0, y: 0.018, z: 0, duration: hovDur)
         let down = SCNAction.moveBy(x: 0, y: -0.018, z: 0, duration: hovDur)
         up.timingMode   = .easeInEaseOut
         down.timingMode = .easeInEaseOut
         runAction(SCNAction.repeatForever(SCNAction.sequence([up, down])), forKey: "hover")
+
+        // Secondary drift: slow square orbit in the horizontal plane adds organic
+        // depth and prevents the bug from feeling "glued" to one spot (快適性).
+        // The four steps trace a closed square: (+X) → (-Z) → (-X) → (+Z) = origin.
+        //   After +X: (R, 0)  → after -Z: (R,-R) → after -X: (0,-R) → after +Z: (0, 0) ✓
+        let driftR: CGFloat = 0.010       // 1 cm half-side
+        let driftDur = Double.random(in: 6.5...8.5)
+        let driftPX = SCNAction.moveBy(x:  driftR, y: 0, z: 0,     duration: driftDur / 4)
+        let driftNZ = SCNAction.moveBy(x: 0,     y: 0, z: -driftR, duration: driftDur / 4)
+        let driftNX = SCNAction.moveBy(x: -driftR, y: 0, z: 0,     duration: driftDur / 4)
+        let driftPZ = SCNAction.moveBy(x: 0,     y: 0, z:  driftR, duration: driftDur / 4)
+        for a in [driftPX, driftNZ, driftNX, driftPZ] { a.timingMode = .easeInEaseOut }
+        runAction(SCNAction.repeatForever(
+            SCNAction.sequence([driftPX, driftNZ, driftNX, driftPZ])
+        ), forKey: "drift")
     }
 
     private func startButterflyAnimations() {
@@ -448,11 +534,16 @@ final class Bug3DNode: SCNNode {
 
     // MARK: - PBR material factories
 
-    private func pbr(_ diffuse: UIColor, roughness: Double, metalness: Double) -> SCNMaterial {
+    /// Creates a physically-based material.
+    /// The optional `emission` colour adds a faint self-glow, used to convey the
+    /// digital-corruption theme on procedural bug bodies (リアルさ).
+    private func pbr(_ diffuse: UIColor, roughness: Double, metalness: Double,
+                     emission: UIColor = .black) -> SCNMaterial {
         let m = SCNMaterial()
         m.diffuse.contents   = diffuse
         m.roughness.contents = NSNumber(value: roughness)
         m.metalness.contents = NSNumber(value: metalness)
+        m.emission.contents  = emission
         m.lightingModel      = .physicallyBased
         return m
     }
