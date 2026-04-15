@@ -4,10 +4,17 @@
 //
 //  iOS Controller: SceneKit 3-D node that visually represents one AR bug.
 //
-//  Each BugType gets a realistically detailed procedural shape using PBR materials:
-//    • butterfly — slender body, 4 flapping translucent wings, ball-tipped antennae
-//    • beetle    — glossy dome elytra with suture, compound eyes, 6 segmented legs
-//    • stag      — dark metallic body, large mandibles (大顎), 6 legs, elbowed antennae
+//  3-D models are loaded from USDZ files obtained from Apple's AR Quick Look gallery:
+//    https://developer.apple.com/jp/augmented-reality/quick-look/
+//
+//  Model mapping (download these USDZ files and add them to the Xcode project):
+//    • butterfly — toy_biplane.usdz  (flying toy; represents the fast Null bug)
+//    • beetle    — gramophone.usdz   (dome shell shape; represents the Virus bug)
+//    • stag      — toy_drummer.usdz  (animated character; represents the Glitch bug)
+//
+//  If the USDZ file for a given bug type is not found in the app bundle, the node
+//  falls back to a procedural PBR geometry so the game remains fully playable during
+//  development before the assets are added to the project.
 //
 //  All nodes hover vertically and have per-type animations.
 //  Calling captured() triggers a scale-up / fade-out dismissal animation.
@@ -22,10 +29,18 @@ final class Bug3DNode: SCNNode {
 
     let bugType: BugType
 
+    /// True when a USDZ model was successfully loaded from the app bundle.
+    private var usdzLoaded = false
+
+    /// Uniform scale applied to USDZ reference nodes so they appear at an
+    /// insect-appropriate size at the 2 m reference distance used by ARGameView.
+    private static let usdzScale: Float = 0.006
+
     init(type: BugType) {
         self.bugType = type
         super.init()
-        setupGeometry()
+        usdzLoaded = loadUSDZModel()
+        if !usdzLoaded { setupGeometry() }
         startAnimations()
     }
 
@@ -39,6 +54,38 @@ final class Bug3DNode: SCNNode {
         let fade   = SCNAction.fadeOut(duration: 0.05)
         let remove = SCNAction.removeFromParentNode()
         runAction(SCNAction.sequence([fade, remove]))
+    }
+
+    // MARK: - Private: USDZ loading
+
+    /// Attempts to load the USDZ model for this bug type from the app bundle.
+    /// The USDZ files are obtained from Apple's AR Quick Look gallery:
+    ///   https://developer.apple.com/jp/augmented-reality/quick-look/
+    ///
+    /// Expected filenames in the bundle:
+    ///   butterfly → toy_biplane.usdz
+    ///   beetle    → gramophone.usdz
+    ///   stag      → toy_drummer.usdz
+    ///
+    /// Returns `true` if the model was loaded successfully, `false` otherwise.
+    private func loadUSDZModel() -> Bool {
+        let modelName: String
+        switch bugType {
+        case .butterfly: modelName = "toy_biplane"
+        case .beetle:    modelName = "gramophone"
+        case .stag:      modelName = "toy_drummer"
+        }
+
+        guard let url = Bundle.main.url(forResource: modelName, withExtension: "usdz"),
+              let refNode = SCNReferenceNode(url: url) else {
+            return false
+        }
+
+        refNode.load()
+        let s = Bug3DNode.usdzScale
+        refNode.scale = SCNVector3(s, s, s)
+        addChildNode(refNode)
+        return true
     }
 
     // MARK: - Private: geometry
@@ -306,10 +353,29 @@ final class Bug3DNode: SCNNode {
         opacity = 0
         runAction(SCNAction.fadeIn(duration: 0.45))
 
-        switch bugType {
-        case .butterfly: startButterflyAnimations()
-        case .beetle:    startBeetleAnimations()
-        case .stag:      startStagAnimations()
+        if usdzLoaded {
+            // Play all animation tracks baked into the USDZ file.
+            enumerateChildNodes { node, _ in
+                for key in node.animationKeys {
+                    node.animationPlayer(forKey: key)?.play()
+                }
+            }
+            // Slow Y-rotation so the player can see all sides of the model.
+            let rotateDuration: Double
+            switch bugType {
+            case .butterfly: rotateDuration = 9.0
+            case .beetle:    rotateDuration = 5.5
+            case .stag:      rotateDuration = 7.5
+            }
+            runAction(SCNAction.repeatForever(
+                SCNAction.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: rotateDuration)
+            ), forKey: "rotate")
+        } else {
+            switch bugType {
+            case .butterfly: startButterflyAnimations()
+            case .beetle:    startBeetleAnimations()
+            case .stag:      startStagAnimations()
+            }
         }
 
         // Gentle hover shared by all types (±1.8 cm)
