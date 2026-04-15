@@ -129,16 +129,16 @@ extension ARGameView {
         private var anchorProxyNodeMap: [UUID: SKNode] = [:]
 
         // MARK: Spawn geometry constants
-        private static let minSpawnDistance:     Float  = 1.2
-        private static let maxSpawnDistance:     Float  = 2.8
+        private static let minSpawnDistance:     Float  = 0.5
+        private static let maxSpawnDistance:     Float  = 1.4
         private static let horizontalAngleRange: ClosedRange<Float> = -0.65...0.65  // ±~37°
         private static let verticalOffsetRange:  ClosedRange<Float> = -0.30...0.45
 
         // MARK: Distance-based scale constants
         /// Bugs are designed for this reference distance (m); scale = referenceDistance / actualDistance.
-        private static let referenceDistance: Float = 2.0
+        private static let referenceDistance: Float = 3.0
         private static let minBugScale:       Float = 0.3
-        private static let maxBugScale:       Float = 3.0
+        private static let maxBugScale:       Float = 5.0
 
         // MARK: Rendering quality constants
         /// IBL intensity multiplier for the AR scene. Empirically tuned so PBR metalness/
