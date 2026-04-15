@@ -434,17 +434,27 @@ struct CalibrationView: UIViewRepresentable {
         overlay.isUserInteractionEnabled = false
         container.addSubview(overlay)
 
-        // Cross-hair reticle drawn as a CAShapeLayer
+        // Cross-hair reticle: a fixed-size view centred with Auto Layout so it
+        // adapts correctly to all device sizes including those with Dynamic Island.
+        let reticleView = UIView()
+        reticleView.translatesAutoresizingMaskIntoConstraints = false
+        reticleView.isUserInteractionEnabled = false
+        container.addSubview(reticleView)
+        NSLayoutConstraint.activate([
+            reticleView.widthAnchor.constraint(equalToConstant: 80),
+            reticleView.heightAnchor.constraint(equalToConstant: 80),
+            reticleView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            reticleView.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        ])
+
         let reticle = CAShapeLayer()
-        let cx: CGFloat = UIScreen.main.bounds.midX
-        let cy: CGFloat = UIScreen.main.bounds.midY
-        let size: CGFloat = 28
+        reticle.frame = CGRect(x: 0, y: 0, width: 80, height: 80)
+        let cx: CGFloat = 40, cy: CGFloat = 40, armLen: CGFloat = 28
         let path = UIBezierPath()
-        path.move(to: CGPoint(x: cx - size, y: cy))
-        path.addLine(to: CGPoint(x: cx + size, y: cy))
-        path.move(to: CGPoint(x: cx, y: cy - size))
-        path.addLine(to: CGPoint(x: cx, y: cy + size))
-        // Inner circle
+        path.move(to: CGPoint(x: cx - armLen, y: cy))
+        path.addLine(to: CGPoint(x: cx + armLen, y: cy))
+        path.move(to: CGPoint(x: cx, y: cy - armLen))
+        path.addLine(to: CGPoint(x: cx, y: cy + armLen))
         path.move(to: CGPoint(x: cx + 10, y: cy))
         path.addArc(withCenter: CGPoint(x: cx, y: cy), radius: 10,
                     startAngle: 0, endAngle: .pi * 2, clockwise: true)
@@ -452,7 +462,7 @@ struct CalibrationView: UIViewRepresentable {
         reticle.strokeColor = UIColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 0.9).cgColor
         reticle.fillColor = UIColor.clear.cgColor
         reticle.lineWidth = 1.8
-        overlay.layer.addSublayer(reticle)
+        reticleView.layer.addSublayer(reticle)
 
         // Instruction label
         let label = UILabel()
@@ -522,6 +532,8 @@ struct CalibrationView: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIView, context: Context) {}
 
+    /// Called when the view is removed from the hierarchy.
+    /// Pauses the AR session to release the camera and free GPU/CPU resources.
     static func dismantleUIView(_ uiView: UIView, coordinator: CalibrationCoordinator) {
         coordinator.arView?.session.pause()
     }

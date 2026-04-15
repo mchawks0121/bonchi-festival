@@ -43,7 +43,7 @@ final class GameManager: ObservableObject {
     @Published var gameMode: GameMode = .standalone
 
     /// World-space camera transform captured during calibration.
-    /// When set, bug spawns are centred on this position instead of the live camera.
+    /// When set, bug spawns are centered on this position instead of the live camera.
     var worldOriginTransform: simd_float4x4? = nil
 
     /// The live ARBugScene rendered by the on-device ARSKView.
