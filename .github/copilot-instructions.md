@@ -35,6 +35,8 @@
 
 **セットアップ**: 上記 3 ファイルを Apple AR Quick Look ギャラリーからダウンロードし、Xcode プロジェクトに追加してください。ファイルがない場合はゲームは手続きジオメトリで動作します。
 
+**注意**: `Bug3DNode.preloadAssets()` は **iOS AR パス**（`ARGameView.makeUIView`）と**プロジェクターパス**（`WorldViewController.viewDidLoad`）の両方から呼ばれます。新しいエントリポイントを追加する際は両パスで呼び出してください。
+
 ### 新しいモデルを追加する場合
 
 1. USDZ ファイルを Xcode プロジェクトに追加する。

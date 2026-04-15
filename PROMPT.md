@@ -188,6 +188,7 @@ bonchi-festival/
 └── World/
     ├── WorldViewController.swift
     │     UIViewController。SCNView + SKView + ConnectedPlayersView の配置・管理。
+    │     viewDidLoad で Bug3DNode.preloadAssets() を呼び出し USDZ を非同期プリロード（iOS AR パスと同様）。
     │     viewDidLayoutSubviews で初回レイアウト後に startGame() を直接呼び出す（3D を即時表示）。
     │     presentWaitingScene(): bug3DCoordinator?.stopSpawning() のみ（coordinator は nil にしない）。
     │       WaitingScene(isProjectorOverlay=true) を透過背景オーバーレイとして提示 → SceneKit 3D 環境が常に見える。

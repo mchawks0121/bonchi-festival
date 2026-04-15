@@ -173,6 +173,7 @@ bonchi-festival/
     │                                 SCNView (背面、常時アクティブ) + SKView 透過オーバーレイ (前面)
     │                                 + ConnectedPlayersView (右下固定)
     │                                 ProjectorBug3DCoordinator を内部クラスとして定義・管理
+    │                                 viewDidLoad で Bug3DNode.preloadAssets() を呼び出し USDZ を非同期プリロード
     │                                 初回レイアウト時に startGame() を直接呼び出す（3D 即時表示）
     │                                 presentWaitingScene(): coordinator を nil にせず stopSpawning() のみ。
     │                                   WaitingScene(isProjectorOverlay=true) を透過オーバーレイとして表示
