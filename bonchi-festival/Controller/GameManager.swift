@@ -12,6 +12,7 @@ import Combine
 import MultipeerConnectivity
 import UIKit
 import SpriteKit
+import ARKit
 
 // MARK: - GameManager
 
@@ -21,9 +22,10 @@ final class GameManager: ObservableObject {
     // MARK: State
 
     enum GameState: String {
-        case waiting  = "waiting"
-        case playing  = "playing"
-        case finished = "finished"
+        case waiting     = "waiting"
+        case calibrating = "calibrating"
+        case playing     = "playing"
+        case finished    = "finished"
     }
 
     /// Whether the game runs standalone (AR-only), as a projector controller (client),
@@ -39,6 +41,10 @@ final class GameManager: ObservableObject {
     @Published var timeRemaining: Double = 90.0
     @Published var isConnected: Bool = false
     @Published var gameMode: GameMode = .standalone
+
+    /// World-space camera transform captured during calibration.
+    /// When set, bug spawns are centered on this position instead of the live camera.
+    var worldOriginTransform: simd_float4x4? = nil
 
     /// The live ARBugScene rendered by the on-device ARSKView.
     @Published var arBugScene: ARBugScene?
@@ -72,6 +78,24 @@ final class GameManager: ObservableObject {
 
     // MARK: Actions
 
+    /// Transition to the calibration screen so the player can set the AR world origin.
+    /// In projector-server mode there is no AR session, so we skip straight to startGame().
+    func startCalibration() {
+        guard gameMode != .projectorServer else {
+            startGame()
+            return
+        }
+        worldOriginTransform = nil
+        state = .calibrating
+    }
+
+    /// Record `transform` (typically the current AR camera transform) as the spawn
+    /// origin, then immediately begin the game.
+    func setWorldOrigin(transform: simd_float4x4) {
+        worldOriginTransform = transform
+        startGame()
+    }
+
     /// Start a new 90-second game round on-device (and signal the projector if connected).
     func startGame() {
         score = 0
@@ -94,6 +118,7 @@ final class GameManager: ObservableObject {
     /// Reset everything back to the waiting screen.
     func resetGame() {
         arBugScene = nil
+        worldOriginTransform = nil
         score = 0
         timeRemaining = 90.0
         state = .waiting
