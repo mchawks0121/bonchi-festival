@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+import ARKit
+import SceneKit
 
 // MARK: - Design tokens
 
@@ -33,6 +35,10 @@ struct ContentView: View {
             switch gameManager.state {
             case .waiting:
                 WaitingView()
+                    .environmentObject(gameManager)
+                    .transition(.opacity)
+            case .calibrating:
+                CalibrationView()
                     .environmentObject(gameManager)
                     .transition(.opacity)
             case .playing:
@@ -155,7 +161,7 @@ struct WaitingView: View {
 
                     // Start button
                     Button {
-                        withAnimation { gameManager.startGame() }
+                        withAnimation { gameManager.startCalibration() }
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "play.fill")
@@ -395,6 +401,144 @@ struct BugLegendRow: View {
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color.white.opacity(0.04))
         )
+    }
+}
+
+// MARK: - Calibration Screen
+
+/// Full-screen AR view shown before the game starts.
+/// The player points the camera at the desired centre of the play area and
+/// taps "この位置を基準点に設定" to lock in that position as the world origin
+/// for bug spawning.
+struct CalibrationView: UIViewRepresentable {
+    @EnvironmentObject var gameManager: GameManager
+
+    func makeCoordinator() -> CalibrationCoordinator { CalibrationCoordinator() }
+
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView(frame: UIScreen.main.bounds)
+
+        // ── AR camera view ────────────────────────────────────────────────
+        let arView = ARSCNView(frame: container.bounds)
+        arView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        arView.scene = SCNScene()
+        container.addSubview(arView)
+        context.coordinator.arView = arView
+
+        let config = ARWorldTrackingConfiguration()
+        arView.session.run(config)
+
+        // ── Overlay: reticle + instruction + confirm button ───────────────
+        let overlay = UIView(frame: container.bounds)
+        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        overlay.isUserInteractionEnabled = false
+        container.addSubview(overlay)
+
+        // Cross-hair reticle drawn as a CAShapeLayer
+        let reticle = CAShapeLayer()
+        let cx: CGFloat = UIScreen.main.bounds.midX
+        let cy: CGFloat = UIScreen.main.bounds.midY
+        let size: CGFloat = 28
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: cx - size, y: cy))
+        path.addLine(to: CGPoint(x: cx + size, y: cy))
+        path.move(to: CGPoint(x: cx, y: cy - size))
+        path.addLine(to: CGPoint(x: cx, y: cy + size))
+        // Inner circle
+        path.move(to: CGPoint(x: cx + 10, y: cy))
+        path.addArc(withCenter: CGPoint(x: cx, y: cy), radius: 10,
+                    startAngle: 0, endAngle: .pi * 2, clockwise: true)
+        reticle.path = path.cgPath
+        reticle.strokeColor = UIColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 0.9).cgColor
+        reticle.fillColor = UIColor.clear.cgColor
+        reticle.lineWidth = 1.8
+        overlay.layer.addSublayer(reticle)
+
+        // Instruction label
+        let label = UILabel()
+        label.text = "カメラをゲームの中心にしたい場所に向け、\nボタンを押してください"
+        label.font = .systemFont(ofSize: 15, weight: .medium)
+        label.textColor = UIColor.white.withAlphaComponent(0.9)
+        label.textAlignment = .center
+        label.numberOfLines = 2
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.layer.shadowColor = UIColor.black.cgColor
+        label.layer.shadowOpacity = 0.8
+        label.layer.shadowRadius = 4
+        label.layer.shadowOffset = .zero
+        container.addSubview(label)
+
+        // Confirm button — user-interactive so it must be on the container, not overlay
+        let button = UIButton(type: .system)
+        button.setTitle("この位置を基準点に設定", for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 17, weight: .bold)
+        button.setTitleColor(.black, for: .normal)
+        button.backgroundColor = UIColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 1.0)
+        button.layer.cornerRadius = 26
+        button.contentEdgeInsets = UIEdgeInsets(top: 14, left: 32, bottom: 14, right: 32)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(context.coordinator,
+                         action: #selector(CalibrationCoordinator.confirmTapped(_:)),
+                         for: .touchUpInside)
+        container.addSubview(button)
+
+        // Back button (top-left)
+        let backButton = UIButton(type: .system)
+        backButton.setTitle("← 戻る", for: .normal)
+        backButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        backButton.setTitleColor(.white, for: .normal)
+        backButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        backButton.layer.cornerRadius = 16
+        backButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        backButton.translatesAutoresizingMaskIntoConstraints = false
+        backButton.addTarget(context.coordinator,
+                             action: #selector(CalibrationCoordinator.backTapped(_:)),
+                             for: .touchUpInside)
+        container.addSubview(backButton)
+
+        // Layout
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            label.bottomAnchor.constraint(equalTo: button.topAnchor, constant: -20),
+
+            button.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            button.bottomAnchor.constraint(equalTo: container.safeAreaLayoutGuide.bottomAnchor, constant: -36),
+
+            backButton.topAnchor.constraint(equalTo: container.safeAreaLayoutGuide.topAnchor, constant: 16),
+            backButton.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20)
+        ])
+
+        context.coordinator.onConfirm = { [weak gameManager] transform in
+            DispatchQueue.main.async { gameManager?.setWorldOrigin(transform: transform) }
+        }
+        context.coordinator.onBack = { [weak gameManager] in
+            DispatchQueue.main.async {
+                withAnimation { gameManager?.resetGame() }
+            }
+        }
+
+        return container
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: CalibrationCoordinator) {
+        coordinator.arView?.session.pause()
+    }
+}
+
+final class CalibrationCoordinator: NSObject {
+    weak var arView: ARSCNView?
+    var onConfirm: ((simd_float4x4) -> Void)?
+    var onBack: (() -> Void)?
+
+    @objc func confirmTapped(_ sender: UIButton) {
+        guard let frame = arView?.session.currentFrame else { return }
+        onConfirm?(frame.camera.transform)
+    }
+
+    @objc func backTapped(_ sender: UIButton) {
+        onBack?()
     }
 }
 

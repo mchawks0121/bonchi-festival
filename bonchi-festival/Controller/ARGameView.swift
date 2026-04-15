@@ -227,7 +227,11 @@ extension ARGameView {
                 -distance * cos(horizontalAngle),
                 1
             )
-            let worldPos = frame.camera.transform * localPos
+            // Use the calibrated world-origin transform when available so that bugs
+            // always spawn centred on the pre-set reference position.  Fall back to
+            // the live camera transform when no calibration has been performed.
+            let baseTransform = gameManager?.worldOriginTransform ?? frame.camera.transform
+            let worldPos = baseTransform * localPos
 
             var anchorTransform = matrix_identity_float4x4
             anchorTransform.columns.3 = worldPos

@@ -26,11 +26,14 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 | 画面 | SwiftUI View | 表示条件 |
 |------|--------------|---------|
 | 待機（モード選択） | `WaitingView` | `gameManager.state == .waiting` |
+| キャリブレーション | `CalibrationView` | `gameManager.state == .calibrating` |
 | ゲーム中（AR） | `ARPlayingView` | `gameManager.state == .playing` かつ非サーバー |
 | ゲーム中（プロジェクターサーバー） | `ProjectorServerView` | `gameManager.state == .playing` かつ `.projectorServer` |
 | ゲーム終了 | `FinishedView` | `gameManager.state == .finished` |
 
 - `WaitingView` には、モード選択カード・接続状態ピル（プロジェクタークライアント時のみ）・「デバッグ開始」ボタン・バグ一覧カード・ミッション説明カードが含まれます。
+- 「バグ狩り開始」ボタンは `startCalibration()` を呼び出す。プロジェクターサーバーモードは `startGame()` に直接フォールスルーする。
+- `CalibrationView` ではライブ AR カメラを全画面表示し、照準レティクルと「この位置を基準点に設定」ボタンを表示する。ボタンを押すと現在のカメラ位置を `worldOriginTransform` に記録し、ゲームを開始する。「←戻る」ボタンで待機画面に戻れる。
 - `FinishedView` では最終スコアを大きく表示し、「再デバッグ」ボタンで待機画面に戻れます。
 - 背景はネイビー→黒のリニアグラデーション（デジタル腐敗テーマ）で統一。
 
@@ -255,6 +258,13 @@ SKView (透過オーバーレイ) → ARBugScene
 - `lightingEnvironment.intensity = 1.5` で IBL 強度を調整し PBR 素材を正確に表現。
 - `cachedViewHeight` パターンでレンダースレッドからの UIKit アクセスを回避。
 - 捕獲半径: `ARBugScene.catchRadius = 150 pt`（画面中央からの距離）。
+
+### スポーン基点（キャリブレーション）
+
+- バグのスポーン中心は `GameManager.worldOriginTransform`（`simd_float4x4?`）が決定する。
+- キャリブレーション実施済みの場合: 記録した基準点トランスフォームを基点にスポーン → バグが常に同じ空間エリアに出現する。
+- キャリブレーション未実施（`nil`）の場合: 従来通りライブカメラトランスフォームを基点にスポーン（後方互換）。
+- `resetGame()` を呼ぶと `worldOriginTransform` はクリアされる。
 
 ### USDZ モデルマッピング
 

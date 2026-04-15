@@ -47,13 +47,19 @@ bonchi-festival/
 ├── ContentView.swift
 │     SwiftUI ルートビュー。GameManager を @StateObject で保持。
 │     GameManager.state に応じて以下のビューを切り替え（.animation + .transition(.opacity)）:
-│       .waiting  → WaitingView
-│       .playing  → PlayingView（gameMode が .projectorServer なら ProjectorServerView、それ以外は ARPlayingView）
-│       .finished → FinishedView
+│       .waiting     → WaitingView
+│       .calibrating → CalibrationView（AR カメラ + 照準レティクル + 基準点設定ボタン）
+│       .playing     → PlayingView（gameMode が .projectorServer なら ProjectorServerView、それ以外は ARPlayingView）
+│       .finished    → FinishedView
 │
 │     サブビュー:
-│       WaitingView         — モード選択カード(ModeCard)、接続状態ピル、「デバッグ開始」ボタン、
+│       WaitingView         — モード選択カード(ModeCard)、接続状態ピル、「バグ狩り開始」ボタン、
 │                             バグ一覧カード(BugLegendRow)、ミッション説明。compact/regular レイアウト分岐あり。
+│                             「バグ狩り開始」は startCalibration() を呼ぶ（projectorServer は直接 startGame()）。
+│       CalibrationView     — UIViewRepresentable。ARSCNView フルスクリーン + UIKit オーバーレイ。
+│                             中央に照準レティクル (CAShapeLayer)、説明ラベル、確定ボタン、戻るボタン。
+│                             CalibrationCoordinator: confirmTapped → gameManager.setWorldOrigin(transform:)
+│                                                      backTapped   → gameManager.resetGame()
 │       ARPlayingView       — ARGameView（フルスクリーン） + HUD（スコア・タイマー・タイマーバー） + SlingshotView
 │       ProjectorServerView — WorldViewControllerWrapper（UIViewControllerRepresentable）+ 戻るボタン
 │       FinishedView        — 最終スコア表示・「再デバッグ」ボタン
@@ -66,11 +72,14 @@ bonchi-festival/
 │   │     ObservableObject。iOS 側ゲーム全体を管理。
 │   │     @Published: state(GameState), score(Int), timeRemaining(Double),
 │   │                 isConnected(Bool), gameMode(GameMode), arBugScene(ARBugScene?)
-│   │     GameState 列挙: .waiting / .playing / .finished
+│   │     var worldOriginTransform: simd_float4x4? — キャリブレーション時に記録するスポーン基点
+│   │     GameState 列挙: .waiting / .calibrating / .playing / .finished
 │   │     GameMode 列挙: .standalone / .projectorClient / .projectorServer
-│   │     selectMode(_:) — モード切替。projectorClient 選択時に MultipeerSession.start()
-│   │     startGame()    — score=0 reset、ARBugScene 生成（非 projectorServer のみ）、projectorClient は startGame 送信
-│   │     resetGame()    — 全状態リセット、projectorClient は resetGame 送信
+│   │     selectMode(_:)        — モード切替。projectorClient 選択時に MultipeerSession.start()
+│   │     startCalibration()    — .calibrating 状態へ遷移（projectorServer は直接 startGame()）
+│   │     setWorldOrigin(transform:) — worldOriginTransform を記録して startGame() を呼ぶ
+│   │     startGame()           — score=0 reset、ARBugScene 生成（非 projectorServer のみ）、projectorClient は startGame 送信
+│   │     resetGame()           — 全状態リセット（worldOriginTransform も nil に）、projectorClient は resetGame 送信
 │   │     sendLaunch(angle:power:) — ARBugScene.fireNet() + projectorClient は launch 送信
 │   │     BugHunterSceneDelegate: didUpdateScore/sceneDidFinish — standalone のみスコアを自 state に反映
 │   │     MultipeerSessionDelegate: bugCaptured 受信 → score += bugType.points
@@ -92,6 +101,8 @@ bonchi-festival/
 │   │     内部 Coordinator クラス (ARSCNViewDelegate):
 │   │       startSpawning() / stopSpawning() — standalone + projectorClient でバグをスポーン（projectorServer のみ除外）
 │   │       spawnBug() — カメラ前方 0.5〜1.4m, 水平 ±37°, 垂直オフセット -0.3〜0.45m に ARAnchor 配置
+│   │         スポーン基点: gameManager.worldOriginTransform が非 nil ならそれを使用（固定エリア中心）、
+│   │                       nil の場合は frame.camera.transform にフォールバック（後方互換）
 │   │       randomBugType() — butterfly 60% / beetle 30% / stag 10%
 │   │       renderer(_:nodeFor:) — ARAnchor → Bug3DNode (SCNNode) + 不可視プロキシ SKNode を生成
 │   │       renderer(_:updateAtTime:) — 毎フレーム 3D→2D 変換でプロキシ位置同期、距離ベーススケール
