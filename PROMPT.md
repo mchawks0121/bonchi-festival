@@ -91,13 +91,14 @@ bonchi-festival/
 │   │       SKView (前面, 透過) — ARBugScene を presentScene する。allowsTransparency = true。
 │   │     内部 Coordinator クラス (ARSCNViewDelegate):
 │   │       startSpawning() / stopSpawning() — standalone + projectorClient でバグをスポーン（projectorServer のみ除外）
-│   │       spawnBug() — カメラ前方 1.2〜2.8m, 水平 ±37°, 垂直オフセット -0.3〜0.45m に ARAnchor 配置
+│   │       spawnBug() — カメラ前方 0.5〜1.4m, 水平 ±37°, 垂直オフセット -0.3〜0.45m に ARAnchor 配置
 │   │       randomBugType() — butterfly 60% / beetle 30% / stag 10%
 │   │       renderer(_:nodeFor:) — ARAnchor → Bug3DNode (SCNNode) + 不可視プロキシ SKNode を生成
 │   │       renderer(_:updateAtTime:) — 毎フレーム 3D→2D 変換でプロキシ位置同期、距離ベーススケール
-│   │         scale = clamp(referenceDistance(2.0) / distance, 0.3, 3.0)
+│   │         scale = clamp(referenceDistance(3.0) / distance, 0.3, 5.0)
 │   │         cachedViewHeight で UIKit アクセスをメインスレッドに限定
 │   │       handleCapture(of:) — capture 時に Bug3DNode.captured() + ARAnchor 削除
+│   │     antialiasingMode = .multisampling4X、lightingEnvironment.intensity = 1.5 (PBR 品質向上)
 │   │     难易度カーブ: nextDelay = max(0.6, 1.8 - spawnElapsed / 75.0)
 │   │
 │   ├── ARBugScene.swift
@@ -114,29 +115,38 @@ bonchi-festival/
 │   │       各バーは独立したランダムフリッカーアクション
 │   │
 │   ├── Bug3DNode.swift
-│   │     SCNNode サブクラス。手続き的 PBR ジオメトリで各バグを表現。
+│   │     SCNNode サブクラス。USDZ モデル優先（Apple AR Quick Look ギャラリーのファイルを使用）。
+│   │     USDZ が見つからない場合は手続き的 PBR ジオメトリにフォールバック。
+│   │     モデルマッピング（USDZ ファイルを Xcode プロジェクトに追加して使用）:
+│   │       butterfly → toy_biplane.usdz  (scale: 0.005)
+│   │       beetle    → gramophone.usdz   (scale: 0.004)
+│   │       stag      → toy_drummer.usdz  (scale: 0.004)
+│   │     preloadAssets(): ゲーム起動直後にバックグラウンドで全 USDZ を非同期プリロード。
+│   │       NSLock + loadingInProgress セットで重複 I/O 防止。スポーン時はキャッシュからクローン。
+│   │     usdzScale(for:): 網羅的 switch でバグタイプ別スケール定数を返す（コンパイル時漏れ検知）。
 │   │     butterfly (🐞):
-│   │       abdomen: SCNCapsule(capRadius:0.009, height:0.048)、茶色 PBR
+│   │       abdomen: SCNCapsule(capRadius:0.009, height:0.048)、茶色 PBR + シアンブルーエミッシブ
 │   │       upper wings: SCNPlane(0.095×0.070)、monarch オレンジ、半透明、isDoubleSided
 │   │       lower wings: SCNPlane(0.065×0.052)、暗いオレンジ
 │   │       antennae: SCNCylinder + SCNSphere ball tip
 │   │       アニメ: 翼ピボットノード (uwR/uwL/lwR/lwL) の Z 回転フラッピング + 体 Y ドリフト
 │   │     beetle (🦠):
-│   │       body: SCNSphere(r=0.040) × scale(1.05, 0.68, 1.22)、赤光沢 PBR (roughness:0.14, metalness:0.62)
+│   │       body: SCNSphere(r=0.040) × scale(1.05, 0.68, 1.22)、赤光沢 PBR + 毒グリーンエミッシブ
 │   │       suture: SCNCylinder(r=0.0028)、暗赤黒
 │   │       thorax + head: addSphere ヘルパー
 │   │       compound eyes: 球 × 2
 │   │       legs: 3ペア × 2段セグメント (addLeg ヘルパー)
 │   │       アニメ: Y 回転 (5.5s) + Z ロック (0.38s サイクル)
 │   │     stag (👾):
-│   │       body: SCNCapsule(capRadius:0.028, height:0.068)、暗金属 PBR (roughness:0.20, metalness:0.65)
+│   │       body: SCNCapsule(capRadius:0.028, height:0.068)、暗金属 PBR + 赤オレンジエミッシブ
 │   │       thorax + head + eyes: addSphere
 │   │       mandibles: SCNCapsule × 2 + 内側 SCNCone tooth
 │   │       legs: 3ペア × addLeg
 │   │       elbowed antennae: SCNCylinder + SCNSphere tip
 │   │       アニメ: Y 回転 (7.5s) + X 軸頷き (1.4s サイクル)
-│   │     全共通: フェードイン (0.45s) + ホバー (±1.8cm, 0.65〜0.85s サイクル)
-│   │     captured(): removeAllActions() + SCNAction.fadeOut(0.05s) → removeFromParentNode
+│   │     全共通: フェードイン (0.25s) + ホバー (±1.8cm, 0.65〜0.85s サイクル)
+│   │             + 二次水平ドリフト（+X→-Z→-X→+Z スクエア軌道、±0.03m, 5s サイクル）
+│   │     captured(): removeAllActions() + 3 回グリッチ点滅 → SCNAction.fadeOut(easeIn, 0.18s) → removeFromParentNode
 │   │
 │   ├── SlingshotView.swift
 │   │     SwiftUI フルスクリーンオーバーレイ。DragGesture で操作を検出。
@@ -178,6 +188,7 @@ bonchi-festival/
 └── World/
     ├── WorldViewController.swift
     │     UIViewController。SCNView + SKView + ConnectedPlayersView の配置・管理。
+    │     viewDidLoad で Bug3DNode.preloadAssets() を呼び出し USDZ を非同期プリロード（iOS AR パスと同様）。
     │     viewDidLayoutSubviews で初回レイアウト後に startGame() を直接呼び出す（3D を即時表示）。
     │     presentWaitingScene(): bug3DCoordinator?.stopSpawning() のみ（coordinator は nil にしない）。
     │       WaitingScene(isProjectorOverlay=true) を透過背景オーバーレイとして提示 → SceneKit 3D 環境が常に見える。

@@ -151,9 +151,11 @@ bonchi-festival/
 │   ├── ARBugScene.swift       … SpriteKit 透過シーン。照準クロスヘア・ロックオンリング・捕獲アニメ
 │   │                             distortionLayer（グリッチバー × 12本）: バグ数に応じて強度が上昇
 │   │                             fireNet(angle:power:) で 2段階当たり判定（ロックオン優先 → 弾道判定）
-│   ├── Bug3DNode.swift        … SCNNode サブクラス。手続き的 PBR ジオメトリ
+│   ├── Bug3DNode.swift        … SCNNode サブクラス。USDZ モデル優先（toy_biplane/gramophone/toy_drummer）
+│   │                             USDZ 不在時は手続き的 PBR ジオメトリにフォールバック
 │   │                             butterfly: 4枚翅・触角 / beetle: 光沢甲殻・6脚 / stag: 大顎・6脚
-│   │                             各バグ固有アニメ（羽ばたき/回転/頷き）＋共通ホバー
+│   │                             各バグ固有アニメ（羽ばたき/回転/頷き）＋共通ホバー＋二次水平ドリフト
+│   │                             preloadAssets(): ゲーム開始前に全 USDZ を非同期プリロード（NSLock キャッシュ）
 │   ├── SlingshotView.swift    … SwiftUI スリングショット UI（フルスクリーンオーバーレイ）
 │   │                             任意方向スワイプ → angle(rad) / power(0–1) に変換
 │   │                             SlingshotForkShape（Y 字）・ゴム紐・net 飛翔アニメ・PowerIndicatorView
@@ -171,6 +173,7 @@ bonchi-festival/
     │                                 SCNView (背面、常時アクティブ) + SKView 透過オーバーレイ (前面)
     │                                 + ConnectedPlayersView (右下固定)
     │                                 ProjectorBug3DCoordinator を内部クラスとして定義・管理
+    │                                 viewDidLoad で Bug3DNode.preloadAssets() を呼び出し USDZ を非同期プリロード
     │                                 初回レイアウト時に startGame() を直接呼び出す（3D 即時表示）
     │                                 presentWaitingScene(): coordinator を nil にせず stopSpawning() のみ。
     │                                   WaitingScene(isProjectorOverlay=true) を透過オーバーレイとして表示
@@ -231,8 +234,9 @@ iOS Controller (×最大3台)               Projector Server
 ```
 ARSCNView (3D バグ)
     └── Bug3DNode (SCNNode)
-          ├── 手続き的 PBR ジオメトリ（butterfly/beetle/stag）
-          └── 各種アニメーション（羽ばたき・回転・ホバー等）
+          ├── USDZ モデル優先（toy_biplane / gramophone / toy_drummer）
+          │     ※ USDZ が見つからない場合は手続き的 PBR ジオメトリにフォールバック
+          └── 各種アニメーション（羽ばたき・回転・ホバー等）＋二次ドリフト（水平スクエア軌道）
 
 SKView (透過オーバーレイ) → ARBugScene
     ├── 照準クロスヘア（画面中央固定）
@@ -245,9 +249,24 @@ SKView (透過オーバーレイ) → ARBugScene
 
 - `ARGameView.Coordinator` が `ARSCNViewDelegate` として毎フレーム `renderer(_:updateAtTime:)` を実行。
 - `arView.projectPoint(SCNVector3)` で 3D → UIKit 座標変換後、Y 軸反転で SpriteKit 座標に変換。
-- 距離ベーススケール: `scale = referenceDistance(2.0m) / actualDistance`（0.3〜3.0 でクランプ）。
+- スポーン距離: カメラ前方 **0.5〜1.4 m**、水平 ±37°、垂直オフセット -0.3〜0.45 m。
+- 距離ベーススケール: `scale = referenceDistance(3.0m) / actualDistance`（0.3〜5.0 でクランプ）。
+- `antialiasingMode = .multisampling4X` でエッジをスムージング。
+- `lightingEnvironment.intensity = 1.5` で IBL 強度を調整し PBR 素材を正確に表現。
 - `cachedViewHeight` パターンでレンダースレッドからの UIKit アクセスを回避。
 - 捕獲半径: `ARBugScene.catchRadius = 150 pt`（画面中央からの距離）。
+
+### USDZ モデルマッピング
+
+Apple AR Quick Look ギャラリー（<https://developer.apple.com/jp/augmented-reality/quick-look/>）から取得したモデルを使用。
+
+| BugType | USDZ ファイル | スケール定数 |
+|---------|-------------|------------|
+| butterfly (Null) | `toy_biplane.usdz` | 0.005 |
+| beetle (Virus) | `gramophone.usdz` | 0.004 |
+| stag (Glitch) | `toy_drummer.usdz` | 0.004 |
+
+USDZ ファイルが存在しない場合は手続き的ジオメトリ（PBR マテリアル）で代替されるため、ファイルがなくてもゲームは動作します。
 
 ---
 

@@ -72,6 +72,11 @@ final class WorldViewController: UIViewController {
             ])
         }
 
+        // Preload USDZ assets so the first Bug3DNode spawn uses the model from cache
+        // rather than falling back to procedural geometry.  Mirrors the preload call in
+        // ARGameView.makeUIView for the iOS AR path.
+        Bug3DNode.preloadAssets()
+
         projectorManager.delegate = self
         projectorManager.start()
 

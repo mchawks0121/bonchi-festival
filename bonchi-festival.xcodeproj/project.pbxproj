@@ -14,6 +14,9 @@
 		A54858852EF2579F00155732 /* bonchi_festivalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54858842EF2579F00155732 /* bonchi_festivalTests.swift */; };
 		A548588F2EF2579F00155732 /* bonchi_festivalUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A548588E2EF2579F00155732 /* bonchi_festivalUITests.swift */; };
 		A54858912EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54858902EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift */; };
+		A58F1D5B2F8FB7B70078A521 /* toy_drummer.usdz in Resources */ = {isa = PBXBuildFile; fileRef = A58F1D582F8FB7B70078A521 /* toy_drummer.usdz */; };
+		A58F1D5C2F8FB7B70078A521 /* gramophone.usdz in Resources */ = {isa = PBXBuildFile; fileRef = A58F1D592F8FB7B70078A521 /* gramophone.usdz */; };
+		A58F1D5D2F8FB7B70078A521 /* toy_biplane.usdz in Resources */ = {isa = PBXBuildFile; fileRef = A58F1D5A2F8FB7B70078A521 /* toy_biplane.usdz */; };
 		BB100002DEADBEEF00100001 /* GameProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100001DEADBEEF00100001 /* GameProtocol.swift */; };
 		BB100004DEADBEEF00100001 /* MultipeerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100003DEADBEEF00100001 /* MultipeerSession.swift */; };
 		BB100006DEADBEEF00100001 /* GameManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100005DEADBEEF00100001 /* GameManager.swift */; };
@@ -58,6 +61,12 @@
 		A548588A2EF2579F00155732 /* bonchi-festivalUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "bonchi-festivalUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A548588E2EF2579F00155732 /* bonchi_festivalUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = bonchi_festivalUITests.swift; sourceTree = "<group>"; };
 		A54858902EF2579F00155732 /* bonchi_festivalUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = bonchi_festivalUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		A58F1D522F8FB4FB0078A521 /* toy_drummer.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = toy_drummer.usdz; sourceTree = "<group>"; };
+		A58F1D532F8FB4FD0078A521 /* gramophone.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = gramophone.usdz; sourceTree = "<group>"; };
+		A58F1D542F8FB5000078A521 /* toy_biplane.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = toy_biplane.usdz; sourceTree = "<group>"; };
+		A58F1D582F8FB7B70078A521 /* toy_drummer.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; name = toy_drummer.usdz; path = ../../../Downloads/toy_drummer.usdz; sourceTree = "<group>"; };
+		A58F1D592F8FB7B70078A521 /* gramophone.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; name = gramophone.usdz; path = ../../../Downloads/gramophone.usdz; sourceTree = "<group>"; };
+		A58F1D5A2F8FB7B70078A521 /* toy_biplane.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; name = toy_biplane.usdz; path = ../../../Downloads/toy_biplane.usdz; sourceTree = "<group>"; };
 		BB100001DEADBEEF00100001 /* GameProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProtocol.swift; sourceTree = "<group>"; };
 		BB100003DEADBEEF00100001 /* MultipeerSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultipeerSession.swift; sourceTree = "<group>"; };
 		BB100005DEADBEEF00100001 /* GameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameManager.swift; sourceTree = "<group>"; };
@@ -123,9 +132,15 @@
 		A54858722EF2579B00155732 /* bonchi-festival */ = {
 			isa = PBXGroup;
 			children = (
+				A58F1D592F8FB7B70078A521 /* gramophone.usdz */,
+				A58F1D5A2F8FB7B70078A521 /* toy_biplane.usdz */,
+				A58F1D582F8FB7B70078A521 /* toy_drummer.usdz */,
 				A54858732EF2579B00155732 /* AppDelegate.swift */,
 				BB200001DEADBEEF00200001 /* Info.plist */,
 				A54858752EF2579B00155732 /* ContentView.swift */,
+				A58F1D542F8FB5000078A521 /* toy_biplane.usdz */,
+				A58F1D532F8FB4FD0078A521 /* gramophone.usdz */,
+				A58F1D522F8FB4FB0078A521 /* toy_drummer.usdz */,
 				A54858772EF2579F00155732 /* Assets.xcassets */,
 				A54858792EF2579F00155732 /* Preview Content */,
 				BB100020DEADBEEF00100001 /* Shared */,
@@ -300,7 +315,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				A548587B2EF2579F00155732 /* Preview Assets.xcassets in Resources */,
+				A58F1D5D2F8FB7B70078A521 /* toy_biplane.usdz in Resources */,
 				A54858782EF2579F00155732 /* Assets.xcassets in Resources */,
+				A58F1D5B2F8FB7B70078A521 /* toy_drummer.usdz in Resources */,
+				A58F1D5C2F8FB7B70078A521 /* gramophone.usdz in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
