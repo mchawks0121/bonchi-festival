@@ -132,9 +132,9 @@ final class Bug3DNode: SCNNode {
     /// Returns `false` when the cache is empty (preload still in progress or asset
     /// not available); the caller then builds procedural geometry as a fallback.
     private func loadUSDZModel() -> Bool {
-        cacheLock.lock()
+        Bug3DNode.cacheLock.lock()
         let cached = Bug3DNode.sceneCache[bugType.rawValue]
-        cacheLock.unlock()
+        Bug3DNode.cacheLock.unlock()
 
         guard let cachedScene = cached else { return false }
 
