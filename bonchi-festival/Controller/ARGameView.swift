@@ -506,8 +506,20 @@ extension ARGameView {
         /// indicated by the player's drag gesture.  Called on the main thread via
         /// the `onNetFired` callback wired during `startSpawning()`.
         func launchNet3D(dragOffset: CGSize, power: Float) {
-            guard let arView = arView,
-                  let cameraT = arView.session.currentFrame?.camera.transform else { return }
+            guard let arView = arView else { return }
+
+            // Prefer the ARKit camera transform for accuracy; fall back to the
+            // SceneKit pointOfView transform (always available even before the AR
+            // session delivers its first frame — e.g. on the very first shot after
+            // the CalibrationView restarts the AR session).
+            let cameraT: simd_float4x4
+            if let frame = arView.session.currentFrame {
+                cameraT = frame.camera.transform
+            } else if let pov = arView.pointOfView {
+                cameraT = pov.simdWorldTransform
+            } else {
+                return
+            }
 
             // Camera basis vectors in world space.
             let fwd   = simd_float3(-cameraT.columns.2.x, -cameraT.columns.2.y, -cameraT.columns.2.z)

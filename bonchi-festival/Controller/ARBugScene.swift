@@ -44,6 +44,10 @@ final class ARBugScene: SKScene {
     private var lastUpdate: TimeInterval = 0
     private var gameEnded = false
 
+    /// Pending fire queued before the scene was presented to an SKView.
+    /// Replayed in didMove(to:) once crosshair nodes are initialised.
+    private var pendingFire: (angle: Float, power: Float)? = nil
+
     // MARK: Crosshair nodes
 
     private var crosshairRing: SKShapeNode!
@@ -69,6 +73,12 @@ final class ARBugScene: SKScene {
         physicsWorld.gravity = .zero
         setupDistortionLayer()
         setupCrosshair()
+
+        // Replay any fire that was queued before the scene was presented.
+        if let pending = pendingFire {
+            pendingFire = nil
+            fireNet(angle: pending.angle, power: pending.power)
+        }
     }
 
     // MARK: - Update loop
@@ -99,6 +109,17 @@ final class ARBugScene: SKScene {
     /// Called by GameManager when the player releases the slingshot.
     func fireNet(angle: Float, power: Float) {
         guard !gameEnded else { return }
+
+        // If the scene has not yet been presented to an SKView (e.g. the player
+        // fired immediately after confirmReady() but before updateUIView had a
+        // chance to call presentScene), queue the shot.  It will be replayed in
+        // didMove(to:) once the scene is running and crosshair nodes are ready.
+        guard view != nil else {
+            SoundManager.shared.playThrow()
+            pendingFire = (angle, power)
+            return
+        }
+
         SoundManager.shared.playThrow()
 
         let center      = CGPoint(x: size.width / 2, y: size.height / 2)
