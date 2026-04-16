@@ -115,7 +115,7 @@ final class GameManager: ObservableObject {
         startGame()
     }
 
-    /// Start a new 90-second game round on-device (and signal the projector if connected).
+    /// Start a new 90-second game round on-device (and signal any connected projector).
     func startGame() {
         score = 0
         timeRemaining = 90.0
@@ -131,7 +131,8 @@ final class GameManager: ObservableObject {
         scene.gameDelegate = self
         arBugScene = scene
 
-        if gameMode == .projectorClient { multipeerSession.send(.startGame()) }
+        // Signal any connected projector (no-op when no peers are connected).
+        multipeerSession.send(.startGame())
     }
 
     /// Reset everything back to the waiting screen.
@@ -143,39 +144,36 @@ final class GameManager: ObservableObject {
         state = .waiting
         slingshotDragUpdate = nil
         onNetFired = nil
-        if gameMode == .projectorClient { multipeerSession.send(.resetGame()) }
+        // Signal any connected projector (no-op when no peers are connected).
+        multipeerSession.send(.resetGame())
     }
 
-    /// Fire the slingshot: launch on the local AR scene and forward to the projector.
+    /// Fire the slingshot: launch on the local AR scene and forward to any connected projector.
     func sendLaunch(angle: Float, power: Float) {
-        // Fire locally on the on-device AR scene
+        // Fire locally on the on-device AR scene.
         arBugScene?.fireNet(angle: angle, power: power)
 
-        // Also forward to the projector when in client mode
-        if gameMode == .projectorClient {
-            let payload = LaunchPayload(
-                angle: angle,
-                power: power,
-                timestamp: Date().timeIntervalSince1970
-            )
-            multipeerSession.send(.launch(payload))
-        }
+        // Forward to any connected projector (no-op when no peers are connected).
+        let payload = LaunchPayload(
+            angle: angle,
+            power: power,
+            timestamp: Date().timeIntervalSince1970
+        )
+        multipeerSession.send(.launch(payload))
     }
 
-    /// Notify the projector that a bug has appeared in the shared AR world.
+    /// Notify any connected projector that a bug has appeared in the shared AR world.
     /// The projector will mirror the bug at the corresponding screen position.
-    /// Only sent in projectorClient mode.
+    /// No-op when no peers are connected (e.g. in standalone mode).
     func sendBugSpawned(id: String, type: BugType, normalizedX: Float, normalizedY: Float) {
-        guard gameMode == .projectorClient else { return }
         let payload = BugSpawnedPayload(id: id, bugType: type,
                                         normalizedX: normalizedX, normalizedY: normalizedY)
         multipeerSession.send(.bugSpawned(payload))
     }
 
-    /// Notify the projector that the phone's AR layer captured a bug (remove it from display).
-    /// Only sent in projectorClient mode.
+    /// Notify any connected projector that the phone's AR layer captured a bug.
+    /// No-op when no peers are connected (e.g. in standalone mode).
     func sendBugRemoved(id: String) {
-        guard gameMode == .projectorClient else { return }
         let payload = BugRemovedPayload(id: id)
         multipeerSession.send(.bugRemoved(payload))
     }

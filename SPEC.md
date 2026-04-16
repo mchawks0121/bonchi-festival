@@ -229,8 +229,8 @@ iOS Controller (×最大3台)               Projector Server
 | `launch` | iOS → Projector | `LaunchPayload(angle, power, timestamp)` | スリングショット発射（視覚同期） |
 | `startGame` | iOS → Projector | なし | ゲーム開始 |
 | `resetGame` | iOS → Projector | なし | バグをクリア |
-| `bugSpawned` | iOS → Projector | `BugSpawnedPayload(id, bugType, normalizedX, normalizedY)` | バグ出現通知 |
-| `bugRemoved` | iOS → Projector | `BugRemovedPayload(id)` | バグ捕獲通知（削除） |
+| `bugSpawned` | iOS → Projector | `BugSpawnedPayload(id, bugType, normalizedX, normalizedY)` | バグ出現通知（全モードで送信、接続なし時は no-op） |
+| `bugRemoved` | iOS → Projector | `BugRemovedPayload(id)` | バグ捕獲通知（全モードで送信、接続なし時は no-op） |
 | `bugCaptured` | Projector → iOS | `BugCapturedPayload(bugType, playerIndex)` | 旧スコア通知（後方互換のため残存。現在は未使用） |
 
 ### スコア設計
@@ -238,6 +238,12 @@ iOS Controller (×最大3台)               Projector Server
 - **スコア計算はスマホ（iOS）側のみ。**
 - スタンドアロン・プロジェクタークライアント共に、`ARBugScene` での捕獲時に `BugHunterSceneDelegate` を通じて直接スコアが更新されます。
 - プロジェクター側はスコアを保持・表示しません。
+
+### スポーンシステムの統一
+
+- **スタンドアロンとプロジェクタークライアントの出現システムは完全共通です。**
+- `sendBugSpawned`・`sendBugRemoved`・`sendLaunch`・`startGame`・`resetGame` の Multipeer 送信はすべてモード判定なしで呼ばれます。
+- スタンドアロンモード（接続ピアなし）では送信が no-op になるだけで、コードパスは同一です。
 
 ### プロジェクター表示設計
 

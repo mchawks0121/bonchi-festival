@@ -82,11 +82,12 @@ bonchi-festival/
 │   │     startCalibration()    — .calibrating 状態へ遷移（projectorServer は直接 startGame()）
 │   │     setWorldOrigin(transform:) — worldOriginTransform を記録して state = .ready に遷移
 │   │     confirmReady()        — .ready → startGame() へ遷移（最初のスリングショット発射時に呼ばれる）
-│   │     startGame()           — score=0 reset、ARBugScene 生成（非 projectorServer のみ）、projectorClient は startGame 送信
-│   │     resetGame()           — 全状態リセット（worldOriginTransform も nil に）、projectorClient は resetGame 送信
-│   │     sendLaunch(angle:power:) — ARBugScene.fireNet() + projectorClient は launch 送信
-│   │     sendBugSpawned(id:type:normalizedX:normalizedY:) — projectorClient 時のみ bugSpawned 送信
-│   │     sendBugRemoved(id:) — projectorClient 時のみ bugRemoved 送信
+│   │     startGame()           — score=0 reset、ARBugScene 生成（非 projectorServer のみ）、multipeerSession.send(.startGame())（接続なし時 no-op）
+│   │     resetGame()           — 全状態リセット（worldOriginTransform も nil に）、multipeerSession.send(.resetGame())（接続なし時 no-op）
+│   │     sendLaunch(angle:power:) — ARBugScene.fireNet() + multipeerSession.send(.launch())（接続なし時 no-op）
+│   │     sendBugSpawned(id:type:normalizedX:normalizedY:) — multipeerSession.send(.bugSpawned())（接続なし時 no-op、モード判定なし）
+│   │     sendBugRemoved(id:) — multipeerSession.send(.bugRemoved())（接続なし時 no-op、モード判定なし）
+│   │     ※ スタンドアロンとプロジェクタークライアントのスポーンシステムは完全共通（モード分岐なし）
 │   │     slingshotDragUpdate: ((CGSize, Bool) -> Void)? — ARGameView.Coordinator がセット。SlingshotView がドラッグ毎に呼ぶ
 │   │     onNetFired: ((CGSize, Float) -> Void)? — ARGameView.Coordinator がセット。SlingshotView が発射時に呼ぶ
 │   │     resetGame() で slingshotDragUpdate / onNetFired を nil にクリア
