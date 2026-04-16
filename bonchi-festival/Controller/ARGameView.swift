@@ -132,6 +132,12 @@ extension ARGameView {
 
         // MARK: Anchor bookkeeping
 
+        /// Protects all four anchor maps below.
+        /// Accessed from both the main thread (spawning / capture) and the
+        /// SceneKit rendering thread (ARSCNViewDelegate callbacks), so every
+        /// read and write must be performed under this lock.
+        private let mapLock = NSLock()
+
         /// Maps anchor UUID → BugType
         private var bugAnchorMap: [UUID: BugType] = [:]
         /// Maps proxy SKNode identity → ARAnchor (for capture removal)
@@ -199,10 +205,12 @@ extension ARGameView {
             isSpawning    = true
             spawnElapsed  = 0
             lastSpawnTime = Date()
+            mapLock.lock()
             bugAnchorMap.removeAll()
             nodeAnchorMap.removeAll()
             anchorBug3DNodeMap.removeAll()
             anchorProxyNodeMap.removeAll()
+            mapLock.unlock()
 
             // Cache view height on main thread for use during rendering
             if let h = arView?.bounds.height, h > 0 { cachedViewHeight = h }
@@ -252,11 +260,14 @@ extension ARGameView {
             wasSlingshotDragging = false
 
             // Remove all 3-D bug nodes from the SceneKit scene
-            anchorBug3DNodeMap.values.forEach { $0.removeFromParentNode() }
+            mapLock.lock()
+            let nodesToRemove = Array(anchorBug3DNodeMap.values)
             anchorBug3DNodeMap.removeAll()
             anchorProxyNodeMap.removeAll()
             bugAnchorMap.removeAll()
             nodeAnchorMap.removeAll()
+            mapLock.unlock()
+            nodesToRemove.forEach { $0.removeFromParentNode() }
         }
 
         private func scheduleNextSpawn(delay: TimeInterval) {
@@ -277,7 +288,10 @@ extension ARGameView {
             }
 
             // Enforce maximum simultaneous bug count.
-            guard bugAnchorMap.count < Coordinator.maxActiveBugs else {
+            mapLock.lock()
+            let currentBugCount = bugAnchorMap.count
+            mapLock.unlock()
+            guard currentBugCount < Coordinator.maxActiveBugs else {
                 scheduleNextSpawn(delay: 1.0)
                 return
             }
@@ -305,7 +319,9 @@ extension ARGameView {
             anchorTransform.columns.3 = worldPos
 
             let anchor = ARAnchor(name: "bug", transform: anchorTransform)
+            mapLock.lock()
             bugAnchorMap[anchor.identifier] = bugType
+            mapLock.unlock()
             arView.session.add(anchor: anchor)
 
             // Notify the projector so the same bug appears on the shared display.
@@ -340,19 +356,27 @@ extension ARGameView {
         // MARK: - Capture
 
         private func handleCapture(of node: SKNode) {
-            guard let anchor = nodeAnchorMap[ObjectIdentifier(node)] else { return }
+            mapLock.lock()
+            let anchor = nodeAnchorMap[ObjectIdentifier(node)]
+            mapLock.unlock()
+            guard let anchor else { return }
 
-            // Play dismissal animation on the 3-D visual
-            anchorBug3DNodeMap[anchor.identifier]?.captured()
+            // Play dismissal animation on the 3-D visual (no lock needed — read-only SCNNode call)
+            mapLock.lock()
+            let bug3D = anchorBug3DNodeMap[anchor.identifier]
+            mapLock.unlock()
+            bug3D?.captured()
 
             // Notify the projector to remove the matching bug from its display.
             gameManager?.sendBugRemoved(id: anchor.identifier.uuidString)
 
             // Clean up all maps
+            mapLock.lock()
             nodeAnchorMap.removeValue(forKey: ObjectIdentifier(node))
             anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
             anchorProxyNodeMap.removeValue(forKey: anchor.identifier)
             bugAnchorMap.removeValue(forKey: anchor.identifier)
+            mapLock.unlock()
 
             // Remove proxy from the SpriteKit overlay and the AR anchor
             node.removeFromParent()
@@ -364,11 +388,13 @@ extension ARGameView {
         /// Returns a Bug3DNode for each bug anchor; also creates an invisible proxy
         /// SKNode and adds it to the ARBugScene overlay for lock-on / capture detection.
         func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
-            guard let bugType = bugAnchorMap[anchor.identifier] else { return nil }
+            mapLock.lock()
+            let bugType = bugAnchorMap[anchor.identifier]
+            mapLock.unlock()
+            guard let bugType else { return nil }
 
             // 3-D visual node placed at the anchor's world transform
             let bug3D = Bug3DNode(type: bugType)
-            anchorBug3DNodeMap[anchor.identifier] = bug3D
 
             // Proxy SKNode in the SpriteKit overlay — used by ARBugScene for
             // lock-on tracking and proximity-based capture detection.
@@ -380,8 +406,11 @@ extension ARGameView {
             invisibleBug.alpha = 0
             proxy.addChild(invisibleBug)
 
+            mapLock.lock()
+            anchorBug3DNodeMap[anchor.identifier] = bug3D
             anchorProxyNodeMap[anchor.identifier] = proxy
             nodeAnchorMap[ObjectIdentifier(proxy)] = anchor
+            mapLock.unlock()
 
             DispatchQueue.main.async { [weak self] in
                 guard let scene = self?.gameManager?.arBugScene else { return }
@@ -430,9 +459,17 @@ extension ARGameView {
                 cameraPos = nil
             }
 
+            // Take a snapshot of the maps under the lock so the render thread does
+            // not race with main-thread mutations (e.g. capture, stopSpawning).
+            mapLock.lock()
+            let snapshot: [(Bug3DNode, SKNode)] = anchorBug3DNodeMap.compactMap { (id, bug3D) in
+                guard let proxy = anchorProxyNodeMap[id] else { return nil }
+                return (bug3D, proxy)
+            }
+            mapLock.unlock()
+
             var updates: [(SKNode, CGPoint)] = []
-            for (anchorID, bug3D) in anchorBug3DNodeMap {
-                guard let proxy = anchorProxyNodeMap[anchorID] else { continue }
+            for (bug3D, proxy) in snapshot {
 
                 // Distance-based scale: closer → larger.
                 if let cam = cameraPos {
@@ -501,12 +538,16 @@ extension ARGameView {
 
         /// Cleans up proxy when ARKit removes an anchor externally (e.g. session reset).
         func renderer(_ renderer: SCNSceneRenderer, didRemove node: SCNNode, for anchor: ARAnchor) {
-            guard let proxy = anchorProxyNodeMap[anchor.identifier] else { return }
-            DispatchQueue.main.async { proxy.removeFromParent() }
+            mapLock.lock()
+            let proxy = anchorProxyNodeMap[anchor.identifier]
             anchorProxyNodeMap.removeValue(forKey: anchor.identifier)
             anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
-            nodeAnchorMap.removeValue(forKey: ObjectIdentifier(proxy))
+            if let proxy { nodeAnchorMap.removeValue(forKey: ObjectIdentifier(proxy)) }
             bugAnchorMap.removeValue(forKey: anchor.identifier)
+            mapLock.unlock()
+            if let proxy {
+                DispatchQueue.main.async { proxy.removeFromParent() }
+            }
         }
     }
 }
