@@ -23,7 +23,7 @@ final class Net3DNode: SCNNode {
         setupMesh(playerIndex: playerIndex)
     }
 
-    required init?(coder: NSCoder) { fatalError("Net3DNode does not support NSCoding") }
+    required init?(coder: NSCoder) { fatalError("init(coder:) not implemented for Net3DNode") }
 
     // MARK: - Setup
 

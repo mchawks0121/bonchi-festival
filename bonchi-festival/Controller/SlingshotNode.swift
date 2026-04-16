@@ -76,7 +76,7 @@ final class SlingshotNode: SCNNode {
         updateBands()
     }
 
-    required init?(coder: NSCoder) { fatalError("SlingshotNode does not support NSCoding") }
+    required init?(coder: NSCoder) { fatalError("init(coder:) not implemented for SlingshotNode") }
 
     // MARK: - Public API
 

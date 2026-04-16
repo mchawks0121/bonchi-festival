@@ -162,8 +162,8 @@ final class NetProjectile: SKNode {
         ]))
 
         // Multi-rotation spin: 0.75–2.5 full turns so the net clearly spins in flight
-        let minRotations: CGFloat = 1.5
-        let maxAdditionalRotations: CGFloat = 2
+        let minRotations: CGFloat = 1.5          // minimum 0.75 full turns (1.5 × π)
+        let maxAdditionalRotations: CGFloat = 2  // up to 2 additional turns at full power
         let rotations = .pi * minRotations + CGFloat(power) * .pi * maxAdditionalRotations
         let spin = SKAction.rotate(byAngle: rotations, duration: travelTime)
         spin.timingMode = .easeOut
