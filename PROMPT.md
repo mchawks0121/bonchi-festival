@@ -134,6 +134,9 @@ bonchi-festival/
 │   │
 │   ├── ARBugScene.swift
 │   │     SKScene (backgroundColor = .clear)。照準・ロックオン・捕獲の全 UI を担当。
+│   │     BugHunterSceneDelegate プロトコルをこのファイルで定義:
+│   │       func scene(_:didUpdateScore:timeRemaining:) — 毎フレームスコア/残り時間を通知
+│   │       func sceneDidFinish(_:finalScore:) — タイムアップ時に最終スコアを通知
 │   │     public API:
 │   │       fireNet(angle:power:) — 2段階当たり判定:
 │   │         1. ロックオン (catchRadius=150pt 以内の最近傍 bugContainer)
