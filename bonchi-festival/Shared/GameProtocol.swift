@@ -100,9 +100,9 @@ struct BugSpawnedPayload: Codable {
     /// Stable identifier (anchor UUID string) used to track the bug on both devices.
     let id: String
     let bugType: BugType
-    /// Horizontal position hint normalised to –1…1 (left → right relative to spawn origin).
+    /// Horizontal position hint normalized to –1…1 (left → right relative to spawn origin).
     let normalizedX: Float
-    /// Vertical position hint normalised to 0…1 (bottom → top relative to spawn origin).
+    /// Vertical position hint normalized to 0…1 (bottom → top relative to spawn origin).
     let normalizedY: Float
 }
 
