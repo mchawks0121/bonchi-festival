@@ -31,6 +31,8 @@
 		BB100017DEADBEEF00100001 /* ARBugScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100018DEADBEEF00100001 /* ARBugScene.swift */; };
 		BB100023DEADBEEF00100001 /* Bug3DNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100019DEADBEEF00100001 /* Bug3DNode.swift */; };
 		BB100024DEADBEEF00100001 /* SoundManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100025DEADBEEF00100001 /* SoundManager.swift */; };
+		BB100026DEADBEEF00100001 /* SlingshotNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100027DEADBEEF00100001 /* SlingshotNode.swift */; };
+		BB100028DEADBEEF00100001 /* Net3DNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB100029DEADBEEF00100001 /* Net3DNode.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,6 +83,8 @@
 		BB100018DEADBEEF00100001 /* ARBugScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARBugScene.swift; sourceTree = "<group>"; };
 		BB100019DEADBEEF00100001 /* Bug3DNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bug3DNode.swift; sourceTree = "<group>"; };
 		BB100025DEADBEEF00100001 /* SoundManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundManager.swift; sourceTree = "<group>"; };
+		BB100027DEADBEEF00100001 /* SlingshotNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlingshotNode.swift; sourceTree = "<group>"; };
+		BB100029DEADBEEF00100001 /* Net3DNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Net3DNode.swift; sourceTree = "<group>"; };
 		BB200001DEADBEEF00200001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -193,6 +197,8 @@
 				BB100018DEADBEEF00100001 /* ARBugScene.swift */,
 				BB100019DEADBEEF00100001 /* Bug3DNode.swift */,
 				BB100025DEADBEEF00100001 /* SoundManager.swift */,
+				BB100027DEADBEEF00100001 /* SlingshotNode.swift */,
+				BB100029DEADBEEF00100001 /* Net3DNode.swift */,
 			);
 			path = Controller;
 			sourceTree = "<group>";
@@ -353,6 +359,8 @@
 				BB100017DEADBEEF00100001 /* ARBugScene.swift in Sources */,
 				BB100023DEADBEEF00100001 /* Bug3DNode.swift in Sources */,
 				BB100024DEADBEEF00100001 /* SoundManager.swift in Sources */,
+				BB100026DEADBEEF00100001 /* SlingshotNode.swift in Sources */,
+				BB100028DEADBEEF00100001 /* Net3DNode.swift in Sources */,
 				BB10000ADEADBEEF00100001 /* WorldViewController.swift in Sources */,
 				BB10000CDEADBEEF00100001 /* BugHunterScene.swift in Sources */,
 				BB10000EDEADBEEF00100001 /* BugSpawner.swift in Sources */,

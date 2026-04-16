@@ -161,6 +161,7 @@ bonchi-festival/
 │   ├── ARBugScene.swift       … SpriteKit 透過シーン。照準クロスヘア・ロックオンリング・捕獲アニメ
 │   │                             distortionLayer（グリッチバー × 12本）: バグ数に応じて強度が上昇
 │   │                             fireNet(angle:power:) で 2段階当たり判定（ロックオン優先 → 弾道判定）
+│   │                             BugHunterSceneDelegate プロトコルを定義（didUpdateScore/sceneDidFinish）
 │   ├── Bug3DNode.swift        … SCNNode サブクラス。USDZ モデル優先（toy_biplane/gramophone/toy_drummer）
 │   │                             USDZ 不在時は手続き的 PBR ジオメトリにフォールバック
 │   │                             butterfly: 4枚翅・触角 / beetle: 光沢甲殻・6脚 / stag: 大顎・6脚
