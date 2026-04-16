@@ -27,13 +27,15 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 |------|--------------|---------|
 | 待機（モード選択） | `WaitingView` | `gameManager.state == .waiting` |
 | キャリブレーション | `CalibrationView` | `gameManager.state == .calibrating` |
-| ゲーム中（AR） | `ARPlayingView` | `gameManager.state == .playing` かつ非サーバー |
+| 開始準備 | `ARPlayingView`（`ReadyOverlay` 表示） | `gameManager.state == .ready` かつ非サーバー |
+| ゲーム中（AR） | `ARPlayingView`（HUD 表示） | `gameManager.state == .playing` かつ非サーバー |
 | ゲーム中（プロジェクターサーバー） | `ProjectorServerView` | `gameManager.state == .playing` かつ `.projectorServer` |
 | ゲーム終了 | `FinishedView` | `gameManager.state == .finished` |
 
-- `WaitingView` には、モード選択カード・接続状態ピル（プロジェクタークライアント時のみ）・「デバッグ開始」ボタン・バグ一覧カード・ミッション説明カードが含まれます。
-- 「バグ狩り開始」ボタンは `startCalibration()` を呼び出す。プロジェクターサーバーモードは `startGame()` に直接フォールスルーする。
-- `CalibrationView` ではライブ AR カメラを全画面表示し、照準レティクルと「この位置を基準点に設定」ボタンを表示する。ボタンを押すと現在のカメラ位置を `worldOriginTransform` に記録し、ゲームを開始する。「←戻る」ボタンで待機画面に戻れる。
+- `.ready` と `.playing` は ContentView の switch で同じ `PlayingView` ケースにまとめており、`ARGameView` のインスタンスは状態遷移をまたいで維持されます。
+- `CalibrationView` でボタンを押すと `gameManager.setWorldOrigin(transform:)` が呼ばれ、状態が `.calibrating` → `.ready` に遷移します（直接 `.playing` にはなりません）。
+- `.ready` 状態では `ARPlayingView` 内に `ReadyOverlay` が表示され、「スリングショットを引いて網を射出するとゲームスタート！」と案内します。
+- 最初のスリングショット発射時に `gameManager.confirmReady()` が呼ばれ `.playing` に遷移、タイマーとバグスポーンが開始します。
 - `FinishedView` では最終スコアを大きく表示し、「再デバッグ」ボタンで待機画面に戻れます。
 - 背景はネイビー→黒のリニアグラデーション（デジタル腐敗テーマ）で統一。
 
@@ -82,11 +84,13 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 |------|------|
 | 制限時間 | **90 秒** |
 | 目標 | 時間内にできるだけ多くのバグを捕獲してポイントを稼ぐ |
-| スポーン間隔 | 開始時 1.8 秒 → 90 秒時点で最短 0.6 秒（難易度上昇） |
-| スコア計算 | **クライアント（iOS）側のみ**で行う。プロジェクターはスコアを計算・表示しない |
-| スコア通知 | プロジェクターが `bugCaptured` メッセージで網を射出した iOS へバグ種類を通知 → iOS 側で加算 |
+| スポーン間隔 | 開始時 3.5 秒 → 75 秒時点で最短 1.5 秒（難易度上昇） |
+| 同時出現上限 | **最大 5 匹** |
+| タイマー管理 | **スマホ（iOS）側のみ**。プロジェクターはタイマーを持たない |
+| スコア計算 | **スマホ（iOS）側のみ**で行う。プロジェクターはスコアを計算・表示しない |
+| バグ同期 | スマホが `bugSpawned` / `bugRemoved` を送信し、プロジェクターはそれに従ってバグを追加・削除する |
 | 最大同時接続 | **3 台**（4 台目以降は接続拒否） |
-| ゲーム終了 | タイムアップ後、プロジェクターは 4 秒後に自動的に待機画面に戻る |
+| ゲーム終了 | タイムアップ後、スマホは `FinishedView` を表示。プロジェクターは `resetGame` 受信後にバグをクリアするだけで画面遷移なし |
 
 ---
 
@@ -123,15 +127,16 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 ゲーム開始後、時間が経つにつれてバグの出現頻度が増加します。
 
 ```
-スポーン間隔（秒） = max(0.6,  1.8 - elapsed / 75)
+スポーン間隔（秒） = max(1.5,  3.5 - elapsed / 75)
 ```
 
-- 0 秒: 約 1.8 秒間隔
-- 45 秒: 約 1.2 秒間隔
-- 75 秒: 約 0.8 秒間隔
-- 90 秒: 最短 0.6 秒間隔
+- 0 秒: 約 3.5 秒間隔
+- 45 秒: 約 2.5 秒間隔
+- 75 秒: 最短 1.5 秒間隔
 
-スタンドアロンモード（`ARGameView.Coordinator`）とプロジェクターモード（`ProjectorBug3DCoordinator`）の両方で同じ式が適用されます。
+加えて同時出現上限を **5 匹** に制限し、多すぎる出現を防ぎます。
+
+バグスポーンは `ARGameView.Coordinator`（スマホ AR 側）のみで行います。プロジェクターは独立したスポーンを持ちません。
 
 ---
 
@@ -179,7 +184,8 @@ bonchi-festival/
 ├── Shared/
 │   └── GameProtocol.swift     … Multipeer で共有するメッセージ型・BugType 定義
 │                                 MessageType / GameMessage / LaunchPayload / GameStatePayload
-│                                 BugCapturedPayload / BugType / PhysicsCategory
+│                                 BugCapturedPayload / BugSpawnedPayload / BugRemovedPayload
+│                                 BugType / PhysicsCategory
 └── World/                     … プロジェクター側（iPad / Mac Catalyst）
     ├── WorldViewController.swift  … ルート UIViewController
     │                                 SCNView (背面、常時アクティブ) + SKView 透過オーバーレイ (前面)
@@ -187,19 +193,16 @@ bonchi-festival/
     │                                 ProjectorBug3DCoordinator を内部クラスとして定義・管理
     │                                 viewDidLoad で Bug3DNode.preloadAssets() を呼び出し USDZ を非同期プリロード
     │                                 初回レイアウト時に startGame() を直接呼び出す（3D 即時表示）
-    │                                 presentWaitingScene(): coordinator を nil にせず stopSpawning() のみ。
-    │                                   WaitingScene(isProjectorOverlay=true) を透過オーバーレイとして表示
-    ├── WaitingScene.swift         … 待機画面 SKScene。isProjectorOverlay=true のとき透過背景（SceneKit 3D が見える）
-    │                                 タイトル・浮遊バグ絵文字・接続待ちテキストのアニメ
+    │                                 bugSpawned / bugRemoved 受信時に coordinator へ委譲
+    ├── WaitingScene.swift         … 待機画面 SKScene（現在はほぼ未使用）
     ├── BugHunterScene.swift       … ゲーム中 SKScene（isProjectorMode=true で透過背景）
-    │                                 HUD（残り時間バー・タイムラベル）・ネット物理衝突判定
-    │                                 onBugCaptured コールバックで捕獲を ProjectorBug3DCoordinator へ通知
-    ├── BugSpawner.swift           … SpriteKit BugNode の生成・ベジェ経路制御（難易度曲線適用）
+    │                                 タイマー・スコア・HUD・スポーナーなし（スマホ主導）
+    │                                 fireNet(angle:power:playerIndex:) のみ保持（視覚的な網アニメ用）
+    ├── BugSpawner.swift           … 旧 SpriteKit BugNode スポーナー（現在は未使用）
     ├── NetProjectile.swift        … 網 SKNode（描画 net mesh + ringNode + centerDot）
-    │                                 netShape: SKShapeNode で 8 スポーク + 3 同心円の蜘蛛の巣パターンを描画
     │                                 playerIndex 保持・プレイヤー色リング・arc 軌道・回転アニメ
     └── ProjectorGameManager.swift … 最大3台の Multipeer 接続管理
-                                      sendBugCaptured(bugType:toPlayerAtSlot:) で特定プレイヤーに unicast
+                                      bugSpawned / bugRemoved を WorldViewController へデリゲート
 ```
 
 ### 通信フロー（Multipeer Connectivity）
@@ -210,35 +213,38 @@ iOS Controller (×最大3台)               Projector Server
     │── startGame ──────────────────────────>│  (いずれかのクライアントが送信)
     │                                        │
     │── launch(angle, power, timestamp) ────>│  → playerIndex はサーバー側で peerID より特定
-    │                                        │  → 対応する色の NetProjectile を発射
-    │                                        │  → 網がプロキシ BugNode に接触
-    │<── bugCaptured(bugType, playerIndex) ──│  ※ 網を射出したプレイヤーのみに unicast
+    │                                        │  → 対応する色の NetProjectile を発射（視覚のみ）
     │                                        │
-    │  score += bugType.points               │
+    │── bugSpawned(id, type, x, y) ─────────>│  → 対応する Bug3DNode をその位置に追加
     │                                        │
-    │<── gameState(state, 0, timeRemaining) ─│  score は常に 0（iOS 側が独自管理）
+    │── bugRemoved(id) ─────────────────────>│  → 対応する Bug3DNode を captured() アニメで削除
     │                                        │
-    │── resetGame ───────────────────────── >│
+    │── resetGame ───────────────────────── >│  → 全 Bug3DNode を即削除（画面遷移なし）
 ```
 
 ### メッセージ型一覧
 
 | 型 | 方向 | ペイロード | 説明 |
 |----|------|-----------|------|
-| `launch` | iOS → Projector | `LaunchPayload(angle, power, timestamp)` | スリングショット発射 |
+| `launch` | iOS → Projector | `LaunchPayload(angle, power, timestamp)` | スリングショット発射（視覚同期） |
 | `startGame` | iOS → Projector | なし | ゲーム開始 |
-| `resetGame` | iOS → Projector | なし | 待機画面にリセット |
-| `gameState` | Projector → iOS | `GameStatePayload(state, score=0, timeRemaining)` | 残り時間の同期 |
-| `bugCaptured` | Projector → iOS（該当プレイヤーのみ） | `BugCapturedPayload(bugType, playerIndex)` | バグ捕獲通知・スコア加算 |
+| `resetGame` | iOS → Projector | なし | バグをクリア |
+| `bugSpawned` | iOS → Projector | `BugSpawnedPayload(id, bugType, normalizedX, normalizedY)` | バグ出現通知 |
+| `bugRemoved` | iOS → Projector | `BugRemovedPayload(id)` | バグ捕獲通知（削除） |
+| `bugCaptured` | Projector → iOS | `BugCapturedPayload(bugType, playerIndex)` | 旧スコア通知（後方互換のため残存。現在は未使用） |
 
 ### スコア設計
 
-- **スコア計算はクライアント（iOS）側のみ。**
-- プロジェクター側でバグが捕獲されると、`ProjectorGameManager.sendBugCaptured(bugType:toPlayerAtSlot:)` が網を射出したプレイヤーの peerID にだけ `bugCaptured` メッセージを送信します。
-- iOS 側 `GameManager` が `bugCaptured` を受信し、`score += bugType.points` で加算します。
-- スタンドアロンモードでは `ARBugScene.fireNet` 内でバグを直接捕獲し、`BugHunterSceneDelegate` を通じてスコアを更新します。
-- プロジェクタークライアントモードでは iOS 側の ARSCNView でも 3D バグがスポーンする（`startSpawning()` が standalone と同様に実行される）。スコアは `bugCaptured` メッセージのみで加算される（ローカル捕獲はスコアに反映しない）。
-- プロジェクター側の `BugHunterScene` はスコアを保持しません（`GameStatePayload.score` 常に 0）。
+- **スコア計算はスマホ（iOS）側のみ。**
+- スタンドアロン・プロジェクタークライアント共に、`ARBugScene` での捕獲時に `BugHunterSceneDelegate` を通じて直接スコアが更新されます。
+- プロジェクター側はスコアを保持・表示しません。
+
+### プロジェクター表示設計
+
+- プロジェクターは常に SceneKit 3D シーンを表示し続けます（待機画面や終了画面なし）。
+- バグは `bugSpawned` 受信時に `ProjectorBug3DCoordinator.addSyncedBug` で追加されます（フェードイン + スケールアップ + ホバーアニメ）。
+- バグは `bugRemoved` 受信時に `removeSyncedBug` で `captured()` アニメ付きで削除されます。
+- `resetGame` 受信時は全バグを即座に削除します。
 
 ---
 
