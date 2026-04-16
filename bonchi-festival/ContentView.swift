@@ -8,6 +8,8 @@
 import SwiftUI
 import ARKit
 import SceneKit
+// UIKit is imported for UIPasteboard (copy URL to clipboard) and UIApplication.shared.open
+// (open the preview URL in Safari), which have no SwiftUI equivalents.
 import UIKit
 
 // MARK: - Design tokens

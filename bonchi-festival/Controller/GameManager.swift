@@ -151,6 +151,18 @@ final class GameManager: ObservableObject {
 
     /// Threshold below which the time remaining is highlighted in red on the preview page.
     private static let previewTimeWarningThreshold: Double = 10.0
+    /// CSS hex color for time values above the warning threshold.
+    private static let previewTimeNormalColor = "#ffffff"
+    /// CSS hex color for time values at or below the warning threshold.
+    private static let previewTimeWarningColor = "#ff5577"
+    /// CSS hex color for the "waiting" / "calibrating" state badge.
+    private static let previewColorWaiting  = "#33ffcc"
+    /// CSS hex color for the "playing" state badge.
+    private static let previewColorPlaying  = "#ffcc00"
+    /// CSS hex color for the "finished" state badge and the time-warning highlight.
+    private static let previewColorFinished = "#ff5577"
+    /// CSS hex color for the score value.
+    private static let previewColorScore    = "#ffcc00"
 
     /// Builds the full HTML document served on each preview page request.
     /// The document includes a CSS-styled status panel with the current game state,
@@ -171,8 +183,10 @@ final class GameManager: ObservableObject {
         case .playing:    stateLabel = "プレイ中 / PLAYING"; stateClass = "playing"
         case .finished:   stateLabel = "終了 / FINISHED";   stateClass = "finished"
         }
-        let timeStr  = String(format: "%.1f", timeRemaining)
-        let timeColor = timeRemaining < Self.previewTimeWarningThreshold ? "#ff5577" : "#ffffff"
+        let timeStr   = String(format: "%.1f", timeRemaining)
+        let timeColor = timeRemaining < Self.previewTimeWarningThreshold
+            ? Self.previewTimeWarningColor
+            : Self.previewTimeNormalColor
 
         return """
         <!DOCTYPE html>
@@ -193,7 +207,7 @@ final class GameManager: ObservableObject {
               align-items: center; justify-content: center;
               padding: 40px 20px;
             }
-            h1 { font-size: 2rem; color: #33ffcc; letter-spacing: 4px; margin-bottom: 8px; }
+            h1 { font-size: 2rem; color: \(Self.previewColorWaiting); letter-spacing: 4px; margin-bottom: 8px; }
             .subtitle { color: rgba(102,187,255,0.75); font-size: 0.85rem;
                         margin-bottom: 48px; letter-spacing: 1px; }
             .state-badge {
@@ -201,9 +215,9 @@ final class GameManager: ObservableObject {
               border-radius: 999px; border: 1.5px solid currentColor;
               margin-bottom: 36px; letter-spacing: 2px;
             }
-            .waiting  { color: #33ffcc; }
-            .playing  { color: #ffcc00; }
-            .finished { color: #ff5577; }
+            .waiting  { color: \(Self.previewColorWaiting);  }
+            .playing  { color: \(Self.previewColorPlaying);  }
+            .finished { color: \(Self.previewColorFinished); }
             .grid {
               display: grid; grid-template-columns: 1fr 1fr;
               gap: 16px; max-width: 400px; width: 100%; margin-bottom: 32px;
@@ -233,7 +247,7 @@ final class GameManager: ObservableObject {
             </div>
             <div class="card">
               <div class="label">SCORE</div>
-              <div class="value" style="color:#ffcc00">\(score)</div>
+              <div class="value" style="color:\(Self.previewColorScore)">\(score)</div>
             </div>
           </div>
           <footer>3秒ごとに自動更新 • BugHunter Projector Preview</footer>

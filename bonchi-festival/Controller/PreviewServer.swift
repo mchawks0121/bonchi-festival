@@ -26,7 +26,11 @@ final class PreviewServer {
     private var listener: NWListener?
 
     /// Called on each HTTP request to obtain the current HTML body.
-    /// The closure is invoked on the background queue; access shared state safely.
+    /// The closure is invoked on the background queue; the closure body is responsible
+    /// for any necessary synchronisation.  For `GameManager.buildPreviewHTML()`, reads
+    /// of Swift value types (`Int`, `Double`, `String`) are accepted without a lock
+    /// because the preview page is a non-critical status display and minor tearing
+    /// between fields is acceptable.
     var htmlProvider: (() -> String)?
 
     // MARK: - Public interface
