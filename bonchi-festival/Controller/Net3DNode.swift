@@ -118,7 +118,7 @@ final class Net3DNode: SCNNode {
         // Parabolic position: pos(t) = origin + velocity·t + ½·g·t²
         // SCNAction.customAction provides `elapsed` = time since action started (not delta),
         // so the kinematic equations can be applied directly each frame.
-        let physicsMove = SCNAction.customAction(withDuration: travelTime) { node, elapsed in
+        let physicsMove = SCNAction.customAction(duration: travelTime) { node, elapsed in
             let t = Float(elapsed)
             node.position = SCNVector3(
                 ox + vx * t,
