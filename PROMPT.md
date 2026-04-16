@@ -488,7 +488,9 @@ physicsBody?.collisionBitMask   = 0
 
 - **言語**: Swift 5.9 以上。`final class` を基本とする。
 - **UI**: SwiftUI（iOS 側）、UIKit + SpriteKit + SceneKit（プロジェクター側）。
-- **スレッド**: SceneKit レンダースレッドから UIKit にアクセスしない（`cachedViewHeight` パターン参照）。`ARGameView.Coordinator` のアンカー辞書（`bugAnchorMap`, `anchorBug3DNodeMap`, `anchorProxyNodeMap`, `nodeAnchorMap`）はメインスレッドとレンダースレッドの両方からアクセスされるため、`mapLock`（`NSLock`）で保護する。`renderer(_:updateAtTime:)` では辞書のスナップショットをロック下で取得し、ロックを解放してから重い投影計算を行う。
+- **スレッド — UIKit**: SceneKit レンダースレッドから UIKit にアクセスしない（`cachedViewHeight` パターン参照）。
+- **スレッド — アンカー辞書**: `ARGameView.Coordinator` の `bugAnchorMap`, `anchorBug3DNodeMap`, `anchorProxyNodeMap`, `nodeAnchorMap` はメインスレッドとレンダースレッドから同時アクセスされるため、`mapLock`（`NSLock`）で全アクセスを保護する。
+- **スレッド — スナップショットパターン**: `renderer(_:updateAtTime:)` ではロック下で辞書スナップショットを取得し、ロック解放後に重い投影計算を行う（ロック保持時間を最小化）。
 - **Multipeer 受信コールバック**は常に `DispatchQueue.main.async` でメインスレッドに戻す。
 - **コメント**: 日本語・英語どちらでも可。`// MARK: -` でセクション分け。
 - **ファイル分割**: iOS 側は `Controller/`、プロジェクター側は `World/`、共有型は `Shared/`。

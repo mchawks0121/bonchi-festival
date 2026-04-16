@@ -540,12 +540,10 @@ extension ARGameView {
         func renderer(_ renderer: SCNSceneRenderer, didRemove node: SCNNode, for anchor: ARAnchor) {
             mapLock.lock()
             let proxy = anchorProxyNodeMap[anchor.identifier]
-            if proxy != nil {
-                anchorProxyNodeMap.removeValue(forKey: anchor.identifier)
-                anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
-                if let proxy { nodeAnchorMap.removeValue(forKey: ObjectIdentifier(proxy)) }
-                bugAnchorMap.removeValue(forKey: anchor.identifier)
-            }
+            anchorProxyNodeMap.removeValue(forKey: anchor.identifier)
+            anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
+            if let proxy { nodeAnchorMap.removeValue(forKey: ObjectIdentifier(proxy)) }
+            bugAnchorMap.removeValue(forKey: anchor.identifier)
             mapLock.unlock()
             if let proxy {
                 DispatchQueue.main.async { proxy.removeFromParent() }
