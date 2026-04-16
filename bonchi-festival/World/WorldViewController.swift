@@ -234,6 +234,7 @@ final class ProjectorBug3DCoordinator: NSObject {
     private var autonomousSpawnTimer: Timer?
 
     /// Wall-clock time when autonomous spawning started; used for difficulty ramp.
+    /// Set to `Date()` as a placeholder; reset to the actual start time in `startAutonomousSpawning()`.
     private var autonomousStartTime: Date = Date()
 
     /// Cached on the main thread so helpers can read it without accessing the view.
@@ -369,6 +370,9 @@ final class ProjectorBug3DCoordinator: NSObject {
         }
     }
 
+    /// Fractional off-screen margin used for autonomous bug spawn/exit positions.
+    private static let spawnMargin: Float = 1.25
+
     private func spawnAutonomousBug() {
         guard let scnView else { return }
 
@@ -380,10 +384,10 @@ final class ProjectorBug3DCoordinator: NSObject {
         let startX: Float
         let startY: Float
         switch edge {
-        case 0:  startX = Float.random(in: -halfW...halfW);  startY =  halfH * 1.25   // top
-        case 1:  startX = Float.random(in: -halfW...halfW);  startY = -halfH * 1.25   // bottom
-        case 2:  startX = -halfW * 1.25;                     startY = Float.random(in: -halfH...halfH)  // left
-        default: startX =  halfW * 1.25;                     startY = Float.random(in: -halfH...halfH)  // right
+        case 0:  startX = Float.random(in: -halfW...halfW);  startY =  halfH * Self.spawnMargin   // top
+        case 1:  startX = Float.random(in: -halfW...halfW);  startY = -halfH * Self.spawnMargin   // bottom
+        case 2:  startX = -halfW * Self.spawnMargin;         startY = Float.random(in: -halfH...halfH)  // left
+        default: startX =  halfW * Self.spawnMargin;         startY = Float.random(in: -halfH...halfH)  // right
         }
 
         let bugType = randomAutonomousBugType()
@@ -418,12 +422,13 @@ final class ProjectorBug3DCoordinator: NSObject {
         // Exit toward the opposite edge
         let exitX = Float.random(in: -halfW * 0.8 ... halfW * 0.8)
         let exitY = Float.random(in: -halfH * 0.8 ... halfH * 0.8)
+        let exitMargin = Self.spawnMargin * 1.04   // slightly beyond spawnMargin to ensure off-screen
         let exitPoint: SCNVector3
         switch edge {
-        case 0:  exitPoint = SCNVector3(exitX, -halfH * 1.3, 0)
-        case 1:  exitPoint = SCNVector3(exitX,  halfH * 1.3, 0)
-        case 2:  exitPoint = SCNVector3( halfW * 1.3, exitY, 0)
-        default: exitPoint = SCNVector3(-halfW * 1.3, exitY, 0)
+        case 0:  exitPoint = SCNVector3(exitX, -halfH * exitMargin, 0)
+        case 1:  exitPoint = SCNVector3(exitX,  halfH * exitMargin, 0)
+        case 2:  exitPoint = SCNVector3( halfW * exitMargin, exitY, 0)
+        default: exitPoint = SCNVector3(-halfW * exitMargin, exitY, 0)
         }
         let exitMove = SCNAction.move(to: exitPoint, duration: segDur)
         exitMove.timingMode = .easeIn

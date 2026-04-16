@@ -63,7 +63,7 @@ final class ARBugScene: SKScene {
     private var lastBugCount = -1
 
     /// Fraction of full intensity added per active bug.
-    /// At 2+ bugs the distortion layer reaches full opacity (more urgent feel).
+    /// At exactly 2 bugs the distortion layer reaches full opacity (clamped at 1.0).
     private static let distortionPerBug: CGFloat = 0.50
 
     // MARK: - Lifecycle
@@ -110,17 +110,18 @@ final class ARBugScene: SKScene {
     func fireNet(angle: Float, power: Float) {
         guard !gameEnded else { return }
 
+        // Play the throw sound exactly once regardless of whether the shot is queued
+        // or fires immediately.
+        SoundManager.shared.playThrow()
+
         // If the scene has not yet been presented to an SKView (e.g. the player
         // fired immediately after confirmReady() but before updateUIView had a
         // chance to call presentScene), queue the shot.  It will be replayed in
         // didMove(to:) once the scene is running and crosshair nodes are ready.
         guard view != nil else {
-            SoundManager.shared.playThrow()
             pendingFire = (angle, power)
             return
         }
-
-        SoundManager.shared.playThrow()
 
         let center      = CGPoint(x: size.width / 2, y: size.height / 2)
         let catchRadius = ARBugScene.catchRadius

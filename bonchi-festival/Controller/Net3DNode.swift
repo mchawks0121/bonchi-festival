@@ -100,7 +100,7 @@ final class Net3DNode: SCNNode {
         let vz = direction.z * speed
 
         // World-space gravitational acceleration (m/s²).
-        // Slightly stronger than real-world (9.8) for snappier game feel.
+        // Weaker than real-world (9.8) for a more floaty, game-friendly arc.
         let g: Float = -5.0
 
         // Travel time grows with power so harder shots reach farther.
