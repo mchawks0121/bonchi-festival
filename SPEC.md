@@ -561,4 +561,4 @@ physicsBody?.collisionBitMask   = 0
 - **ローカルネットワーク権限**: プロジェクターモードを使う場合、ローカルネットワークへのアクセスを許可してください（Multipeer Connectivity に必要）。
 - **明るい場所**: ARKit は十分な光量が必要です。暗い場所ではバグの位置精度が下がります。
 - **同時接続上限**: プロジェクターに接続できる iOS デバイスは最大 3 台です。4 台目以降は自動的に拒否されます。
-- **スレッド安全性**: SceneKit レンダースレッドから UIKit にアクセスしない（`cachedViewHeight` パターン）。Multipeer Connectivity コールバックは常に `DispatchQueue.main.async` でメインスレッドに戻す。
+- **スレッド安全性**: SceneKit レンダースレッドから UIKit にアクセスしない（`cachedViewHeight` パターン）。Multipeer Connectivity コールバックは常に `DispatchQueue.main.async` でメインスレッドに戻す。`ARGameView.Coordinator` のアンカー辞書（`bugAnchorMap`, `anchorBug3DNodeMap`, `anchorProxyNodeMap`, `nodeAnchorMap`）はメインスレッドとレンダースレッドから同時アクセスされるため、`mapLock`（`NSLock`）で全アクセスを保護する。`renderer(_:updateAtTime:)` ではロック下でスナップショットを取り、ロック解放後に投影計算を行う。
