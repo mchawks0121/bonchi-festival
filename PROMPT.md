@@ -81,6 +81,9 @@ bonchi-festival/
 │   │     startGame()           — score=0 reset、ARBugScene 生成（非 projectorServer のみ）、projectorClient は startGame 送信
 │   │     resetGame()           — 全状態リセット（worldOriginTransform も nil に）、projectorClient は resetGame 送信
 │   │     sendLaunch(angle:power:) — ARBugScene.fireNet() + projectorClient は launch 送信
+│   │     slingshotDragUpdate: ((CGSize, Bool) -> Void)? — ARGameView.Coordinator がセット。SlingshotView がドラッグ毎に呼ぶ
+│   │     onNetFired: ((CGSize, Float) -> Void)? — ARGameView.Coordinator がセット。SlingshotView が発射時に呼ぶ
+│   │     resetGame() で slingshotDragUpdate / onNetFired を nil にクリア
 │   │     BugHunterSceneDelegate: didUpdateScore/sceneDidFinish — standalone のみスコアを自 state に反映
 │   │     MultipeerSessionDelegate: bugCaptured 受信 → score += bugType.points
 │   │
@@ -108,6 +111,11 @@ bonchi-festival/
 │   │       renderer(_:updateAtTime:) — 毎フレーム 3D→2D 変換でプロキシ位置同期、距離ベーススケール
 │   │         scale = clamp(referenceDistance(3.0) / distance, 0.3, 5.0)
 │   │         cachedViewHeight で UIKit アクセスをメインスレッドに限定
+│   │         cachedDragOffset / cachedIsDragging → SlingshotNode.updateDrag() / resetDrag() を呼ぶ
+│   │         wasSlingshotDragging フラグで resetDrag() を 1 フレームのみ呼ぶ
+│   │       launchNet3D(dragOffset:power:): カメラ変換から方向ベクトルを計算し Net3DNode を発射
+│   │         fork 世界座標 = cameraTransform × (0, -0.12, -0.28, 1)
+│   │         direction = normalize(fwd + right×normX×0.35 + up×normY×0.35)
 │   │       handleCapture(of:) — capture 時に Bug3DNode.captured() + ARAnchor 削除
 │   │     antialiasingMode = .multisampling4X、lightingEnvironment.intensity = 1.5 (PBR 品質向上)
 │   │     难易度カーブ: nextDelay = max(0.6, 1.8 - spawnElapsed / 75.0)
@@ -159,16 +167,48 @@ bonchi-festival/
 │   │             + 二次水平ドリフト（+X→-Z→-X→+Z スクエア軌道、±0.03m, 5s サイクル）
 │   │     captured(): removeAllActions() + 3 回グリッチ点滅 → SCNAction.fadeOut(easeIn, 0.18s) → removeFromParentNode
 │   │
+│   ├── SlingshotNode.swift
+│   │     SCNNode サブクラス。3D Y 字スリングショットを AR シーンに描画。
+│   │     arView.pointOfView の子として追加 → カメラ空間固定（端末の動きに追従）。
+│   │     フォーク中心位置: camera-local (0, -0.12, -0.28)。
+│   │     ノード構成:
+│   │       forkRoot — フォーク全体の親ノード（位置オフセット保持）
+│   │         stem     — stemBottom(0,-0.050,0) → branch(0,0.010,0) の SCNCylinder (r=0.007)
+│   │         leftArm  — branch → leftTip(-0.035,0.055,0) の SCNCylinder (r=0.006)
+│   │         rightArm — branch → rightTip(+0.035,0.055,0) の SCNCylinder (r=0.006)
+│   │         tip caps — 各チップに SCNSphere (r=0.009) の装飾球
+│   │         leftBandNode / rightBandNode — SCNCylinder。updateDrag() で毎フレーム更新
+│   │         pouchNode — トーラスリム + 8 スポーク + 同心リング × 2（網ポーチ）
+│   │     材質: wood (brown PBR r=0.82, m=0.04) / band (orange PBR) / pouch (green PBR + emission)
+│   │     updateDrag(offset:maxDrag:): pullPoint を計算してバンドとポーチを更新
+│   │       maxPullDepth=0.08m (+Z 方向), maxPullLateral=0.025m, maxPullDown=0.014m
+│   │     resetDrag(): pullPoint = neutralPull、pouchNode を非表示に
+│   │     alignCylinder(_:from:to:): Y 軸 → 方向ベクトル へのクォータニオン回転と高さ更新
+│   │
+│   ├── Net3DNode.swift
+│   │     SCNNode サブクラス。ARSCNView 空間を飛翔する 3D 網メッシュ。
+│   │     ノード構成:
+│   │       rim (SCNTorus, ringRadius=0.042, pipeRadius=0.0045) — プレイヤー色アクセント、eulerAngles=(π/2,0,0) でカメラ方向に向ける
+│   │       spokes × 8 (SCNBox 0.082×0.001×0.001) — 放射状スポーク
+│   │       inner rings × 2 (SCNTorus, r=0.020, 0.032) — 同心内リング
+│   │     accentColors: cyan / orange / magenta（Player 1〜3 に対応）
+│   │     launch(from:direction:power:completion:):
+│   │       origin から direction に 0.65〜1.85m 移動（easeOut, 0.55s）
+│   │       tumbling spin: X + Z 軸の複合回転（1.2〜2.7 ターン）
+│   │       scale: 0.25 → 1.0 → 0.5 の連続変化（unfurling 効果）
+│   │       opacity: 即時フェードイン → hold → フェードアウト
+│   │       完了後 completion() を呼び出し（removeFromParentNode 用）
+│   │
 │   ├── SlingshotView.swift
-│   │     SwiftUI フルスクリーンオーバーレイ。DragGesture で操作を検出。
-│   │     フォーク位置: 画面高さの 62% (forkYRatio=0.62)
+│   │     SwiftUI フルスクリーンオーバーレイ。ジェスチャ管理専用（3D 描画は SlingshotNode が担当）。
+│   │     フォーク位置参照: forkYRatio=0.62（PowerIndicatorView 配置のみに使用）
 │   │     最大ドラッグ距離: 220pt (maxDragDistance)。任意方向スワイプ可。
 │   │     angle = atan2(dragOffset.height, -dragOffset.width)（SpriteKit 座標系に変換）
 │   │     power = min(dragLength / 220, 1.0)
-│   │     SlingshotForkShape — Y 字 Shape（stem + 2本のフォーク）
-│   │     ゴム紐: leftFork → pullPoint と rightFork → pullPoint を Path で描画
+│   │     ドラッグ中: gameManager.slingshotDragUpdate?(offset, true) → Coordinator が SlingshotNode を更新
+│   │     発射時: gameManager.onNetFired?(dragOffset, power) → Coordinator が Net3DNode を発射
+│   │             gameManager.sendLaunch(angle:power:) → ARBugScene の当たり判定を起動
 │   │     PowerIndicatorView — 水平バー (緑/黄/赤)、power に応じてリアルタイム更新
-│   │     net 飛翔アニメ: 発射方向に 🕸️ 絵文字が飛ぶ (scale 0.3→1.8→fade, 回転 270°〜810°)
 │   │
 │   └── SoundManager.swift
 │         AVAudioEngine + AVAudioPlayerNode × 6 によるシングルトンのサウンドマネージャ。
@@ -245,7 +285,8 @@ bonchi-festival/
     │     duration = clamp(600 / speed, 3.0, 12.0)
     │
     ├── NetProjectile.swift
-    │     SKNode (name="net")。netLabel(🕸️ 64pt) + ringNode(circleOfRadius:34) + centerDot
+    │     SKNode (name="net")。netShape(spider-web SKShapeNode) + ringNode(accent ring) + centerDot
+    │     netShape: CGMutablePath。外周円 + 8 スポーク + 3 同心円。緑系 stroke + 薄い fill。
     │     playerIndex を保持。playerColors[playerIndex % 3] でリング色を決定。
     │     physicsBody: circleOfRadius=44, isDynamic=true, affectedByGravity=false
     │     launch(angle:power:from:sceneSize:):

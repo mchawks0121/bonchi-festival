@@ -46,10 +46,12 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 1. **狙いを定める** — iPhone を動かして画面中央の照準リングをバグに重ねます。  
    バグが照準内に入ると、ロックオンリング（オレンジ色）が表示されます。
 
-2. **引っ張る** — 画面のスリングショット（Y字型フォーク）を **任意の方向にスワイプ** します。  
-   引っ張る距離が強さ（power）になります（最大 220 pt）。
+2. **引っ張る** — 画面の **任意の方向にスワイプ** します。  
+   引っ張る距離が強さ（power）になります（最大 220 pt）。  
+   ARSCNView 内に 3D の Y 字スリングショット（`SlingshotNode`）が常時表示され、  
+   ゴム紐と緑色の網ポーチがドラッグ量に応じてリアルタイムに変形します。
 
-3. **放す** — 指を離すと網が発射されます。  
+3. **放す** — 指を離すと 3D 網（`Net3DNode`）が AR 空間を飛翔します。  
    - **ロックオンしている場合**: 網はバグに向かって飛びます。  
    - **ロックオンしていない場合**: 発射角度と弾道から最も近いバグを自動判定します。
 
@@ -159,9 +161,16 @@ bonchi-festival/
 │   │                             butterfly: 4枚翅・触角 / beetle: 光沢甲殻・6脚 / stag: 大顎・6脚
 │   │                             各バグ固有アニメ（羽ばたき/回転/頷き）＋共通ホバー＋二次水平ドリフト
 │   │                             preloadAssets(): ゲーム開始前に全 USDZ を非同期プリロード（NSLock キャッシュ）
+│   ├── SlingshotNode.swift    … SCNNode。3D Y 字スリングショットフォーク + ゴム紐 + 網ポーチ
+│   │                             arView.pointOfView の子として追加することでカメラ空間に固定表示
+│   │                             updateDrag(offset:maxDrag:): ドラッグ量に応じてゴム紐・ポーチを変形
+│   │                             resetDrag(): ドラッグ解除時にニュートラル位置に戻す
+│   ├── Net3DNode.swift        … SCNNode。3D 飛翔網メッシュ（トーラスリム + 8 スポーク + 同心リング）
+│   │                             launch(from:direction:power:completion:): AR 空間を飛翔→フェードアウト
 │   ├── SlingshotView.swift    … SwiftUI スリングショット UI（フルスクリーンオーバーレイ）
-│   │                             任意方向スワイプ → angle(rad) / power(0–1) に変換
-│   │                             SlingshotForkShape（Y 字）・ゴム紐・net 飛翔アニメ・PowerIndicatorView
+│   │                             ジェスチャ管理専用。3D 描画は SlingshotNode / Net3DNode が担当
+│   │                             slingshotDragUpdate / onNetFired コールバックを通じて Coordinator と連携
+│   │                             PowerIndicatorView（引き量インジケーター）のみ 2D 描画
 │   └── SoundManager.swift     … AVAudioEngine ベースの手続き型サウンドエフェクト（シングルトン）
 │                                 PCM サイン波バッファをランタイムで生成。外部音声ファイル不要。
 │                                 6 ノードプールで複数音の同時再生をサポート。
@@ -186,7 +195,8 @@ bonchi-festival/
     │                                 HUD（残り時間バー・タイムラベル）・ネット物理衝突判定
     │                                 onBugCaptured コールバックで捕獲を ProjectorBug3DCoordinator へ通知
     ├── BugSpawner.swift           … SpriteKit BugNode の生成・ベジェ経路制御（難易度曲線適用）
-    ├── NetProjectile.swift        … 網 SKNode（netLabel + ringNode + centerDot）
+    ├── NetProjectile.swift        … 網 SKNode（描画 net mesh + ringNode + centerDot）
+    │                                 netShape: SKShapeNode で 8 スポーク + 3 同心円の蜘蛛の巣パターンを描画
     │                                 playerIndex 保持・プレイヤー色リング・arc 軌道・回転アニメ
     └── ProjectorGameManager.swift … 最大3台の Multipeer 接続管理
                                       sendBugCaptured(bugType:toPlayerAtSlot:) で特定プレイヤーに unicast
@@ -412,9 +422,9 @@ power = min(dragLength / 220, 1.0)                     // 0.0〜1.0
 
 | 子ノード | 内容 |
 |---------|------|
-| `netLabel` | 🕸️ 絵文字（font 64 pt、中央揃え）|
-| `ringNode` | プレイヤー色の円リング（半径 34 pt、stroke のみ）|
-| centerDot | プレイヤー色の中央塗りつぶし円（半径 7 pt）|
+| `netShape` | `SKShapeNode`。8 本のスポーク + 3 つの同心円で描画した蜘蛛の巣 net パターン（緑系）|
+| `ringNode` | プレイヤー色の外周アクセントリング（半径 38 pt）|
+| centerDot | プレイヤー色の中央塗りつぶし円（半径 6 pt）|
 
 #### プレイヤー色
 

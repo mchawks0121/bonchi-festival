@@ -128,6 +128,18 @@ extension ARGameView {
         /// Maps anchor UUID → proxy SKNode (for per-frame position sync)
         private var anchorProxyNodeMap: [UUID: SKNode] = [:]
 
+        // MARK: 3-D slingshot state
+
+        /// The 3-D slingshot node attached to the camera's pointOfView.
+        private var slingshotNode: SlingshotNode?
+        /// Drag offset cached from the main-thread gesture (read on the render thread).
+        /// Follows the same safe-read pattern as `cachedViewHeight`.
+        private var cachedDragOffset: CGSize = .zero
+        private var cachedIsDragging: Bool   = false
+        /// Tracks whether the slingshot was in drag state on the last render frame,
+        /// so we only call resetDrag() once after release.
+        private var wasSlingshotDragging: Bool = false
+
         // MARK: Spawn geometry constants
         private static let minSpawnDistance:     Float  = 0.5
         private static let maxSpawnDistance:     Float  = 1.4
@@ -176,6 +188,22 @@ extension ARGameView {
             // Cache view height on main thread for use during rendering
             if let h = arView?.bounds.height, h > 0 { cachedViewHeight = h }
 
+            // Attach 3-D slingshot to the camera node so it follows the device.
+            // pointOfView may be nil this early; we also retry in renderer(_:updateAtTime:).
+            let sn = SlingshotNode()
+            slingshotNode = sn
+            arView?.pointOfView?.addChildNode(sn)
+
+            // Wire drag-state and fire callbacks through GameManager so SlingshotView
+            // can communicate with the Coordinator without a direct reference.
+            gameManager?.slingshotDragUpdate = { [weak self] offset, isDragging in
+                self?.cachedDragOffset = offset
+                self?.cachedIsDragging = isDragging
+            }
+            gameManager?.onNetFired = { [weak self] dragOffset, power in
+                self?.launchNet3D(dragOffset: dragOffset, power: power)
+            }
+
             // Wire capture callback so ARBugScene can trigger anchor removal
             gameManager?.arBugScene?.onCaptureBug = { [weak self] node in
                 self?.handleCapture(of: node)
@@ -188,6 +216,13 @@ extension ARGameView {
             isSpawning = false
             spawnTimer?.invalidate()
             spawnTimer = nil
+
+            // Remove 3-D slingshot from the camera
+            slingshotNode?.removeFromParentNode()
+            slingshotNode = nil
+            cachedDragOffset = .zero
+            cachedIsDragging = false
+            wasSlingshotDragging = false
 
             // Remove all 3-D bug nodes from the SceneKit scene
             anchorBug3DNodeMap.values.forEach { $0.removeFromParentNode() }
@@ -316,9 +351,26 @@ extension ARGameView {
         /// coordinates and updates the corresponding proxy SKNode positions.
         /// Also applies distance-based scaling so bugs appear larger as the camera
         /// approaches them (scale = referenceDistance / cameraDistance).
+        /// Also drives the 3-D slingshot node drag state each frame.
         /// Called on the SceneKit rendering thread; UI writes are batched to main.
         func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
             guard let arView = self.arView else { return }
+
+            // Lazily attach SlingshotNode to pointOfView if it was not ready at startSpawning().
+            if let sn = slingshotNode, sn.parent == nil {
+                arView.pointOfView?.addChildNode(sn)
+            }
+
+            // Drive slingshot rubber-band animation from cached drag state.
+            // Reading cachedDragOffset / cachedIsDragging from the render thread is safe by
+            // the same convention as cachedViewHeight (written on main, read here).
+            if cachedIsDragging {
+                slingshotNode?.updateDrag(offset: cachedDragOffset, maxDrag: 220)
+                wasSlingshotDragging = true
+            } else if wasSlingshotDragging {
+                slingshotNode?.resetDrag()
+                wasSlingshotDragging = false
+            }
 
             // Use the main-thread-cached view height to avoid accessing UIKit here.
             let viewHeight = cachedViewHeight
@@ -361,6 +413,42 @@ extension ARGameView {
                 for (proxy, pos) in updates {
                     proxy.position = pos
                 }
+            }
+        }
+
+        // MARK: - 3-D net launch
+
+        /// Spawn a Net3DNode that flies forward from the slingshot in the direction
+        /// indicated by the player's drag gesture.  Called on the main thread via
+        /// the `onNetFired` callback wired during `startSpawning()`.
+        func launchNet3D(dragOffset: CGSize, power: Float) {
+            guard let arView = arView,
+                  let cameraT = arView.session.currentFrame?.camera.transform else { return }
+
+            // Camera basis vectors in world space.
+            let fwd   = simd_float3(-cameraT.columns.2.x, -cameraT.columns.2.y, -cameraT.columns.2.z)
+            let right = simd_float3( cameraT.columns.0.x,  cameraT.columns.0.y,  cameraT.columns.0.z)
+            let up    = simd_float3( cameraT.columns.1.x,  cameraT.columns.1.y,  cameraT.columns.1.z)
+
+            // Drag → directional bias (mirrors the 2-D launch convention in SlingshotView):
+            //   pull right (positive width) → fire left (−right)
+            //   pull down  (positive height)→ fire up   (+up)
+            let maxDrag: Float  = 220
+            let normX = Float(-dragOffset.width  / CGFloat(maxDrag))
+            let normY = Float( dragOffset.height / CGFloat(maxDrag))
+            let direction = simd_normalize(fwd + right * normX * 0.35 + up * normY * 0.35)
+
+            // World-space origin at the slingshot fork position in camera space.
+            let forkCam = simd_float4(0, -0.12, -0.28, 1)
+            let forkW   = cameraT * forkCam
+            let origin  = SCNVector3(forkW.x, forkW.y, forkW.z)
+
+            let net = Net3DNode(playerIndex: 0)
+            arView.scene.rootNode.addChildNode(net)
+            net.launch(from: origin,
+                       direction: SCNVector3(direction.x, direction.y, direction.z),
+                       power: power) { [weak net] in
+                net?.removeFromParentNode()
             }
         }
 

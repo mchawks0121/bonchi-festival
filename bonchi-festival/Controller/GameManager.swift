@@ -49,6 +49,16 @@ final class GameManager: ObservableObject {
     /// The live ARBugScene rendered by the on-device ARSKView.
     @Published var arBugScene: ARBugScene?
 
+    // MARK: Slingshot 3-D callbacks
+    // These are set by ARGameView.Coordinator so that SlingshotView can communicate
+    // drag state and fire events to the 3-D AR layer without a direct reference to
+    // the Coordinator.  Both closures are called on the main thread.
+
+    /// Called every time the drag state changes (or resets to .zero / false).
+    var slingshotDragUpdate: ((CGSize, Bool) -> Void)?
+    /// Called when the player releases the slingshot; passes the final drag offset and power.
+    var onNetFired: ((CGSize, Float) -> Void)?
+
     // MARK: Dependencies
 
     let multipeerSession = MultipeerSession()
@@ -122,6 +132,8 @@ final class GameManager: ObservableObject {
         score = 0
         timeRemaining = 90.0
         state = .waiting
+        slingshotDragUpdate = nil
+        onNetFired = nil
         if gameMode == .projectorClient { multipeerSession.send(.resetGame()) }
     }
 
