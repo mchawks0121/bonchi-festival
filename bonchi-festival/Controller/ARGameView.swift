@@ -86,14 +86,6 @@ struct ARGameView: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {
         let coordinator = context.coordinator
 
-        // In the ready state: ensure the 3-D slingshot is attached and interactive
-        // so the player can practice the gesture before the game starts.
-        // The ARBugScene (and bug spawning) begin only when confirmReady() is called.
-        if gameManager.state == .ready {
-            coordinator.ensureSlingshotAttached()
-            return
-        }
-
         if let scene = gameManager.arBugScene,
            coordinator.skView?.scene !== scene {
             scene.scaleMode = .resizeFill
@@ -448,7 +440,7 @@ extension ARGameView {
             // Reading cachedDragOffset / cachedIsDragging from the render thread is safe by
             // the same convention as cachedViewHeight (written on main, read here).
             if cachedIsDragging {
-                slingshotNode?.updateDrag(offset: cachedDragOffset, maxDrag: 220)
+                slingshotNode?.updateDrag(offset: cachedDragOffset, maxDrag: 300)
                 wasSlingshotDragging = true
             } else if wasSlingshotDragging {
                 slingshotNode?.resetDrag()
@@ -536,7 +528,7 @@ extension ARGameView {
             // Drag → directional bias (mirrors the 2-D launch convention in SlingshotView):
             //   pull right (positive width) → fire left (−right)
             //   pull down  (positive height)→ fire up   (+up)
-            let maxDrag: Float  = 220
+            let maxDrag: Float  = 300
             let normX = Float(-dragOffset.width  / CGFloat(maxDrag))
             let normY = Float( dragOffset.height / CGFloat(maxDrag))
             let direction = simd_normalize(fwd + right * normX * 0.35 + up * normY * 0.35)

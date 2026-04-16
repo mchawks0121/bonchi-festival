@@ -89,22 +89,19 @@ final class Net3DNode: SCNNode {
                 power: Float, completion: @escaping () -> Void) {
         position = origin
 
-        // Initial speed proportional to power (1.4 – 3.6 m/s).
-        let speed: Float = 1.4 + power * 2.2
-        // Upward bias adds arc to near-horizontal shots (simulates the throw loft).
-        let upBias: Float = 0.30 * (1.0 - abs(direction.y))
+        // Initial speed proportional to power (2.0 – 5.5 m/s).
+        let speed: Float = 2.0 + power * 3.5
 
-        // Velocity components in world space.
+        // Velocity components in world space — pure kinematic, no artificial bias.
         let vx = direction.x * speed
-        let vy = direction.y * speed + upBias
+        let vy = direction.y * speed
         let vz = direction.z * speed
 
-        // World-space gravitational acceleration (m/s²).
-        // Weaker than real-world (9.8) for a more floaty, game-friendly arc.
-        let g: Float = -5.0
+        // World-space gravitational acceleration (m/s²) — close to real-world 9.8 m/s².
+        let g: Float = -9.0
 
         // Travel time grows with power so harder shots reach farther.
-        let travelTime: TimeInterval = 0.50 + Double(power) * 0.20  // 0.50–0.70 s
+        let travelTime: TimeInterval = 0.60 + Double(power) * 0.40  // 0.60–1.00 s
 
         // Capture origin as plain Floats (value types) for the physics closure.
         let ox = origin.x, oy = origin.y, oz = origin.z

@@ -20,7 +20,7 @@ struct SlingshotView: View {
     @EnvironmentObject var gameManager: GameManager
 
     /// Maximum drag distance (upward) mapped to power = 1.0.
-    private let maxDragDistance: CGFloat = 220
+    private let maxDragDistance: CGFloat = 300
 
     /// Fractional Y position of the slingshot fork (0 = top, 1 = bottom) of the
     /// full-screen view.  Kept for PowerIndicatorView positioning only.
@@ -85,9 +85,7 @@ struct SlingshotView: View {
         let angle = Float(atan2(dy, dx))
 
         // In the ready state the first shot is the "game start" signal.
-        if gameManager.state == .ready {
-            gameManager.confirmReady()
-        }
+        // (state is now always .playing when this view is shown, but kept for safety)
 
         // Notify 3-D scene to launch the flying net before resetting drag
         gameManager.onNetFired?(dragOffset, power)

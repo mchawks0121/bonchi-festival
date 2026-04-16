@@ -101,11 +101,10 @@ final class GameManager: ObservableObject {
     }
 
     /// Record `transform` (typically the current AR camera transform) as the spawn
-    /// origin, then transition to the ready screen where the first slingshot shot
-    /// will signal game start.
+    /// origin, then start the game immediately (skipping the separate ready screen).
     func setWorldOrigin(transform: simd_float4x4) {
         worldOriginTransform = transform
-        state = .ready
+        startGame()
     }
 
     /// Called when the player fires the slingshot from the ready screen.
