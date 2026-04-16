@@ -63,8 +63,8 @@ final class ARBugScene: SKScene {
     private var lastBugCount = -1
 
     /// Fraction of full intensity added per active bug.
-    /// At 3+ bugs the distortion layer reaches full opacity.
-    private static let distortionPerBug: CGFloat = 0.38
+    /// At 2+ bugs the distortion layer reaches full opacity (more urgent feel).
+    private static let distortionPerBug: CGFloat = 0.50
 
     // MARK: - Lifecycle
 
@@ -396,28 +396,52 @@ final class ARBugScene: SKScene {
         // ── 2. Space-restoration healing ripple ───────────────────────────
         playHealRipple(at: container.position)
 
-        // ── 3. Large net expands from bug position ────────────────────────
-        let netEmoji = SKLabelNode(text: "🕸️")
-        netEmoji.fontSize  = 90
-        netEmoji.position  = container.position
-        netEmoji.zPosition = 62
-        netEmoji.setScale(0.1)
-        addChild(netEmoji)
-        netEmoji.run(SKAction.sequence([
+        // ── 3. Net flies from screen centre → lands on bug and wraps it ─────
+        let netSprite = SKLabelNode(text: "🕸️")
+        netSprite.fontSize  = 72
+        netSprite.position  = CGPoint(x: size.width / 2, y: size.height / 2)
+        netSprite.zPosition = 62
+        netSprite.setScale(1.0)
+        netSprite.alpha     = 0.95
+        addChild(netSprite)
+        let bugCenter = container.position
+        netSprite.run(SKAction.sequence([
+            // Fly to the bug and tighten as it wraps
             SKAction.group([
-                SKAction.scale(to: 2.4, duration: 0.40),
-                SKAction.sequence([
-                    SKAction.fadeIn(withDuration: 0.05),
-                    SKAction.wait(forDuration: 0.20),
-                    SKAction.fadeOut(withDuration: 0.15)
-                ])
+                SKAction.move(to: bugCenter, duration: 0.30),
+                SKAction.scale(to: 0.55, duration: 0.30),
+                SKAction.rotate(byAngle: -.pi * 1.8, duration: 0.30)
+            ]),
+            // Brief flare as the net cinches shut
+            SKAction.group([
+                SKAction.scale(to: 0.90, duration: 0.06),
+                SKAction.fadeOut(withDuration: 0.12)
             ]),
             SKAction.removeFromParent()
         ]))
 
-        // ── 4. Brief cyan-white screen flash (space restored) ─────────────
+        // Bug struggles in the net: rotation + scale pulse
+        // (position is synced each frame so only rotate/scale are used here)
+        container.run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.24),
+            SKAction.group([
+                SKAction.sequence([
+                    SKAction.rotate(byAngle:  .pi * 0.15, duration: 0.05),
+                    SKAction.rotate(byAngle: -.pi * 0.15, duration: 0.05),
+                    SKAction.rotate(byAngle:  .pi * 0.09, duration: 0.04),
+                    SKAction.rotate(byAngle: -.pi * 0.09, duration: 0.04)
+                ]),
+                SKAction.sequence([
+                    SKAction.scale(to: 1.25, duration: 0.06),
+                    SKAction.scale(to: 0.85, duration: 0.08),
+                    SKAction.scale(to: 1.00, duration: 0.04)
+                ])
+            ])
+        ]))
+
+        // ── 4. Brief cyan-white screen flash (world restored) ─────────────
         let flash = SKShapeNode(rect: CGRect(origin: .zero, size: size))
-        flash.fillColor   = SKColor(red: 0.3, green: 1.0, blue: 0.9, alpha: 0.20)
+        flash.fillColor   = SKColor(red: 0.3, green: 1.0, blue: 0.9, alpha: 0.32)
         flash.strokeColor = .clear
         flash.zPosition   = 71
         addChild(flash)
@@ -504,28 +528,8 @@ final class ARBugScene: SKScene {
             ]),
             SKAction.removeFromParent()
         ]))
-
-        let net = SKLabelNode(text: "🕸️")
-        net.fontSize  = 64
-        net.position  = center
-        net.zPosition = 53
-        net.setScale(0.2)
-        net.alpha = 1.0
-        addChild(net)
-
-        let flyAndExpand = SKAction.group([
-            SKAction.move(to: flyTarget, duration: 0.42),
-            SKAction.scale(to: 2.0, duration: 0.30),
-            SKAction.rotate(byAngle: .pi * 2.5, duration: 0.42)
-        ])
-        let delayedFade = SKAction.sequence([
-            SKAction.wait(forDuration: 0.22),
-            SKAction.fadeOut(withDuration: 0.20)
-        ])
-        net.run(SKAction.sequence([
-            SKAction.group([flyAndExpand, delayedFade]),
-            SKAction.removeFromParent()
-        ]))
+        // NOTE: The 3-D Net3DNode (SceneKit) is the primary net visual;
+        //       this ring provides supplementary 2D feedback from the launch point.
     }
 
     private func playMissAnimation(near center: CGPoint) {

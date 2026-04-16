@@ -107,22 +107,35 @@ final class Bug3DNode: SCNNode {
 
     // MARK: - Public
 
-    /// Glitch-flash + dissolve animation played when the bug is captured.
-    /// Rapid blinks suit the digital-corruption theme and give clear visual feedback.
+    /// Struggle-then-dissolve animation played when the bug is captured.
+    /// The bug spins and shrinks (trapped in net), then glitch-flashes before fading.
     func captured() {
         removeAllActions()
-        let blinkDur: TimeInterval = 0.06
-        // Three rapid opacity toggles simulate a digital glitch before dissolving.
+
+        // 1. Impact: brief scale-up
+        let impact = SCNAction.scale(to: 1.25, duration: 0.05)
+
+        // 2. Struggle: spin + shrink (trapped in net)
+        let spinY    = SCNAction.rotateBy(x: 0, y: CGFloat(.pi * 3.0), z: 0, duration: 0.28)
+        let spinZ    = SCNAction.rotateBy(x: 0, y: 0, z: CGFloat(.pi * 1.5), duration: 0.28)
+        let shrink   = SCNAction.scale(to: 0.70, duration: 0.28)
+        let struggle = SCNAction.group([spinY, spinZ, shrink])
+
+        // 3. Glitch blink (digital corruption theme)
+        let blinkDur: TimeInterval = 0.055
         let blink = SCNAction.sequence([
             SCNAction.fadeOpacity(to: 0.0, duration: blinkDur * 0.35),
             SCNAction.fadeOpacity(to: 1.0, duration: blinkDur * 0.25),
             SCNAction.fadeOpacity(to: 0.0, duration: blinkDur * 0.20),
             SCNAction.fadeOpacity(to: 0.8, duration: blinkDur * 0.20),
         ])
-        let dissolve = SCNAction.fadeOut(duration: 0.18)
+
+        // 4. Dissolve
+        let dissolve = SCNAction.fadeOut(duration: 0.15)
         dissolve.timingMode = .easeIn
-        let remove = SCNAction.removeFromParentNode()
-        runAction(SCNAction.sequence([blink, dissolve, remove]))
+
+        runAction(SCNAction.sequence([impact, struggle, blink, dissolve,
+                                      SCNAction.removeFromParentNode()]))
     }
 
     // MARK: - Private: USDZ loading

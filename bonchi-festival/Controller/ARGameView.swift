@@ -361,10 +361,17 @@ extension ARGameView {
             mapLock.unlock()
             guard let anchor else { return }
 
-            // Play dismissal animation on the 3-D visual (no lock needed — read-only SCNNode call)
+            // Reparent the 3-D visual to the scene root so its captured() animation
+            // plays in full even after the ARAnchor (and its child hierarchy) is removed.
             mapLock.lock()
             let bug3D = anchorBug3DNodeMap[anchor.identifier]
             mapLock.unlock()
+            if let bug3D = bug3D, let rootNode = arView?.scene.rootNode {
+                let worldT = bug3D.simdWorldTransform
+                bug3D.removeFromParentNode()
+                rootNode.addChildNode(bug3D)
+                bug3D.simdWorldTransform = worldT
+            }
             bug3D?.captured()
 
             // Notify the projector to remove the matching bug from its display.

@@ -6,6 +6,9 @@
 //  The node must be added as a child of `arView.pointOfView` so it stays fixed
 //  in the camera's view frustum regardless of how the device moves.
 //
+//  Design: dark rosewood body with brushed-silver metal accents (grip rings,
+//  branch collar, tine tips) and neon cyan rubber bands with emissive glow.
+//
 //  Rubber-band geometry (two SCNCylinder nodes) is updated every frame to reflect
 //  the player's current drag state via `updateDrag(offset:maxDrag:)`.
 //
@@ -23,27 +26,27 @@ final class SlingshotNode: SCNNode {
     // MARK: Geometry constants (camera-local space, metres)
 
     /// Position of the fork's centre in camera space.
-    private static let forkCenter = SCNVector3(0, -0.12, -0.28)
+    private static let forkCenter = SCNVector3(0, -0.10, -0.27)
 
     // Positions relative to forkCenter (i.e. in forkRoot's local frame):
-    /// Bottom of the stem.
-    private static let stemBottom = SCNVector3(0, -0.050, 0)
+    /// Bottom of the stem (grip end).
+    private static let stemBottom = SCNVector3(0, -0.060,  0)
     /// Branch point where stem meets the two tines.
-    private static let branch     = SCNVector3(0,  0.010, 0)
+    private static let branch     = SCNVector3(0,  0.010,  0)
     /// Left tine tip.
-    private static let leftTip    = SCNVector3(-0.035,  0.055, 0)
+    private static let leftTip    = SCNVector3(-0.046,  0.072, 0)
     /// Right tine tip.
-    private static let rightTip   = SCNVector3( 0.035,  0.055, 0)
+    private static let rightTip   = SCNVector3( 0.046,  0.072, 0)
 
     /// Resting pull-point position (pouch hangs just below tine level).
-    private static let neutralPull = SCNVector3(0, 0.042, 0.0)
+    private static let neutralPull = SCNVector3(0, 0.044, 0.0)
 
     /// Maximum pull depth toward the camera (+Z) at full drag.
     private static let maxPullDepth:   Float = 0.080
     /// Maximum lateral shift left/right at full drag.
-    private static let maxPullLateral: Float = 0.025
+    private static let maxPullLateral: Float = 0.022
     /// Small downward shift at full drag (adds perspective to the pull).
-    private static let maxPullDown:    Float = 0.014
+    private static let maxPullDown:    Float = 0.012
 
     // MARK: Child nodes
 
@@ -51,7 +54,7 @@ final class SlingshotNode: SCNNode {
     private let leftBandNode:  SCNNode
     private let rightBandNode: SCNNode
 
-    /// The visible net-pouch (torus ring + spokes) at the pull point.
+    /// The visible net-pouch (glowing sphere + rim) at the pull point.
     private let pouchNode: SCNNode
 
     /// Current pull-point position in forkRoot's local frame.
@@ -107,31 +110,64 @@ final class SlingshotNode: SCNNode {
     // MARK: - Private: fork geometry
 
     private func setupFork() {
+        // Dark rosewood body — polished, slightly metallic sheen
         let woodMat = pbrMat(
-            UIColor(red: 0.48, green: 0.24, blue: 0.05, alpha: 1),
-            roughness: 0.82, metalness: 0.04
+            UIColor(red: 0.18, green: 0.08, blue: 0.04, alpha: 1),
+            roughness: 0.42, metalness: 0.14
+        )
+        // Brushed silver metal for accents (collar, grip rings)
+        let metalMat = pbrMat(
+            UIColor(red: 0.74, green: 0.78, blue: 0.84, alpha: 1),
+            roughness: 0.18, metalness: 0.92
+        )
+        // Neon cyan glowing caps on the tine tips
+        let tipMat = pbrMat(
+            UIColor(red: 0.12, green: 1.0, blue: 0.78, alpha: 1),
+            roughness: 0.30, metalness: 0.15,
+            emission: UIColor(red: 0.05, green: 0.52, blue: 0.40, alpha: 1)
         )
 
-        // Stem
+        // ── Stem ──────────────────────────────────────────────────────────────
         forkRoot.addChildNode(
             cylinderBetween(SlingshotNode.stemBottom, SlingshotNode.branch,
-                            radius: 0.007, material: woodMat)
-        )
-        // Left tine
-        forkRoot.addChildNode(
-            cylinderBetween(SlingshotNode.branch, SlingshotNode.leftTip,
-                            radius: 0.006, material: woodMat)
-        )
-        // Right tine
-        forkRoot.addChildNode(
-            cylinderBetween(SlingshotNode.branch, SlingshotNode.rightTip,
-                            radius: 0.006, material: woodMat)
+                            radius: 0.009, material: woodMat)
         )
 
-        // Decorative sphere caps on each tine tip
+        // Three brushed-metal grip rings distributed along the handle
+        let stemRange = SlingshotNode.branch.y - SlingshotNode.stemBottom.y
+        for frac: Float in [0.20, 0.50, 0.80] {
+            let y = SlingshotNode.stemBottom.y + frac * stemRange
+            let gripRing = SCNNode(geometry: SCNTorus(ringRadius: 0.0115, pipeRadius: 0.0022))
+            gripRing.geometry!.materials = [metalMat]
+            gripRing.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
+            gripRing.position    = SCNVector3(0, y, 0)
+            gripRing.castsShadow = false
+            forkRoot.addChildNode(gripRing)
+        }
+
+        // Metal collar where stem meets tines (structural accent)
+        let collar = SCNNode(geometry: SCNTorus(ringRadius: 0.0135, pipeRadius: 0.0032))
+        collar.geometry!.materials = [metalMat]
+        collar.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
+        collar.position    = SlingshotNode.branch
+        collar.castsShadow = false
+        forkRoot.addChildNode(collar)
+
+        // ── Tines ─────────────────────────────────────────────────────────────
+        forkRoot.addChildNode(
+            cylinderBetween(SlingshotNode.branch, SlingshotNode.leftTip,
+                            radius: 0.007, material: woodMat)
+        )
+        forkRoot.addChildNode(
+            cylinderBetween(SlingshotNode.branch, SlingshotNode.rightTip,
+                            radius: 0.007, material: woodMat)
+        )
+
+        // ── Neon tip caps on each tine ─────────────────────────────────────────
         for tip in [SlingshotNode.leftTip, SlingshotNode.rightTip] {
-            let cap = SCNNode(geometry: SCNSphere(radius: 0.009))
-            cap.geometry!.materials = [woodMat]
+            let cap = SCNNode(geometry: SCNSphere(radius: 0.011))
+            cap.geometry!.materials = [tipMat]
+            cap.castsShadow = false
             cap.position = tip
             forkRoot.addChildNode(cap)
         }
@@ -140,16 +176,18 @@ final class SlingshotNode: SCNNode {
     // MARK: - Private: rubber bands
 
     private func setupBands() {
+        // Neon cyan bands with emissive glow (matches tine-tip colour)
         let bandMat = pbrMat(
-            UIColor(red: 1.0, green: 0.50, blue: 0.0, alpha: 1),
-            roughness: 0.90, metalness: 0.0
+            UIColor(red: 0.10, green: 0.95, blue: 0.72, alpha: 1),
+            roughness: 0.55, metalness: 0.0,
+            emission: UIColor(red: 0.04, green: 0.40, blue: 0.28, alpha: 1)
         )
 
-        let geoL = SCNCylinder(radius: 0.003, height: 0.01)
+        let geoL = SCNCylinder(radius: 0.0032, height: 0.01)
         geoL.materials = [bandMat]
         leftBandNode.geometry = geoL
 
-        let geoR = SCNCylinder(radius: 0.003, height: 0.01)
+        let geoR = SCNCylinder(radius: 0.0032, height: 0.01)
         geoR.materials = [bandMat]
         rightBandNode.geometry = geoR
 
@@ -160,45 +198,26 @@ final class SlingshotNode: SCNNode {
         forkRoot.addChildNode(rightBandNode)
     }
 
-    // MARK: - Private: pouch (net ball)
+    // MARK: - Private: pouch
 
     private func setupPouch() {
-        let rimMat = pbrMat(
-            UIColor(red: 0.20, green: 0.85, blue: 0.35, alpha: 1),
-            roughness: 0.65, metalness: 0.10,
-            emission: UIColor(red: 0.02, green: 0.20, blue: 0.04, alpha: 1)
+        // Glowing neon sphere + rim ring — matches band colour
+        let neonMat = pbrMat(
+            UIColor(red: 0.10, green: 0.92, blue: 0.68, alpha: 1),
+            roughness: 0.38, metalness: 0.10,
+            emission: UIColor(red: 0.04, green: 0.38, blue: 0.26, alpha: 1)
         )
-        let meshMat = pbrMat(
-            UIColor(red: 0.35, green: 0.98, blue: 0.50, alpha: 0.90),
-            roughness: 0.75, metalness: 0.0
-        )
-        meshMat.isDoubleSided = true
 
-        // Outer torus rim
-        let torus = SCNTorus(ringRadius: 0.018, pipeRadius: 0.003)
-        torus.materials = [rimMat]
-        let torusNode = SCNNode(geometry: torus)
-        torusNode.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)   // face +Z (camera forward)
-        pouchNode.addChildNode(torusNode)
+        let sphere = SCNNode(geometry: SCNSphere(radius: 0.013))
+        sphere.geometry!.materials = [neonMat]
+        sphere.castsShadow = false
+        pouchNode.addChildNode(sphere)
 
-        // 8 radial spokes forming the net mesh
-        for i in 0..<8 {
-            let angle = Float(i) * .pi / 4
-            let spoke = SCNNode(
-                geometry: SCNBox(width: 0.034, height: 0.001, length: 0.001, chamferRadius: 0)
-            )
-            spoke.geometry!.materials = [meshMat]
-            spoke.eulerAngles = SCNVector3(0, 0, angle)
-            pouchNode.addChildNode(spoke)
-        }
-
-        // Two inner concentric rings
-        for r: CGFloat in [0.008, 0.014] {
-            let ring = SCNNode(geometry: SCNTorus(ringRadius: r, pipeRadius: 0.0015))
-            ring.geometry!.materials = [rimMat]
-            ring.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
-            pouchNode.addChildNode(ring)
-        }
+        let rim = SCNNode(geometry: SCNTorus(ringRadius: 0.017, pipeRadius: 0.0026))
+        rim.geometry!.materials = [neonMat]
+        rim.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
+        rim.castsShadow = false
+        pouchNode.addChildNode(rim)
 
         pouchNode.castsShadow = false
         pouchNode.isHidden    = true    // shown only while dragging
