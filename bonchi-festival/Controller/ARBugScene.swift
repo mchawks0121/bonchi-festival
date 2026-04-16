@@ -17,6 +17,14 @@
 
 import SpriteKit
 
+// MARK: - BugHunterSceneDelegate
+
+/// Receives score and lifecycle events from ARBugScene.
+protocol BugHunterSceneDelegate: AnyObject {
+    func scene(_ scene: SKScene, didUpdateScore score: Int, timeRemaining: Double)
+    func sceneDidFinish(_ scene: SKScene, finalScore: Int)
+}
+
 // MARK: - ARBugScene
 
 final class ARBugScene: SKScene {
