@@ -149,7 +149,19 @@ final class GameManager: ObservableObject {
         previewURL = nil
     }
 
+    /// Threshold below which the time remaining is highlighted in red on the preview page.
+    private static let previewTimeWarningThreshold: Double = 10.0
+
     /// Builds the full HTML document served on each preview page request.
+    /// The document includes a CSS-styled status panel with the current game state,
+    /// time remaining, and score.  A `<meta http-equiv="refresh">` tag causes the
+    /// browser to auto-reload every 3 seconds, keeping the displayed values current.
+    ///
+    /// - Note: This method is invoked from `PreviewServer`'s background queue via the
+    ///   `htmlProvider` closure.  All accessed properties (`state`, `timeRemaining`,
+    ///   `score`) are value types read without synchronisation; minor tearing is
+    ///   acceptable for a non-critical status page.
+    /// - Returns: A complete UTF-8 HTML document string.
     private func buildPreviewHTML() -> String {
         let stateLabel: String
         let stateClass: String
@@ -160,7 +172,7 @@ final class GameManager: ObservableObject {
         case .finished:   stateLabel = "終了 / FINISHED";   stateClass = "finished"
         }
         let timeStr  = String(format: "%.1f", timeRemaining)
-        let timeColor = timeRemaining < 10 ? "#ff5577" : "#ffffff"
+        let timeColor = timeRemaining < Self.previewTimeWarningThreshold ? "#ff5577" : "#ffffff"
 
         return """
         <!DOCTYPE html>

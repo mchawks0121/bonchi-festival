@@ -94,13 +94,14 @@ final class PreviewServer {
 
         var ptr = ifaddrPtr
         while let ifa = ptr {
-            let name   = String(cString: ifa.pointee.ifa_name)
-            let family = ifa.pointee.ifa_addr.pointee.sa_family
+            let name = String(cString: ifa.pointee.ifa_name)
+            guard let addr = ifa.pointee.ifa_addr else { ptr = ifa.pointee.ifa_next; continue }
+            let family = addr.pointee.sa_family
             if name == "en0", family == UInt8(AF_INET) {
                 var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
                 getnameinfo(
-                    ifa.pointee.ifa_addr,
-                    socklen_t(ifa.pointee.ifa_addr.pointee.sa_len),
+                    addr,
+                    socklen_t(addr.pointee.sa_len),
                     &host, socklen_t(host.count),
                     nil, 0,
                     NI_NUMERICHOST
