@@ -74,6 +74,10 @@ struct ARGameView: UIViewRepresentable {
             scene.scaleMode = .resizeFill
             skView.presentScene(scene)
             context.coordinator.startSpawning()
+        } else {
+            // In the ready state the AR session runs but spawning hasn't started.
+            // Attach the slingshot now so the player can see and use it immediately.
+            context.coordinator.ensureSlingshotAttached()
         }
 
         return container
@@ -81,6 +85,15 @@ struct ARGameView: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIView, context: Context) {
         let coordinator = context.coordinator
+
+        // In the ready state: ensure the 3-D slingshot is attached and interactive
+        // so the player can practice the gesture before the game starts.
+        // The ARBugScene (and bug spawning) begin only when confirmReady() is called.
+        if gameManager.state == .ready {
+            coordinator.ensureSlingshotAttached()
+            return
+        }
+
         if let scene = gameManager.arBugScene,
            coordinator.skView?.scene !== scene {
             scene.scaleMode = .resizeFill
@@ -152,6 +165,12 @@ extension ARGameView {
         private static let minBugScale:       Float = 0.3
         private static let maxBugScale:       Float = 5.0
 
+        // MARK: Spawn rate constants
+        /// Maximum number of bugs alive at the same time.
+        private static let maxActiveBugs: Int = 5
+        /// Horizontal angle normalisation divisor (= max absolute angle value).
+        private static let maxHorizontalAngle: Float = 0.65
+
         // MARK: Rendering quality constants
         /// IBL intensity multiplier for the AR scene. Empirically tuned so PBR metalness/
         /// roughness values render correctly under typical indoor lighting estimated by ARKit.
@@ -188,21 +207,7 @@ extension ARGameView {
             // Cache view height on main thread for use during rendering
             if let h = arView?.bounds.height, h > 0 { cachedViewHeight = h }
 
-            // Attach 3-D slingshot to the camera node so it follows the device.
-            // pointOfView may be nil this early; we also retry in renderer(_:updateAtTime:).
-            let sn = SlingshotNode()
-            slingshotNode = sn
-            arView?.pointOfView?.addChildNode(sn)
-
-            // Wire drag-state and fire callbacks through GameManager so SlingshotView
-            // can communicate with the Coordinator without a direct reference.
-            gameManager?.slingshotDragUpdate = { [weak self] offset, isDragging in
-                self?.cachedDragOffset = offset
-                self?.cachedIsDragging = isDragging
-            }
-            gameManager?.onNetFired = { [weak self] dragOffset, power in
-                self?.launchNet3D(dragOffset: dragOffset, power: power)
-            }
+            ensureSlingshotAttached()
 
             // Wire capture callback so ARBugScene can trigger anchor removal
             gameManager?.arBugScene?.onCaptureBug = { [weak self] node in
@@ -210,6 +215,28 @@ extension ARGameView {
             }
 
             scheduleNextSpawn(delay: 0.9)
+        }
+
+        /// Attaches the 3-D slingshot to the camera and wires drag/fire callbacks.
+        /// Idempotent: no-op if the slingshot is already attached.
+        /// Called in both `.ready` and `.playing` states so the slingshot is visible
+        /// before the game timer starts.
+        func ensureSlingshotAttached() {
+            guard gameManager?.gameMode != .projectorServer else { return }
+            guard slingshotNode == nil else { return }
+
+            let sn = SlingshotNode()
+            slingshotNode = sn
+            // pointOfView may be nil this early; renderer(_:updateAtTime:) retries each frame.
+            arView?.pointOfView?.addChildNode(sn)
+
+            gameManager?.slingshotDragUpdate = { [weak self] offset, isDragging in
+                self?.cachedDragOffset = offset
+                self?.cachedIsDragging = isDragging
+            }
+            gameManager?.onNetFired = { [weak self] dragOffset, power in
+                self?.launchNet3D(dragOffset: dragOffset, power: power)
+            }
         }
 
         func stopSpawning() {
@@ -249,6 +276,12 @@ extension ARGameView {
                 return
             }
 
+            // Enforce maximum simultaneous bug count.
+            guard bugAnchorMap.count < Coordinator.maxActiveBugs else {
+                scheduleNextSpawn(delay: 1.0)
+                return
+            }
+
             let bugType         = randomBugType()
             let distance        = Float.random(in: Coordinator.minSpawnDistance...Coordinator.maxSpawnDistance)
             let horizontalAngle = Float.random(in: Coordinator.horizontalAngleRange)
@@ -275,13 +308,24 @@ extension ARGameView {
             bugAnchorMap[anchor.identifier] = bugType
             arView.session.add(anchor: anchor)
 
+            // Notify the projector so the same bug appears on the shared display.
+            // normalizedX: horizontal angle → –1…1; normalizedY: vertical → 0…1.
+            let normalizedX = horizontalAngle / Coordinator.maxHorizontalAngle
+            let vertRange   = Coordinator.verticalOffsetRange
+            let normalizedY = (verticalOffset - vertRange.lowerBound) /
+                              (vertRange.upperBound - vertRange.lowerBound)
+            gameManager?.sendBugSpawned(id: anchor.identifier.uuidString,
+                                        type: bugType,
+                                        normalizedX: normalizedX,
+                                        normalizedY: Float(normalizedY))
+
             // Track actual elapsed time for the difficulty ramp.
             let now = Date()
             if let last = lastSpawnTime { spawnElapsed += now.timeIntervalSince(last) }
             lastSpawnTime = now
 
-            // Progressive spawn interval: 1.8 s → 0.6 s over 90 s of game time
-            let nextDelay = max(0.6, 1.8 - spawnElapsed / 75.0)
+            // Progressive spawn interval: 3.5 s → 1.5 s over 75 s of game time.
+            let nextDelay = max(1.5, 3.5 - spawnElapsed / 75.0)
             scheduleNextSpawn(delay: nextDelay)
         }
 
@@ -300,6 +344,9 @@ extension ARGameView {
 
             // Play dismissal animation on the 3-D visual
             anchorBug3DNodeMap[anchor.identifier]?.captured()
+
+            // Notify the projector to remove the matching bug from its display.
+            gameManager?.sendBugRemoved(id: anchor.identifier.uuidString)
 
             // Clean up all maps
             nodeAnchorMap.removeValue(forKey: ObjectIdentifier(node))

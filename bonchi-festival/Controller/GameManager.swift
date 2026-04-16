@@ -24,6 +24,7 @@ final class GameManager: ObservableObject {
     enum GameState: String {
         case waiting     = "waiting"
         case calibrating = "calibrating"
+        case ready       = "ready"       // after calibration — first slingshot shot starts the game
         case playing     = "playing"
         case finished    = "finished"
     }
@@ -100,9 +101,17 @@ final class GameManager: ObservableObject {
     }
 
     /// Record `transform` (typically the current AR camera transform) as the spawn
-    /// origin, then immediately begin the game.
+    /// origin, then transition to the ready screen where the first slingshot shot
+    /// will signal game start.
     func setWorldOrigin(transform: simd_float4x4) {
         worldOriginTransform = transform
+        state = .ready
+    }
+
+    /// Called when the player fires the slingshot from the ready screen.
+    /// Transitions from `.ready` to `.playing` and starts the game clock + bug spawning.
+    func confirmReady() {
+        guard state == .ready else { return }
         startGame()
     }
 
@@ -152,6 +161,24 @@ final class GameManager: ObservableObject {
             multipeerSession.send(.launch(payload))
         }
     }
+
+    /// Notify the projector that a bug has appeared in the shared AR world.
+    /// The projector will mirror the bug at the corresponding screen position.
+    /// Only sent in projectorClient mode.
+    func sendBugSpawned(id: String, type: BugType, normalizedX: Float, normalizedY: Float) {
+        guard gameMode == .projectorClient else { return }
+        let payload = BugSpawnedPayload(id: id, bugType: type,
+                                        normalizedX: normalizedX, normalizedY: normalizedY)
+        multipeerSession.send(.bugSpawned(payload))
+    }
+
+    /// Notify the projector that the phone's AR layer captured a bug (remove it from display).
+    /// Only sent in projectorClient mode.
+    func sendBugRemoved(id: String) {
+        guard gameMode == .projectorClient else { return }
+        let payload = BugRemovedPayload(id: id)
+        multipeerSession.send(.bugRemoved(payload))
+    }
 }
 
 // MARK: - BugHunterSceneDelegate
@@ -160,11 +187,9 @@ extension GameManager: BugHunterSceneDelegate {
 
     func scene(_ scene: SKScene, didUpdateScore score: Int, timeRemaining: Double) {
         DispatchQueue.main.async {
-            // In projector-client mode the score is accumulated exclusively from
-            // `bugCaptured` messages sent by the projector.  The local ARBugScene
-            // runs with zero captured bugs (no AR spawning), so its score is always 0;
-            // syncing it here would wipe out every point earned via bugCaptured.
-            if self.gameMode == .standalone {
+            // Phone is the score authority in both standalone and projectorClient modes.
+            // projectorServer has no AR scene, so its score is always 0 — skip it.
+            if self.gameMode != .projectorServer {
                 self.score = score
             }
             self.timeRemaining = timeRemaining
@@ -173,9 +198,7 @@ extension GameManager: BugHunterSceneDelegate {
 
     func sceneDidFinish(_ scene: SKScene, finalScore: Int) {
         DispatchQueue.main.async {
-            // Same reasoning as above: preserve the bugCaptured-accumulated score
-            // in projector-client mode instead of overwriting with the scene's 0.
-            if self.gameMode == .standalone {
+            if self.gameMode != .projectorServer {
                 self.score = finalScore
             }
             self.timeRemaining = 0

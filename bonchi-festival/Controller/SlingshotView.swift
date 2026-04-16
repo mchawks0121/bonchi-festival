@@ -84,6 +84,11 @@ struct SlingshotView: View {
         let dy    =  dragOffset.height   // intentionally NOT negated
         let angle = Float(atan2(dy, dx))
 
+        // In the ready state the first shot is the "game start" signal.
+        if gameManager.state == .ready {
+            gameManager.confirmReady()
+        }
+
         // Notify 3-D scene to launch the flying net before resetting drag
         gameManager.onNetFired?(dragOffset, power)
 
