@@ -100,21 +100,46 @@ final class GameManager: ObservableObject {
         state = .calibrating
     }
 
-    /// Record `transform` (typically the current AR camera transform) as the spawn
-    /// origin, then start the game immediately (skipping the separate ready screen).
+    /// Record `transform` as the spawn origin and transition to the `.ready` state.
+    /// The AR scene (and bug spawning) starts immediately, but the countdown timer
+    /// is frozen until the player fires their first shot.
     func setWorldOrigin(transform: simd_float4x4) {
         worldOriginTransform = transform
-        startGame()
+
+        // In projector-server mode there is no AR session; skip straight to playing.
+        guard gameMode != .projectorServer else {
+            startGame()
+            return
+        }
+
+        // Create the ARBugScene now so bugs appear during .ready.
+        // The timer is paused until confirmReady() is called.
+        let screenSize = UIScreen.main.bounds.size
+        let scene = ARBugScene(size: screenSize)
+        scene.scaleMode    = .resizeFill
+        scene.gameDelegate = self
+        scene.isTimerPaused = true
+        arBugScene = scene
+
+        state = .ready
     }
 
     /// Called when the player fires the slingshot from the ready screen.
-    /// Transitions from `.ready` to `.playing` and starts the game clock + bug spawning.
+    /// Unpauses the countdown, resets the score, and transitions to `.playing`.
     func confirmReady() {
         guard state == .ready else { return }
-        startGame()
+        score = 0
+        timeRemaining = 90.0
+        arBugScene?.isTimerPaused = false
+        state = .playing
+        SoundManager.shared.playGameStart()
+        // Signal any connected projector (no-op when no peers are connected).
+        multipeerSession.send(.startGame())
     }
 
     /// Start a new 90-second game round on-device (and signal any connected projector).
+    /// Used directly only in projector-server mode; in all other modes `setWorldOrigin()`
+    /// + `confirmReady()` manage the transition through `.ready` → `.playing`.
     func startGame() {
         score = 0
         timeRemaining = 90.0

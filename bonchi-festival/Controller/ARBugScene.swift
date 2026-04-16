@@ -37,6 +37,11 @@ final class ARBugScene: SKScene {
     /// ARGameView can remove the corresponding ARAnchor from the session.
     var onCaptureBug: ((SKNode) -> Void)?
 
+    // MARK: Public state
+
+    /// When true the countdown timer is frozen (used during the `.ready` pre-game phase).
+    var isTimerPaused: Bool = false
+
     // MARK: Private state
 
     private(set) var score: Int = 0
@@ -89,14 +94,18 @@ final class ARBugScene: SKScene {
 
         let dt = min(currentTime - lastUpdate, 0.05)
         lastUpdate = currentTime
-        timeRemaining = max(0, timeRemaining - dt)
+
+        // Countdown is frozen during the `.ready` pre-game phase.
+        if !isTimerPaused {
+            timeRemaining = max(0, timeRemaining - dt)
+        }
 
         updateLockOn()
         updateDistortion()
 
         gameDelegate?.scene(self, didUpdateScore: score, timeRemaining: timeRemaining)
 
-        if timeRemaining <= 0 { endGame() }
+        if !isTimerPaused && timeRemaining <= 0 { endGame() }
     }
 
     // MARK: - Public API

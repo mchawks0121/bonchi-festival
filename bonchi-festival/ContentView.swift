@@ -582,6 +582,11 @@ struct ARPlayingView: View {
                 .environmentObject(gameManager)
                 .ignoresSafeArea()
 
+            // ── Ready screen: instruction overlay before first shot ───────
+            if gameManager.state == .ready {
+                ReadyOverlay()
+            }
+
             // ── HUD pinned to the top (playing only) ─────────────────────
             if gameManager.state == .playing {
                 VStack(spacing: 0) {
