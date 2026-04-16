@@ -8,6 +8,7 @@
 import SwiftUI
 import ARKit
 import SceneKit
+import UIKit
 
 // MARK: - Design tokens
 
@@ -157,6 +158,13 @@ struct WaitingView: View {
                         .clipShape(Capsule())
                         .transition(.opacity.combined(with: .scale))
                         .animation(.easeInOut(duration: 0.25), value: gameManager.isConnected)
+                    }
+
+                    // Preview URL card — only in projector server mode
+                    if gameManager.gameMode == .projectorServer {
+                        ProjectorPreviewURLCard(previewURL: gameManager.previewURL)
+                            .padding(.horizontal, 24)
+                            .transition(.opacity.combined(with: .scale))
                     }
 
                     // Start button
@@ -332,6 +340,114 @@ struct ModeCard: View {
                 )
         )
         .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+}
+
+// MARK: - Projector Preview URL Card
+
+/// Displays the local HTTP preview URL for the projector-server mode.
+/// Provides a copy button and an "open in Safari" button so the operator can
+/// monitor the game from any browser on the same Wi-Fi network without needing
+/// to see the iOS device screen.
+struct ProjectorPreviewURLCard: View {
+
+    let previewURL: URL?
+
+    @State private var didCopy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "globe")
+                    .font(.caption.bold())
+                    .foregroundColor(accentCyan)
+                Text("プレビュー URL")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(accentCyan)
+                    .tracking(2)
+                Spacer()
+                Text("同一 Wi-Fi 上のブラウザで開く")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.4))
+            }
+
+            if let url = previewURL {
+                // URL display
+                Text(url.absoluteString)
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                // Action buttons
+                HStack(spacing: 10) {
+                    // Copy button
+                    Button {
+                        UIPasteboard.general.string = url.absoluteString
+                        withAnimation { didCopy = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            withAnimation { didCopy = false }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 12, weight: .medium))
+                            Text(didCopy ? "コピー済み" : "コピー")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(didCopy ? .green : .white.opacity(0.8))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.1))
+                        .clipShape(Capsule())
+                    }
+
+                    // Open in Safari button
+                    Button {
+                        UIApplication.shared.open(url)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "safari")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("Safari で開く")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(accentCyan)
+                        .clipShape(Capsule())
+                    }
+
+                    Spacer()
+                }
+            } else {
+                // No Wi-Fi connection
+                HStack(spacing: 6) {
+                    Image(systemName: "wifi.slash")
+                        .font(.system(size: 13))
+                    Text("Wi-Fi に接続するとプレビュー URL が表示されます")
+                        .font(.system(size: 12))
+                        .multilineTextAlignment(.leading)
+                }
+                .foregroundColor(.white.opacity(0.45))
+                .padding(.vertical, 4)
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.white.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(accentCyan.opacity(0.3), lineWidth: 1)
+        )
     }
 }
 

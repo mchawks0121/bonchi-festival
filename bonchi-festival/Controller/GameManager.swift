@@ -42,6 +42,10 @@ final class GameManager: ObservableObject {
     @Published var isConnected: Bool = false
     @Published var gameMode: GameMode = .standalone
 
+    /// URL at which the local preview HTTP server can be reached, or nil when the
+    /// server is not running (i.e. projector-server mode is not selected).
+    @Published var previewURL: URL? = nil
+
     /// World-space camera transform captured during calibration.
     /// When set, bug spawns are centered on this position instead of the live camera.
     var worldOriginTransform: simd_float4x4? = nil
@@ -52,6 +56,7 @@ final class GameManager: ObservableObject {
     // MARK: Dependencies
 
     let multipeerSession = MultipeerSession()
+    private let previewServer = PreviewServer()
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: Init
@@ -71,9 +76,15 @@ final class GameManager: ObservableObject {
     /// Switch between standalone, projector-client, and projector-server modes.
     func selectMode(_ mode: GameMode) {
         guard mode != gameMode else { return }
+        // Stop Multipeer Connectivity if leaving client mode.
         if gameMode == .projectorClient { multipeerSession.stop() }
+        // Stop the preview server if leaving projector-server mode.
+        if gameMode == .projectorServer { stopPreviewServer() }
         gameMode = mode
         if mode == .projectorClient { multipeerSession.start() }
+        // Start the preview server whenever projector-server mode is selected so the
+        // operator can monitor the game from any browser on the same Wi-Fi network.
+        if mode == .projectorServer { startPreviewServer() }
     }
 
     // MARK: Actions
@@ -123,6 +134,100 @@ final class GameManager: ObservableObject {
         timeRemaining = 90.0
         state = .waiting
         if gameMode == .projectorClient { multipeerSession.send(.resetGame()) }
+    }
+
+    // MARK: - Preview server
+
+    private func startPreviewServer() {
+        previewServer.htmlProvider = { [weak self] in self?.buildPreviewHTML() ?? "" }
+        previewServer.start()
+        previewURL = previewServer.previewURL
+    }
+
+    private func stopPreviewServer() {
+        previewServer.stop()
+        previewURL = nil
+    }
+
+    /// Builds the full HTML document served on each preview page request.
+    private func buildPreviewHTML() -> String {
+        let stateLabel: String
+        let stateClass: String
+        switch state {
+        case .waiting:    stateLabel = "待機中 / WAITING";   stateClass = "waiting"
+        case .calibrating: stateLabel = "準備中 / READY";    stateClass = "waiting"
+        case .playing:    stateLabel = "プレイ中 / PLAYING"; stateClass = "playing"
+        case .finished:   stateLabel = "終了 / FINISHED";   stateClass = "finished"
+        }
+        let timeStr  = String(format: "%.1f", timeRemaining)
+        let timeColor = timeRemaining < 10 ? "#ff5577" : "#ffffff"
+
+        return """
+        <!DOCTYPE html>
+        <html lang="ja">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <meta http-equiv="refresh" content="3">
+          <title>BugHunter プレビュー</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+              min-height: 100vh;
+              background: linear-gradient(180deg, #0a0533 0%, #020208 100%);
+              color: #fff;
+              font-family: 'Courier New', monospace;
+              display: flex; flex-direction: column;
+              align-items: center; justify-content: center;
+              padding: 40px 20px;
+            }
+            h1 { font-size: 2rem; color: #33ffcc; letter-spacing: 4px; margin-bottom: 8px; }
+            .subtitle { color: rgba(102,187,255,0.75); font-size: 0.85rem;
+                        margin-bottom: 48px; letter-spacing: 1px; }
+            .state-badge {
+              font-size: 1rem; padding: 10px 28px;
+              border-radius: 999px; border: 1.5px solid currentColor;
+              margin-bottom: 36px; letter-spacing: 2px;
+            }
+            .waiting  { color: #33ffcc; }
+            .playing  { color: #ffcc00; }
+            .finished { color: #ff5577; }
+            .grid {
+              display: grid; grid-template-columns: 1fr 1fr;
+              gap: 16px; max-width: 400px; width: 100%; margin-bottom: 32px;
+            }
+            .card {
+              background: rgba(255,255,255,0.06);
+              border: 1px solid rgba(255,255,255,0.1);
+              border-radius: 16px; padding: 20px; text-align: center;
+            }
+            .card .label {
+              font-size: 0.6rem; color: rgba(255,255,255,0.45);
+              letter-spacing: 2px; margin-bottom: 8px;
+            }
+            .card .value { font-size: 2rem; font-weight: bold; }
+            .wide { grid-column: span 2; }
+            footer { color: rgba(255,255,255,0.25); font-size: 0.7rem; }
+          </style>
+        </head>
+        <body>
+          <h1>🐛 BUG HUNTER</h1>
+          <p class="subtitle">ぼんち祭り バグハンター — プロジェクタープレビュー</p>
+          <div class="state-badge \(stateClass)">\(stateLabel)</div>
+          <div class="grid">
+            <div class="card">
+              <div class="label">TIME</div>
+              <div class="value" style="color:\(timeColor)">\(timeStr)</div>
+            </div>
+            <div class="card">
+              <div class="label">SCORE</div>
+              <div class="value" style="color:#ffcc00">\(score)</div>
+            </div>
+          </div>
+          <footer>3秒ごとに自動更新 • BugHunter Projector Preview</footer>
+        </body>
+        </html>
+        """
     }
 
     /// Fire the slingshot: launch on the local AR scene and forward to the projector.

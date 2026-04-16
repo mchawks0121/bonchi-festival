@@ -53,9 +53,15 @@ bonchi-festival/
 │       .finished    → FinishedView
 │
 │     サブビュー:
-│       WaitingView         — モード選択カード(ModeCard)、接続状態ピル、「バグ狩り開始」ボタン、
-│                             バグ一覧カード(BugLegendRow)、ミッション説明。compact/regular レイアウト分岐あり。
+│       WaitingView         — モード選択カード(ModeCard)、接続状態ピル（projectorClient 時のみ）、
+│                             プレビュー URL カード(ProjectorPreviewURLCard)(projectorServer 時のみ)、
+│                             「バグ狩り開始」ボタン、バグ一覧カード(BugLegendRow)、ミッション説明。
+│                             compact/regular レイアウト分岐あり。
 │                             「バグ狩り開始」は startCalibration() を呼ぶ（projectorServer は直接 startGame()）。
+│       ProjectorPreviewURLCard — projectorServer 選択時に WaitingView に表示されるカード。
+│                             previewURL(URL?) を受け取り、URL 文字列表示・コピーボタン・
+│                             「Safari で開く」ボタン（UIApplication.shared.open）を提供。
+│                             Wi-Fi 未接続時は「Wi-Fi に接続してください」メッセージを表示。
 │       CalibrationView     — UIViewRepresentable。ARSCNView フルスクリーン + UIKit オーバーレイ。
 │                             中央に照準レティクル (CAShapeLayer)、説明ラベル、確定ボタン、戻るボタン。
 │                             CalibrationCoordinator: confirmTapped → gameManager.setWorldOrigin(transform:)
@@ -71,18 +77,30 @@ bonchi-festival/
 │   ├── GameManager.swift
 │   │     ObservableObject。iOS 側ゲーム全体を管理。
 │   │     @Published: state(GameState), score(Int), timeRemaining(Double),
-│   │                 isConnected(Bool), gameMode(GameMode), arBugScene(ARBugScene?)
+│   │                 isConnected(Bool), gameMode(GameMode), arBugScene(ARBugScene?),
+│   │                 previewURL(URL?)  — projectorServer 選択時に PreviewServer から取得。非 nil の間サーバー稼働中。
 │   │     var worldOriginTransform: simd_float4x4? — キャリブレーション時に記録するスポーン基点
 │   │     GameState 列挙: .waiting / .calibrating / .playing / .finished
 │   │     GameMode 列挙: .standalone / .projectorClient / .projectorServer
-│   │     selectMode(_:)        — モード切替。projectorClient 選択時に MultipeerSession.start()
+│   │     selectMode(_:)        — モード切替。projectorClient 選択時に MultipeerSession.start()。
+│   │                             projectorServer 選択時に PreviewServer.start() → previewURL を設定。
+│   │                             projectorServer から離脱時に PreviewServer.stop()。
 │   │     startCalibration()    — .calibrating 状態へ遷移（projectorServer は直接 startGame()）
 │   │     setWorldOrigin(transform:) — worldOriginTransform を記録して startGame() を呼ぶ
 │   │     startGame()           — score=0 reset、ARBugScene 生成（非 projectorServer のみ）、projectorClient は startGame 送信
 │   │     resetGame()           — 全状態リセット（worldOriginTransform も nil に）、projectorClient は resetGame 送信
 │   │     sendLaunch(angle:power:) — ARBugScene.fireNet() + projectorClient は launch 送信
+│   │     buildPreviewHTML()    — PreviewServer が配信する HTML を生成（state / timeRemaining / score を反映）
 │   │     BugHunterSceneDelegate: didUpdateScore/sceneDidFinish — standalone のみスコアを自 state に反映
 │   │     MultipeerSessionDelegate: bugCaptured 受信 → score += bugType.points
+│   │
+│   ├── PreviewServer.swift
+│   │     最小 HTTP/1.1 サーバー（Network.NWListener, TCP ポート 8765）。
+│   │     start() — NWListener を起動。接続ごとに handle(_:) でリクエストを受け取り HTML レスポンスを返す。
+│   │     stop()  — リスナーをキャンセルして nil に。
+│   │     previewURL: URL? — en0 の IPv4 アドレスから `http://<ip>:8765` を生成して返す computed property。
+│   │     htmlProvider: (() -> String)? — 呼び出し元（GameManager）がリクエスト毎の HTML 本文を提供するクロージャ。
+│   │     localIPv4() static — getifaddrs で en0 の AF_INET アドレスを取得して返す。
 │   │
 │   ├── MultipeerSession.swift
 │   │     iOS 側 Multipeer Connectivity ラッパー（NSObject, ObservableObject）。
