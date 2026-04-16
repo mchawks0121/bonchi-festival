@@ -279,6 +279,7 @@ final class ARBugScene: SKScene {
     }
 
     private func refreshLockOnRing(target: SKNode?) {
+        guard crosshairRing != nil, lockOnRing != nil else { return }
         lockOnRing.removeAllActions()
         if let t = target {
             // `refreshLockOnRing` is only called when the target changes (see `updateLockOn`),
@@ -529,6 +530,7 @@ final class ARBugScene: SKScene {
     }
 
     private func pulseCrosshair(success: Bool) {
+        guard crosshairRing != nil else { return }
         let hitColor  = success
             ? SKColor(red: 0.2, green: 1.0, blue: 0.5, alpha: 1)
             : SKColor(red: 1.0, green: 0.3, blue: 0.3, alpha: 1)
