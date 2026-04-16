@@ -15,6 +15,10 @@ protocol ProjectorGameManagerDelegate: AnyObject {
     func managerDidReceiveStartGame(_ manager: ProjectorGameManager)
     func managerDidReceiveReset(_ manager: ProjectorGameManager)
     func manager(_ manager: ProjectorGameManager, didReceiveLaunch payload: LaunchPayload, playerIndex: Int)
+    /// Called when the iOS phone notifies the projector that a new bug has spawned.
+    func manager(_ manager: ProjectorGameManager, didReceiveBugSpawned payload: BugSpawnedPayload)
+    /// Called when the iOS phone notifies the projector that a bug was captured (remove it).
+    func manager(_ manager: ProjectorGameManager, didReceiveBugRemoved payload: BugRemovedPayload)
     /// Called on the main thread whenever the set of connected players changes.
     func manager(_ manager: ProjectorGameManager, didUpdateConnectedPlayers players: [(name: String, playerIndex: Int)])
 }
@@ -149,6 +153,14 @@ extension ProjectorGameManager: MCSessionDelegate {
             case .launch:
                 if let payload = message.launchPayload {
                     self.delegate?.manager(self, didReceiveLaunch: payload, playerIndex: playerIndex)
+                }
+            case .bugSpawned:
+                if let payload = message.bugSpawnedPayload {
+                    self.delegate?.manager(self, didReceiveBugSpawned: payload)
+                }
+            case .bugRemoved:
+                if let payload = message.bugRemovedPayload {
+                    self.delegate?.manager(self, didReceiveBugRemoved: payload)
                 }
             default:
                 break

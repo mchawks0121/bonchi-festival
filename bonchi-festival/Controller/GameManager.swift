@@ -24,6 +24,7 @@ final class GameManager: ObservableObject {
     enum GameState: String {
         case waiting     = "waiting"
         case calibrating = "calibrating"
+        case ready       = "ready"       // after calibration — first slingshot shot starts the game
         case playing     = "playing"
         case finished    = "finished"
     }
@@ -48,6 +49,16 @@ final class GameManager: ObservableObject {
 
     /// The live ARBugScene rendered by the on-device ARSKView.
     @Published var arBugScene: ARBugScene?
+
+    // MARK: Slingshot 3-D callbacks
+    // These are set by ARGameView.Coordinator so that SlingshotView can communicate
+    // drag state and fire events to the 3-D AR layer without a direct reference to
+    // the Coordinator.  Both closures are called on the main thread.
+
+    /// Called every time the drag state changes (or resets to .zero / false).
+    var slingshotDragUpdate: ((CGSize, Bool) -> Void)?
+    /// Called when the player releases the slingshot; passes the final drag offset and power.
+    var onNetFired: ((CGSize, Float) -> Void)?
 
     // MARK: Dependencies
 
@@ -90,13 +101,21 @@ final class GameManager: ObservableObject {
     }
 
     /// Record `transform` (typically the current AR camera transform) as the spawn
-    /// origin, then immediately begin the game.
+    /// origin, then transition to the ready screen where the first slingshot shot
+    /// will signal game start.
     func setWorldOrigin(transform: simd_float4x4) {
         worldOriginTransform = transform
+        state = .ready
+    }
+
+    /// Called when the player fires the slingshot from the ready screen.
+    /// Transitions from `.ready` to `.playing` and starts the game clock + bug spawning.
+    func confirmReady() {
+        guard state == .ready else { return }
         startGame()
     }
 
-    /// Start a new 90-second game round on-device (and signal the projector if connected).
+    /// Start a new 90-second game round on-device (and signal any connected projector).
     func startGame() {
         score = 0
         timeRemaining = 90.0
@@ -112,7 +131,8 @@ final class GameManager: ObservableObject {
         scene.gameDelegate = self
         arBugScene = scene
 
-        if gameMode == .projectorClient { multipeerSession.send(.startGame()) }
+        // Signal any connected projector (no-op when no peers are connected).
+        multipeerSession.send(.startGame())
     }
 
     /// Reset everything back to the waiting screen.
@@ -122,23 +142,40 @@ final class GameManager: ObservableObject {
         score = 0
         timeRemaining = 90.0
         state = .waiting
-        if gameMode == .projectorClient { multipeerSession.send(.resetGame()) }
+        slingshotDragUpdate = nil
+        onNetFired = nil
+        // Signal any connected projector (no-op when no peers are connected).
+        multipeerSession.send(.resetGame())
     }
 
-    /// Fire the slingshot: launch on the local AR scene and forward to the projector.
+    /// Fire the slingshot: launch on the local AR scene and forward to any connected projector.
     func sendLaunch(angle: Float, power: Float) {
-        // Fire locally on the on-device AR scene
+        // Fire locally on the on-device AR scene.
         arBugScene?.fireNet(angle: angle, power: power)
 
-        // Also forward to the projector when in client mode
-        if gameMode == .projectorClient {
-            let payload = LaunchPayload(
-                angle: angle,
-                power: power,
-                timestamp: Date().timeIntervalSince1970
-            )
-            multipeerSession.send(.launch(payload))
-        }
+        // Forward to any connected projector (no-op when no peers are connected).
+        let payload = LaunchPayload(
+            angle: angle,
+            power: power,
+            timestamp: Date().timeIntervalSince1970
+        )
+        multipeerSession.send(.launch(payload))
+    }
+
+    /// Notify any connected projector that a bug has appeared in the shared AR world.
+    /// The projector will mirror the bug at the corresponding screen position.
+    /// No-op when no peers are connected (e.g. in standalone mode).
+    func sendBugSpawned(id: String, type: BugType, normalizedX: Float, normalizedY: Float) {
+        let payload = BugSpawnedPayload(id: id, bugType: type,
+                                        normalizedX: normalizedX, normalizedY: normalizedY)
+        multipeerSession.send(.bugSpawned(payload))
+    }
+
+    /// Notify any connected projector that the phone's AR layer captured a bug.
+    /// No-op when no peers are connected (e.g. in standalone mode).
+    func sendBugRemoved(id: String) {
+        let payload = BugRemovedPayload(id: id)
+        multipeerSession.send(.bugRemoved(payload))
     }
 }
 
@@ -148,11 +185,9 @@ extension GameManager: BugHunterSceneDelegate {
 
     func scene(_ scene: SKScene, didUpdateScore score: Int, timeRemaining: Double) {
         DispatchQueue.main.async {
-            // In projector-client mode the score is accumulated exclusively from
-            // `bugCaptured` messages sent by the projector.  The local ARBugScene
-            // runs with zero captured bugs (no AR spawning), so its score is always 0;
-            // syncing it here would wipe out every point earned via bugCaptured.
-            if self.gameMode == .standalone {
+            // Phone is the score authority in both standalone and projectorClient modes.
+            // projectorServer has no AR scene, so its score is always 0 — skip it.
+            if self.gameMode != .projectorServer {
                 self.score = score
             }
             self.timeRemaining = timeRemaining
@@ -161,9 +196,7 @@ extension GameManager: BugHunterSceneDelegate {
 
     func sceneDidFinish(_ scene: SKScene, finalScore: Int) {
         DispatchQueue.main.async {
-            // Same reasoning as above: preserve the bugCaptured-accumulated score
-            // in projector-client mode instead of overwriting with the scene's 0.
-            if self.gameMode == .standalone {
+            if self.gameMode != .projectorServer {
                 self.score = finalScore
             }
             self.timeRemaining = 0

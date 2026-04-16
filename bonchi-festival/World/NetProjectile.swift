@@ -3,13 +3,15 @@
 //  bonchi-festival
 //
 //  Projector World: net projectile node launched from iOS controller data.
+//  The net is drawn procedurally as a spider-web pattern (SKShapeNode) rather
+//  than an emoji, producing a richer, scalable look on the projector screen.
 //
 
 import SpriteKit
 
 // MARK: - NetProjectile
 
-/// An animated net emoji that flies across the scene, colliding with BugNodes.
+/// An animated net mesh that flies across the scene, colliding with BugNodes.
 final class NetProjectile: SKNode {
 
     /// Net / ring accent colors for each player slot (index 0–2).
@@ -26,33 +28,39 @@ final class NetProjectile: SKNode {
     /// Read by `BugHunterScene.didBegin(contact:)` to attribute the capture.
     let playerIndex: Int
 
-    private let netLabel: SKLabelNode
-    private let ringNode: SKShapeNode
+    private let netShape: SKShapeNode   // drawn net mesh
+    private let ringNode: SKShapeNode   // outer accent ring
 
     // MARK: Init
 
-    /// - Parameter playerIndex: 0-based slot index used to tint the ring (wraps at 3).
+    /// - Parameter playerIndex: 0-based slot index used to tint the net (wraps at 3).
     init(playerIndex: Int = 0) {
         self.playerIndex = playerIndex
         let color = NetProjectile.playerColors[playerIndex % NetProjectile.playerColors.count]
 
-        netLabel = SKLabelNode(text: "🕸️")
-        netLabel.fontSize = 64
-        netLabel.verticalAlignmentMode   = .center
-        netLabel.horizontalAlignmentMode = .center
+        // ── Drawn net mesh ─────────────────────────────────────────────────────
+        // Create a spider-web pattern: radial spokes + concentric circles.
+        netShape = SKShapeNode(path: NetProjectile.netPath(outerRadius: 34,
+                                                            spokeCount: 8,
+                                                            ringCount:  3))
+        netShape.strokeColor = SKColor(red: 0.30, green: 0.92, blue: 0.45, alpha: 0.95)
+        netShape.fillColor   = SKColor(red: 0.10, green: 0.55, blue: 0.20, alpha: 0.12)
+        netShape.lineWidth   = 2.2
+        netShape.lineCap     = .round
 
-        ringNode = SKShapeNode(circleOfRadius: 34)
-        ringNode.strokeColor = color.withAlphaComponent(0.75)
-        ringNode.fillColor   = color.withAlphaComponent(0.08)
-        ringNode.lineWidth   = 3.0
+        // ── Outer accent ring (player colour) ──────────────────────────────────
+        ringNode = SKShapeNode(circleOfRadius: 38)
+        ringNode.strokeColor = color.withAlphaComponent(0.80)
+        ringNode.fillColor   = color.withAlphaComponent(0.06)
+        ringNode.lineWidth   = 3.5
 
         super.init()
 
-        addChild(netLabel)
         addChild(ringNode)
+        addChild(netShape)
 
-        // Small filled dot at the center so the player color is always visible
-        let dot = SKShapeNode(circleOfRadius: 7)
+        // Small filled dot at the centre so the player colour is always visible
+        let dot = SKShapeNode(circleOfRadius: 6)
         dot.fillColor   = color
         dot.strokeColor = .clear
         dot.zPosition   = 1
@@ -72,6 +80,39 @@ final class NetProjectile: SKNode {
     }
 
     required init?(coder aDecoder: NSCoder) { fatalError("init(coder:) not implemented") }
+
+    // MARK: Net path factory
+
+    /// Build a CGPath representing a spider-web net with `spokeCount` radial spokes
+    /// and `ringCount` concentric circles inside `outerRadius`.
+    private static func netPath(outerRadius: CGFloat,
+                                 spokeCount: Int,
+                                 ringCount:  Int) -> CGPath {
+        let path = CGMutablePath()
+
+        // Outer ring
+        path.addEllipse(in: CGRect(x: -outerRadius, y: -outerRadius,
+                                   width:  outerRadius * 2,
+                                   height: outerRadius * 2))
+
+        // Radial spokes from centre to outer ring
+        for i in 0..<spokeCount {
+            let angle = CGFloat(i) * .pi * 2 / CGFloat(spokeCount)
+            path.move(to: .zero)
+            path.addLine(to: CGPoint(x: outerRadius * cos(angle),
+                                     y: outerRadius * sin(angle)))
+        }
+
+        // Concentric inner rings
+        for r in 1...ringCount {
+            let radius = outerRadius * CGFloat(r) / CGFloat(ringCount + 1)
+            path.addEllipse(in: CGRect(x: -radius, y: -radius,
+                                       width:  radius * 2,
+                                       height: radius * 2))
+        }
+
+        return path
+    }
 
     // MARK: Launch
 
@@ -95,10 +136,7 @@ final class NetProjectile: SKNode {
         let baseMove = SKAction.moveBy(x: dx, y: dy, duration: travelTime)
         baseMove.timingMode = .easeOut
 
-        // Arc bump: the net rises perpendicular to the travel direction then falls back,
-        // producing a curved path without changing the final landing position.
-        // The bump is scaled by the horizontal fraction of velocity so purely vertical
-        // throws don't get a sideways arc.
+        // Arc bump: the net rises perpendicular to the travel direction then falls back.
         let arcBump = sceneSize.height * 0.06 * abs(cos(CGFloat(angle))) * CGFloat(power + 0.3)
         let arcUp   = SKAction.moveBy(x: 0, y:  arcBump, duration: travelTime * 0.40)
         arcUp.timingMode = .easeOut
@@ -114,9 +152,9 @@ final class NetProjectile: SKNode {
 
         // Ring starts small and bright, then expands dramatically as the net opens
         ringNode.setScale(0.4)
-        ringNode.alpha = 0.85
+        ringNode.alpha = 0.90
         ringNode.run(SKAction.group([
-            SKAction.scale(to: 3.5, duration: 0.5),
+            SKAction.scale(to: 3.2, duration: 0.5),
             SKAction.sequence([
                 SKAction.fadeAlpha(to: 0.5, duration: 0.25),
                 SKAction.fadeOut(withDuration: 0.25)
@@ -149,3 +187,4 @@ final class NetProjectile: SKNode {
         run(SKAction.sequence([pulse, fadeOut, SKAction.removeFromParent()]))
     }
 }
+

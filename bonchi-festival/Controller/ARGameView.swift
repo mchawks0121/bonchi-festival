@@ -74,6 +74,10 @@ struct ARGameView: UIViewRepresentable {
             scene.scaleMode = .resizeFill
             skView.presentScene(scene)
             context.coordinator.startSpawning()
+        } else {
+            // In the ready state the AR session runs but spawning hasn't started.
+            // Attach the slingshot now so the player can see and use it immediately.
+            context.coordinator.ensureSlingshotAttached()
         }
 
         return container
@@ -81,6 +85,15 @@ struct ARGameView: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIView, context: Context) {
         let coordinator = context.coordinator
+
+        // In the ready state: ensure the 3-D slingshot is attached and interactive
+        // so the player can practice the gesture before the game starts.
+        // The ARBugScene (and bug spawning) begin only when confirmReady() is called.
+        if gameManager.state == .ready {
+            coordinator.ensureSlingshotAttached()
+            return
+        }
+
         if let scene = gameManager.arBugScene,
            coordinator.skView?.scene !== scene {
             scene.scaleMode = .resizeFill
@@ -128,6 +141,18 @@ extension ARGameView {
         /// Maps anchor UUID → proxy SKNode (for per-frame position sync)
         private var anchorProxyNodeMap: [UUID: SKNode] = [:]
 
+        // MARK: 3-D slingshot state
+
+        /// The 3-D slingshot node attached to the camera's pointOfView.
+        private var slingshotNode: SlingshotNode?
+        /// Drag offset cached from the main-thread gesture (read on the render thread).
+        /// Follows the same safe-read pattern as `cachedViewHeight`.
+        private var cachedDragOffset: CGSize = .zero
+        private var cachedIsDragging: Bool   = false
+        /// Tracks whether the slingshot was in drag state on the last render frame,
+        /// so we only call resetDrag() once after release.
+        private var wasSlingshotDragging: Bool = false
+
         // MARK: Spawn geometry constants
         private static let minSpawnDistance:     Float  = 0.5
         private static let maxSpawnDistance:     Float  = 1.4
@@ -139,6 +164,12 @@ extension ARGameView {
         private static let referenceDistance: Float = 3.0
         private static let minBugScale:       Float = 0.3
         private static let maxBugScale:       Float = 5.0
+
+        // MARK: Spawn rate constants
+        /// Maximum number of bugs alive at the same time.
+        private static let maxActiveBugs: Int = 5
+        /// Horizontal angle normalisation divisor (= max absolute angle value).
+        private static let maxHorizontalAngle: Float = 0.65
 
         // MARK: Rendering quality constants
         /// IBL intensity multiplier for the AR scene. Empirically tuned so PBR metalness/
@@ -176,6 +207,8 @@ extension ARGameView {
             // Cache view height on main thread for use during rendering
             if let h = arView?.bounds.height, h > 0 { cachedViewHeight = h }
 
+            ensureSlingshotAttached()
+
             // Wire capture callback so ARBugScene can trigger anchor removal
             gameManager?.arBugScene?.onCaptureBug = { [weak self] node in
                 self?.handleCapture(of: node)
@@ -184,10 +217,39 @@ extension ARGameView {
             scheduleNextSpawn(delay: 0.9)
         }
 
+        /// Attaches the 3-D slingshot to the camera and wires drag/fire callbacks.
+        /// Idempotent: no-op if the slingshot is already attached.
+        /// Called in both `.ready` and `.playing` states so the slingshot is visible
+        /// before the game timer starts.
+        func ensureSlingshotAttached() {
+            guard gameManager?.gameMode != .projectorServer else { return }
+            guard slingshotNode == nil else { return }
+
+            let sn = SlingshotNode()
+            slingshotNode = sn
+            // pointOfView may be nil this early; renderer(_:updateAtTime:) retries each frame.
+            arView?.pointOfView?.addChildNode(sn)
+
+            gameManager?.slingshotDragUpdate = { [weak self] offset, isDragging in
+                self?.cachedDragOffset = offset
+                self?.cachedIsDragging = isDragging
+            }
+            gameManager?.onNetFired = { [weak self] dragOffset, power in
+                self?.launchNet3D(dragOffset: dragOffset, power: power)
+            }
+        }
+
         func stopSpawning() {
             isSpawning = false
             spawnTimer?.invalidate()
             spawnTimer = nil
+
+            // Remove 3-D slingshot from the camera
+            slingshotNode?.removeFromParentNode()
+            slingshotNode = nil
+            cachedDragOffset = .zero
+            cachedIsDragging = false
+            wasSlingshotDragging = false
 
             // Remove all 3-D bug nodes from the SceneKit scene
             anchorBug3DNodeMap.values.forEach { $0.removeFromParentNode() }
@@ -211,6 +273,12 @@ extension ARGameView {
                   let frame = arView.session.currentFrame else {
                 // Session not ready yet — retry shortly
                 scheduleNextSpawn(delay: 0.4)
+                return
+            }
+
+            // Enforce maximum simultaneous bug count.
+            guard bugAnchorMap.count < Coordinator.maxActiveBugs else {
+                scheduleNextSpawn(delay: 1.0)
                 return
             }
 
@@ -240,13 +308,24 @@ extension ARGameView {
             bugAnchorMap[anchor.identifier] = bugType
             arView.session.add(anchor: anchor)
 
+            // Notify the projector so the same bug appears on the shared display.
+            // normalizedX: horizontal angle → –1…1; normalizedY: vertical → 0…1.
+            let normalizedX = horizontalAngle / Coordinator.maxHorizontalAngle
+            let vertRange   = Coordinator.verticalOffsetRange
+            let normalizedY = (verticalOffset - vertRange.lowerBound) /
+                              (vertRange.upperBound - vertRange.lowerBound)
+            gameManager?.sendBugSpawned(id: anchor.identifier.uuidString,
+                                        type: bugType,
+                                        normalizedX: normalizedX,
+                                        normalizedY: Float(normalizedY))
+
             // Track actual elapsed time for the difficulty ramp.
             let now = Date()
             if let last = lastSpawnTime { spawnElapsed += now.timeIntervalSince(last) }
             lastSpawnTime = now
 
-            // Progressive spawn interval: 1.8 s → 0.6 s over 90 s of game time
-            let nextDelay = max(0.6, 1.8 - spawnElapsed / 75.0)
+            // Progressive spawn interval: 3.5 s → 1.5 s over 75 s of game time.
+            let nextDelay = max(1.5, 3.5 - spawnElapsed / 75.0)
             scheduleNextSpawn(delay: nextDelay)
         }
 
@@ -265,6 +344,9 @@ extension ARGameView {
 
             // Play dismissal animation on the 3-D visual
             anchorBug3DNodeMap[anchor.identifier]?.captured()
+
+            // Notify the projector to remove the matching bug from its display.
+            gameManager?.sendBugRemoved(id: anchor.identifier.uuidString)
 
             // Clean up all maps
             nodeAnchorMap.removeValue(forKey: ObjectIdentifier(node))
@@ -316,9 +398,26 @@ extension ARGameView {
         /// coordinates and updates the corresponding proxy SKNode positions.
         /// Also applies distance-based scaling so bugs appear larger as the camera
         /// approaches them (scale = referenceDistance / cameraDistance).
+        /// Also drives the 3-D slingshot node drag state each frame.
         /// Called on the SceneKit rendering thread; UI writes are batched to main.
         func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
             guard let arView = self.arView else { return }
+
+            // Lazily attach SlingshotNode to pointOfView if it was not ready at startSpawning().
+            if let sn = slingshotNode, sn.parent == nil {
+                arView.pointOfView?.addChildNode(sn)
+            }
+
+            // Drive slingshot rubber-band animation from cached drag state.
+            // Reading cachedDragOffset / cachedIsDragging from the render thread is safe by
+            // the same convention as cachedViewHeight (written on main, read here).
+            if cachedIsDragging {
+                slingshotNode?.updateDrag(offset: cachedDragOffset, maxDrag: 220)
+                wasSlingshotDragging = true
+            } else if wasSlingshotDragging {
+                slingshotNode?.resetDrag()
+                wasSlingshotDragging = false
+            }
 
             // Use the main-thread-cached view height to avoid accessing UIKit here.
             let viewHeight = cachedViewHeight
@@ -361,6 +460,42 @@ extension ARGameView {
                 for (proxy, pos) in updates {
                     proxy.position = pos
                 }
+            }
+        }
+
+        // MARK: - 3-D net launch
+
+        /// Spawn a Net3DNode that flies forward from the slingshot in the direction
+        /// indicated by the player's drag gesture.  Called on the main thread via
+        /// the `onNetFired` callback wired during `startSpawning()`.
+        func launchNet3D(dragOffset: CGSize, power: Float) {
+            guard let arView = arView,
+                  let cameraT = arView.session.currentFrame?.camera.transform else { return }
+
+            // Camera basis vectors in world space.
+            let fwd   = simd_float3(-cameraT.columns.2.x, -cameraT.columns.2.y, -cameraT.columns.2.z)
+            let right = simd_float3( cameraT.columns.0.x,  cameraT.columns.0.y,  cameraT.columns.0.z)
+            let up    = simd_float3( cameraT.columns.1.x,  cameraT.columns.1.y,  cameraT.columns.1.z)
+
+            // Drag → directional bias (mirrors the 2-D launch convention in SlingshotView):
+            //   pull right (positive width) → fire left (−right)
+            //   pull down  (positive height)→ fire up   (+up)
+            let maxDrag: Float  = 220
+            let normX = Float(-dragOffset.width  / CGFloat(maxDrag))
+            let normY = Float( dragOffset.height / CGFloat(maxDrag))
+            let direction = simd_normalize(fwd + right * normX * 0.35 + up * normY * 0.35)
+
+            // World-space origin at the slingshot fork position in camera space.
+            let forkCam = simd_float4(0, -0.12, -0.28, 1)
+            let forkW   = cameraT * forkCam
+            let origin  = SCNVector3(forkW.x, forkW.y, forkW.z)
+
+            let net = Net3DNode(playerIndex: 0)
+            arView.scene.rootNode.addChildNode(net)
+            net.launch(from: origin,
+                       direction: SCNVector3(direction.x, direction.y, direction.z),
+                       power: power) { [weak net] in
+                net?.removeFromParentNode()
             }
         }
 

@@ -116,20 +116,6 @@ final class WorldViewController: UIViewController {
 
     // MARK: - Scene Transitions
 
-    private func presentWaitingScene() {
-        // Stop spawning new bugs but keep the SceneKit 3-D environment (coordinator +
-        // scene) alive so the projector display remains fully 3-D.  Setting only
-        // gameScene = nil releases the BugHunterScene; the SCNView keeps rendering.
-        bug3DCoordinator?.stopSpawning()
-        gameScene = nil
-
-        // Present a transparent SpriteKit overlay so the 3-D layer shows through.
-        let scene = WaitingScene(size: skView.bounds.size)
-        scene.isProjectorOverlay = true   // transparent bg over 3-D SceneKit layer
-        scene.scaleMode = .resizeFill
-        skView.presentScene(scene, transition: SKTransition.fade(withDuration: 0.4))
-    }
-
     private func startGame() {
         // Stop and release any previously running coordinator synchronously
         // (stopSpawning invalidates its timer and removes all nodes on the main thread)
@@ -139,48 +125,21 @@ final class WorldViewController: UIViewController {
         gameScene = nil
 
         let scene = BugHunterScene(size: skView.bounds.size)
-        scene.scaleMode      = .resizeFill
-        scene.isProjectorMode = true   // transparent bg; BugSpawner not auto-started
-        scene.gameDelegate   = self
+        scene.scaleMode       = .resizeFill
+        scene.isProjectorMode = true   // transparent bg over SceneKit layer
         gameScene = scene
         skView.presentScene(scene, transition: SKTransition.fade(withDuration: 0.5))
 
-        // Start 3-D bug coordinator — spawns Bug3DNode in scnView and keeps
-        // invisible proxy BugNodes synced in the SpriteKit overlay.
+        // Start the 3-D coordinator — manages Bug3DNode objects in scnView.
+        // Bug spawning is phone-driven; the coordinator just receives add/remove calls.
         let coordinator = ProjectorBug3DCoordinator()
         coordinator.attach(to: scnView, bugScene: scene)
-        // When a bug is captured, notify the responsible iOS client so it can add points.
-        coordinator.onCaptureNotify = { [weak self] bugType, playerIndex in
-            self?.projectorManager.sendBugCaptured(bugType: bugType, toPlayerAtSlot: playerIndex)
-        }
-        coordinator.startSpawning()
         bug3DCoordinator = coordinator
     }
 
     /// Forward a net-launch event to the active game scene.
     func fireNet(angle: Float, power: Float, playerIndex: Int) {
         gameScene?.fireNet(angle: angle, power: power, playerIndex: playerIndex)
-    }
-}
-
-// MARK: - BugHunterSceneDelegate
-
-extension WorldViewController: BugHunterSceneDelegate {
-
-    func scene(_ scene: SKScene, didUpdateScore score: Int, timeRemaining: Double) {
-        let payload = GameStatePayload(state: "playing", score: score, timeRemaining: timeRemaining)
-        projectorManager.sendGameState(payload)
-    }
-
-    func sceneDidFinish(_ scene: SKScene, finalScore: Int) {
-        let payload = GameStatePayload(state: "finished", score: finalScore, timeRemaining: 0)
-        projectorManager.sendGameState(payload)
-
-        bug3DCoordinator?.stopSpawning()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
-            self?.presentWaitingScene()
-        }
     }
 }
 
@@ -193,11 +152,27 @@ extension WorldViewController: ProjectorGameManagerDelegate {
     }
 
     func managerDidReceiveReset(_ manager: ProjectorGameManager) {
-        DispatchQueue.main.async { self.presentWaitingScene() }
+        // Clear all bugs but stay on the same scene (projector is always running).
+        DispatchQueue.main.async { self.bug3DCoordinator?.stopSpawning() }
     }
 
     func manager(_ manager: ProjectorGameManager, didReceiveLaunch payload: LaunchPayload, playerIndex: Int) {
         DispatchQueue.main.async { self.fireNet(angle: payload.angle, power: payload.power, playerIndex: playerIndex) }
+    }
+
+    func manager(_ manager: ProjectorGameManager, didReceiveBugSpawned payload: BugSpawnedPayload) {
+        DispatchQueue.main.async {
+            self.bug3DCoordinator?.addSyncedBug(id: payload.id,
+                                                type: payload.bugType,
+                                                normalizedX: payload.normalizedX,
+                                                normalizedY: payload.normalizedY)
+        }
+    }
+
+    func manager(_ manager: ProjectorGameManager, didReceiveBugRemoved payload: BugRemovedPayload) {
+        DispatchQueue.main.async {
+            self.bug3DCoordinator?.removeSyncedBug(id: payload.id)
+        }
     }
 
     func manager(_ manager: ProjectorGameManager, didUpdateConnectedPlayers players: [(name: String, playerIndex: Int)]) {
@@ -209,12 +184,14 @@ extension WorldViewController: ProjectorGameManagerDelegate {
 
 /// Manages the SceneKit 3-D bug layer on the projector device.
 ///
-/// Architecture mirrors `ARGameView.Coordinator`:
-///   • `Bug3DNode` instances are placed in an `SCNScene` viewed by a fixed perspective camera.
-///   • Each bug gets an **invisible** proxy `BugNode` added to `BugHunterScene`.  The proxy is
-///     positioned every frame at the screen-space projection of its Bug3DNode so that the net
-///     projectile's physics body can collide with it through the existing `didBegin(contact:)` path.
-///   • When `BugHunterScene.onBugCaptured` fires for a proxy, the matching Bug3DNode is dismissed.
+/// Bug lifecycle is fully phone-driven:
+///   • `addSyncedBug(id:type:normalizedX:normalizedY:)` — called when the phone sends a
+///     `bugSpawned` message.  Creates a Bug3DNode at the corresponding screen position.
+///   • `removeSyncedBug(id:)` — called when the phone sends a `bugRemoved` message.
+///     Plays the capture animation and removes the node.
+///   • `stopSpawning()` — clears all active bugs (used on reset).
+///
+/// The coordinator no longer spawns bugs independently or maintains proxy SKNodes.
 final class ProjectorBug3DCoordinator: NSObject {
 
     // MARK: Dependencies
@@ -224,28 +201,17 @@ final class ProjectorBug3DCoordinator: NSObject {
 
     // MARK: SceneKit scene + camera
 
-    private let scnScene  = SCNScene()
+    private let scnScene = SCNScene()
 
-    /// Camera Z-position.  Bugs are placed at Z=0 (world origin plane) so the
-    /// viewing distance equals this value.  The visible frustum half-height at Z=0 is
-    /// approximately `cameraZ × tan(cameraFOV / 2)` ≈ 2.43 units.
+    /// Camera Z-position.  Bugs are placed at Z=0 so the viewing distance equals this value.
     private static let cameraZ: Float = 3.5
 
-    /// Vertical field-of-view (degrees).  At 65° and cameraZ=3.5 the visible height at
-    /// Z=0 is ~4.86 units — enough room for bugs to wander across the whole screen.
+    /// Vertical field-of-view (degrees).
     private static let cameraFOV: CGFloat = 65
 
-    /// Bug3DNode geometry is built at ~0.05–0.10-unit scale (designed for AR at 1–3 m).
-    /// Multiplying by this factor makes a bug occupy a comfortable ~20 % of screen height
-    /// in the ~4.86-unit tall projector world.
+    /// Scale multiplier applied to Bug3DNode geometry so bugs appear at a comfortable size
+    /// on the projector screen.
     private static let bugScaleMultiplier: Float = 10
-
-    /// Minimum spawn interval (seconds) after the difficulty ramp is fully applied.
-    private static let minSpawnInterval: TimeInterval = 0.6
-    /// Initial spawn interval (seconds) at the start of a game round.
-    private static let initialSpawnInterval: TimeInterval = 1.8
-    /// Duration (seconds) over which the spawn interval ramps from initial to minimum.
-    private static let spawnAccelerationDuration: TimeInterval = 75.0
 
     private let cameraNode: SCNNode = {
         let n = SCNNode()
@@ -256,26 +222,13 @@ final class ProjectorBug3DCoordinator: NSObject {
         return n
     }()
 
-    // MARK: Bug tracking (accessed from both main thread and SceneKit render thread)
-    private var bug3DNodes:  [UUID: Bug3DNode] = [:]
-    private var proxyNodes:  [UUID: BugNode]   = [:]
-    /// Reverse map: ObjectIdentifier(proxy BugNode) → bug UUID.
-    private var proxyToUUID: [ObjectIdentifier: UUID] = [:]
+    // MARK: Bug tracking (main thread only)
 
-    // MARK: Spawn state
+    /// Maps stable bug ID (phone anchor UUID string) → Bug3DNode.
+    private var bug3DNodes: [String: Bug3DNode] = [:]
 
-    private var spawnTimer:   Timer?
-    private var isSpawning    = false
-    private var spawnElapsed: TimeInterval = 0
-    private var lastSpawnTime: Date?
-
-    /// Cached on the main thread so the render thread can read it safely.
+    /// Cached on the main thread so helpers can read it without accessing the view.
     private var cachedViewSize: CGSize = UIScreen.main.bounds.size
-
-    /// Called on the main thread when a bug is captured, with the bug type and the
-    /// player slot index of the net that hit it.  Set by `WorldViewController` to
-    /// forward the event to `ProjectorGameManager.sendBugCaptured`.
-    var onCaptureNotify: ((BugType, Int) -> Void)?
 
     // MARK: - Init / attach
 
@@ -284,18 +237,13 @@ final class ProjectorBug3DCoordinator: NSObject {
         setupScene()
     }
 
-    /// Wire the coordinator to the views.  Must be called on the main thread before `startSpawning()`.
+    /// Wire the coordinator to the views.  Must be called on the main thread.
     func attach(to scnView: SCNView, bugScene: BugHunterScene) {
         self.scnView  = scnView
         self.bugScene = bugScene
         scnView.scene    = scnScene
-        scnView.delegate = self
         scnView.isPlaying = true   // keep rendering even with no camera movement
         if scnView.bounds.size.height > 0 { cachedViewSize = scnView.bounds.size }
-
-        bugScene.onBugCaptured = { [weak self] proxy, playerIndex in
-            self?.handleCapture(of: proxy, playerIndex: playerIndex)
-        }
     }
 
     // MARK: - SceneKit scene setup
@@ -321,100 +269,61 @@ final class ProjectorBug3DCoordinator: NSObject {
 
     // MARK: - Lifecycle
 
-    /// Update the cached view size used for 3D→2D projection.
-    /// Call this whenever the view controller's view changes size (e.g., rotation, external display).
+    /// Update the cached view size.  Call when the view controller layout changes.
     func updateCachedViewSize(_ size: CGSize) {
         cachedViewSize = size
     }
 
-    func startSpawning() {
-        stopSpawning()
-        isSpawning    = true
-        spawnElapsed  = 0
-        lastSpawnTime = Date()
-        if let v = scnView, v.bounds.size.height > 0 { cachedViewSize = v.bounds.size }
-        scheduleNextSpawn(delay: 0.8)
-    }
-
+    /// Remove all active bugs (e.g. on game reset).
     func stopSpawning() {
-        isSpawning = false
-        spawnTimer?.invalidate()
-        spawnTimer = nil
-
         bug3DNodes.values.forEach { $0.removeFromParentNode() }
         bug3DNodes.removeAll()
-
-        proxyNodes.values.forEach { $0.removeFromParent() }
-        proxyNodes.removeAll()
-        proxyToUUID.removeAll()
     }
 
-    // MARK: - Spawning
+    // MARK: - Phone-driven bug management
 
-    private func scheduleNextSpawn(delay: TimeInterval) {
-        guard isSpawning else { return }
-        spawnTimer?.invalidate()
-        spawnTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-            self?.spawnBug()
-        }
-    }
+    /// Add a bug to the projector scene at the position derived from the phone's spawn angles.
+    /// - Parameters:
+    ///   - id: Stable identifier from `BugSpawnedPayload.id`.
+    ///   - type: Bug type to display.
+    ///   - normalizedX: Horizontal position –1…1 (maps to scene width).
+    ///   - normalizedY: Vertical position 0…1, where 0 = bottom and 1 = top.
+    func addSyncedBug(id: String, type: BugType, normalizedX: Float, normalizedY: Float) {
+        guard let scnView else { return }
 
-    private func spawnBug() {
-        guard isSpawning, let scnView else {
-            scheduleNextSpawn(delay: 0.4)
-            return
-        }
+        let (halfW, halfH) = visibleHalfExtents(in: scnView)
+        let x = normalizedX * halfW * 0.70
+        let y = (normalizedY * 2.0 - 1.0) * halfH * 0.60
 
-        let bugType = randomBugType()
-        let uuid    = UUID()
-
-        let bug3D = Bug3DNode(type: bugType)
-        let s = Self.bugScaleMultiplier
-        bug3D.scale    = SCNVector3(s, s, s)
-        bug3D.position = randomEdgePosition3D(in: scnView)
+        let bug3D = Bug3DNode(type: type)
+        let s = CGFloat(Self.bugScaleMultiplier)
+        bug3D.scale    = SCNVector3(s * 0.1, s * 0.1, s * 0.1)   // start small for pop-in
+        bug3D.position = SCNVector3(x, y, 0)
+        bug3D.opacity  = 0
         scnScene.rootNode.addChildNode(bug3D)
-        bug3DNodes[uuid] = bug3D
+        bug3DNodes[id] = bug3D
 
-        // Movement: float in from an edge, linger, then drift off-screen.
-        let destPos = randomCenterPosition3D(in: scnView)
-        let exitPos = randomEdgePosition3D(in: scnView)
-        let moveIn  = SCNAction.move(to: destPos, duration: Double.random(in: 6.0...10.0))
-        let linger  = SCNAction.wait(duration: Double.random(in: 1.5...3.5))
-        let moveOut = SCNAction.move(to: exitPos, duration: Double.random(in: 3.0...5.0))
-        let remove  = SCNAction.run { [weak self] _ in
-            DispatchQueue.main.async { self?.removeBug(uuid: uuid) }
-        }
-        moveIn.timingMode  = .easeInEaseOut
-        moveOut.timingMode = .easeIn
-        bug3D.runAction(SCNAction.sequence([moveIn, linger, moveOut, remove]), forKey: "movement")
+        // Appear animation: scale up and fade in
+        bug3D.runAction(SCNAction.group([
+            SCNAction.fadeIn(duration: 0.4),
+            SCNAction.scale(to: s, duration: 0.4)
+        ]))
 
-        // Invisible proxy BugNode in the SpriteKit overlay — carries the physics body
-        // that the net projectile collides with.  Position is synced each frame.
-        let proxy = BugNode(type: bugType)
-        proxy.alpha = 0       // invisible: only physics matters
-        proxyNodes[uuid]                      = proxy
-        proxyToUUID[ObjectIdentifier(proxy)]  = uuid
-        DispatchQueue.main.async { [weak self] in
-            self?.bugScene?.addChild(proxy)
-        }
-
-        // Progressive spawn interval: linearly interpolates from initialSpawnInterval to
-        // minSpawnInterval over spawnAccelerationDuration seconds, then stays at minimum.
-        let now = Date()
-        if let last = lastSpawnTime { spawnElapsed += now.timeIntervalSince(last) }
-        lastSpawnTime = now
-        let fraction   = min(1.0, spawnElapsed / Self.spawnAccelerationDuration)
-        let range      = Self.initialSpawnInterval - Self.minSpawnInterval
-        let nextDelay  = Self.initialSpawnInterval - fraction * range
-        scheduleNextSpawn(delay: nextDelay)
+        // Gentle hover so the bug looks alive on screen
+        let floatUp   = SCNAction.moveBy(x: 0, y: CGFloat(halfH * 0.06), z: 0, duration: 1.8)
+        let floatDown = SCNAction.moveBy(x: 0, y: CGFloat(-halfH * 0.06), z: 0, duration: 1.8)
+        floatUp.timingMode   = .easeInEaseOut
+        floatDown.timingMode = .easeInEaseOut
+        bug3D.runAction(SCNAction.repeatForever(SCNAction.sequence([floatUp, floatDown])),
+                        forKey: "hover")
     }
 
-    private func randomBugType() -> BugType {
-        switch Double.random(in: 0..<1) {
-        case ..<0.60: return .butterfly
-        case ..<0.90: return .beetle
-        default:      return .stag
-        }
+    /// Remove a bug from the projector scene, playing the capture animation.
+    func removeSyncedBug(id: String) {
+        guard let bug3D = bug3DNodes[id] else { return }
+        bug3D.removeAction(forKey: "hover")
+        bug3D.captured()
+        bug3DNodes.removeValue(forKey: id)
     }
 
     // MARK: - 3-D position helpers
@@ -425,85 +334,6 @@ final class ProjectorBug3DCoordinator: NSObject {
         let halfH  = Self.cameraZ * tan(fovRad / 2)
         let aspect = Float(view.bounds.width / max(view.bounds.height, 1))
         return (halfH * aspect, halfH)
-    }
-
-    private func randomEdgePosition3D(in view: SCNView) -> SCNVector3 {
-        let (halfW, halfH) = visibleHalfExtents(in: view)
-        // Spawn 0.5 world-units beyond the visible frustum edge so bugs enter from off-screen.
-        let margin: Float  = 0.5
-        switch Int.random(in: 0..<4) {
-        case 0: return SCNVector3( Float.random(in: -halfW...halfW),  halfH + margin, 0)
-        case 1: return SCNVector3( Float.random(in: -halfW...halfW), -halfH - margin, 0)
-        case 2: return SCNVector3(-halfW - margin, Float.random(in: -halfH...halfH),  0)
-        default: return SCNVector3(halfW + margin, Float.random(in: -halfH...halfH),  0)
-        }
-    }
-
-    private func randomCenterPosition3D(in view: SCNView) -> SCNVector3 {
-        let (halfW, halfH) = visibleHalfExtents(in: view)
-        return SCNVector3(
-            Float.random(in: -halfW * 0.75 ... halfW * 0.75),
-            Float.random(in: -halfH * 0.75 ... halfH * 0.75),
-            Float.random(in: -0.4...0.4)   // slight Z variation for depth interest
-        )
-    }
-
-    // MARK: - Capture
-
-    /// Called by `BugHunterScene.onBugCaptured` when a proxy is hit by the net.
-    private func handleCapture(of proxy: BugNode, playerIndex: Int) {
-        guard let uuid = proxyToUUID[ObjectIdentifier(proxy)] else { return }
-        bug3DNodes[uuid]?.captured()
-        let bugType = proxy.bugType
-        bug3DNodes.removeValue(forKey: uuid)
-        proxyNodes.removeValue(forKey: uuid)
-        proxyToUUID.removeValue(forKey: ObjectIdentifier(proxy))
-        onCaptureNotify?(bugType, playerIndex)
-    }
-
-    /// Called when a bug exits the screen naturally (end of its movement sequence).
-    private func removeBug(uuid: UUID) {
-        guard bug3DNodes[uuid] != nil else { return }   // already captured
-        if let proxy = proxyNodes[uuid] {
-            proxy.removeFromParent()
-            proxyToUUID.removeValue(forKey: ObjectIdentifier(proxy))
-        }
-        bug3DNodes.removeValue(forKey: uuid)
-        proxyNodes.removeValue(forKey: uuid)
-    }
-}
-
-// MARK: - SCNSceneRendererDelegate
-
-extension ProjectorBug3DCoordinator: SCNSceneRendererDelegate {
-
-    /// Projects each Bug3DNode's world position into SpriteKit overlay coordinates and
-    /// moves the corresponding proxy BugNode so the net collision detection stays accurate.
-    /// Runs on the SceneKit render thread; UI writes are batched to the main thread.
-    func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
-        guard let scnView = self.scnView else { return }
-
-        let viewHeight = cachedViewSize.height
-
-        var updates: [(BugNode, CGPoint)] = []
-        for (uuid, bug3D) in bug3DNodes {
-            guard let proxy = proxyNodes[uuid] else { continue }
-            let projected = scnView.projectPoint(bug3D.worldPosition)
-            // projected.z is normalized depth in [0, 1]; values outside that range mean
-            // the bug is behind the camera or beyond the far clipping plane — skip those.
-            guard projected.z > 0, projected.z < 1 else { continue }
-            updates.append((proxy, CGPoint(
-                x: CGFloat(projected.x),
-                y: viewHeight - CGFloat(projected.y)   // flip Y: SceneKit → SpriteKit
-            )))
-        }
-
-        guard !updates.isEmpty else { return }
-        DispatchQueue.main.async {
-            for (proxy, pos) in updates {
-                proxy.position = pos
-            }
-        }
     }
 }
 

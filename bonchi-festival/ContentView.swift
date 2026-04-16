@@ -41,7 +41,7 @@ struct ContentView: View {
                 CalibrationView()
                     .environmentObject(gameManager)
                     .transition(.opacity)
-            case .playing:
+            case .ready, .playing:
                 PlayingView()
                     .environmentObject(gameManager)
                     .transition(.opacity)
@@ -582,52 +582,59 @@ struct ARPlayingView: View {
                 .environmentObject(gameManager)
                 .ignoresSafeArea()
 
-            // ── HUD pinned to the top ─────────────────────────────────────
-            VStack(spacing: 0) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("BUGS FIXED")
-                            .font(.caption2.bold())
-                            .foregroundColor(.white.opacity(0.6))
-                        Text("\(gameManager.score)")
-                            .font(.system(size: 44, weight: .black, design: .rounded))
-                            .foregroundColor(Color(red: 0.2, green: 1.0, blue: 0.8))
+            // ── Ready screen: instruction overlay before first shot ───────
+            if gameManager.state == .ready {
+                ReadyOverlay()
+            }
+
+            // ── HUD pinned to the top (playing only) ─────────────────────
+            if gameManager.state == .playing {
+                VStack(spacing: 0) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("BUGS FIXED")
+                                .font(.caption2.bold())
+                                .foregroundColor(.white.opacity(0.6))
+                            Text("\(gameManager.score)")
+                                .font(.system(size: 44, weight: .black, design: .rounded))
+                                .foregroundColor(Color(red: 0.2, green: 1.0, blue: 0.8))
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("TIME")
+                                .font(.caption2.bold())
+                                .foregroundColor(.white.opacity(0.6))
+                            Text(String(format: "%.1f", gameManager.timeRemaining))
+                                .font(.system(size: 44, weight: .black, design: .rounded))
+                                .foregroundColor(gameManager.timeRemaining < 10 ? .red : .white)
+                        }
                     }
+                    .padding(.horizontal, 28)
+                    .padding(.top, 12)
+                    .background(Color.black.opacity(0.35))
 
-                    Spacer()
-
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("TIME")
-                            .font(.caption2.bold())
-                            .foregroundColor(.white.opacity(0.6))
-                        Text(String(format: "%.1f", gameManager.timeRemaining))
-                            .font(.system(size: 44, weight: .black, design: .rounded))
-                            .foregroundColor(gameManager.timeRemaining < 10 ? .red : .white)
-                    }
-                }
-                .padding(.horizontal, 28)
-                .padding(.top, 12)
-                .background(Color.black.opacity(0.35))
-
-                // Timer bar
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.white.opacity(0.18))
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(timerBarColor)
-                            .frame(width: geo.size.width * CGFloat(gameManager.timeRemaining / 90.0))
-                            .animation(.linear(duration: 0.1), value: gameManager.timeRemaining)
+                    // Timer bar
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.white.opacity(0.18))
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(timerBarColor)
+                                .frame(width: geo.size.width * CGFloat(gameManager.timeRemaining / 90.0))
+                                .animation(.linear(duration: 0.1), value: gameManager.timeRemaining)
+                        }
+                        .frame(height: 7)
                     }
                     .frame(height: 7)
-                }
-                .frame(height: 7)
-                .padding(.horizontal, 28)
-                .padding(.top, 2)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 2)
 
-                Spacer()
+                    Spacer()
+                }
+                .allowsHitTesting(false)
             }
-            .allowsHitTesting(false)  // gestures pass through to the slingshot layer below
 
             // ── Slingshot — full-screen overlay ──────────────────────────
             SlingshotView()
@@ -641,6 +648,43 @@ struct ARPlayingView: View {
         case 10...: return .yellow
         default:    return .red
         }
+    }
+}
+
+// MARK: - Ready Overlay
+
+/// Instruction overlay shown in the `.ready` state before the first slingshot shot.
+/// Hit-testing is disabled so the SlingshotView beneath receives all gestures.
+struct ReadyOverlay: View {
+    @State private var pulse = false
+
+    var body: some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 16) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 52))
+                    .foregroundColor(Color(red: 0.2, green: 1.0, blue: 0.8))
+                    .scaleEffect(pulse ? 1.12 : 0.90)
+                    .animation(
+                        .easeInOut(duration: 0.85).repeatForever(autoreverses: true),
+                        value: pulse
+                    )
+                    .onAppear { pulse = true }
+
+                Text("スリングショットを引いて\n網を射出するとゲームスタート！")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .shadow(color: .black.opacity(0.8), radius: 4)
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 22)
+            .background(Color.black.opacity(0.62))
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .padding(.bottom, 190)
+        }
+        .allowsHitTesting(false)
     }
 }
 

@@ -49,7 +49,8 @@ bonchi-festival/
 │     GameManager.state に応じて以下のビューを切り替え（.animation + .transition(.opacity)）:
 │       .waiting     → WaitingView
 │       .calibrating → CalibrationView（AR カメラ + 照準レティクル + 基準点設定ボタン）
-│       .playing     → PlayingView（gameMode が .projectorServer なら ProjectorServerView、それ以外は ARPlayingView）
+│       .ready,.playing → PlayingView（同一 case で ARGameView インスタンスを維持したまま状態遷移）
+│                         gameMode が .projectorServer なら ProjectorServerView、それ以外は ARPlayingView
 │       .finished    → FinishedView
 │
 │     サブビュー:
@@ -58,9 +59,11 @@ bonchi-festival/
 │                             「バグ狩り開始」は startCalibration() を呼ぶ（projectorServer は直接 startGame()）。
 │       CalibrationView     — UIViewRepresentable。ARSCNView フルスクリーン + UIKit オーバーレイ。
 │                             中央に照準レティクル (CAShapeLayer)、説明ラベル、確定ボタン、戻るボタン。
-│                             CalibrationCoordinator: confirmTapped → gameManager.setWorldOrigin(transform:)
+│                             CalibrationCoordinator: confirmTapped → gameManager.setWorldOrigin(transform:) → .ready
 │                                                      backTapped   → gameManager.resetGame()
-│       ARPlayingView       — ARGameView（フルスクリーン） + HUD（スコア・タイマー・タイマーバー） + SlingshotView
+│       ARPlayingView       — ARGameView（フルスクリーン） + ReadyOverlay (.ready 時) / HUD (.playing 時) + SlingshotView
+│                             ARGameView は .ready,.playing 両状態で同一インスタンスを維持
+│       ReadyOverlay        — 「スリングショットを引いて網を射出するとゲームスタート！」案内。allowsHitTesting=false
 │       ProjectorServerView — WorldViewControllerWrapper（UIViewControllerRepresentable）+ 戻るボタン
 │       FinishedView        — 最終スコア表示・「再デバッグ」ボタン
 │       ModeCard            — アイコン・タイトル・サブタイトル付き選択カード。compact/regular でレイアウト変化
@@ -73,16 +76,23 @@ bonchi-festival/
 │   │     @Published: state(GameState), score(Int), timeRemaining(Double),
 │   │                 isConnected(Bool), gameMode(GameMode), arBugScene(ARBugScene?)
 │   │     var worldOriginTransform: simd_float4x4? — キャリブレーション時に記録するスポーン基点
-│   │     GameState 列挙: .waiting / .calibrating / .playing / .finished
+│   │     GameState 列挙: .waiting / .calibrating / .ready / .playing / .finished
 │   │     GameMode 列挙: .standalone / .projectorClient / .projectorServer
 │   │     selectMode(_:)        — モード切替。projectorClient 選択時に MultipeerSession.start()
 │   │     startCalibration()    — .calibrating 状態へ遷移（projectorServer は直接 startGame()）
-│   │     setWorldOrigin(transform:) — worldOriginTransform を記録して startGame() を呼ぶ
-│   │     startGame()           — score=0 reset、ARBugScene 生成（非 projectorServer のみ）、projectorClient は startGame 送信
-│   │     resetGame()           — 全状態リセット（worldOriginTransform も nil に）、projectorClient は resetGame 送信
-│   │     sendLaunch(angle:power:) — ARBugScene.fireNet() + projectorClient は launch 送信
-│   │     BugHunterSceneDelegate: didUpdateScore/sceneDidFinish — standalone のみスコアを自 state に反映
-│   │     MultipeerSessionDelegate: bugCaptured 受信 → score += bugType.points
+│   │     setWorldOrigin(transform:) — worldOriginTransform を記録して state = .ready に遷移
+│   │     confirmReady()        — .ready → startGame() へ遷移（最初のスリングショット発射時に呼ばれる）
+│   │     startGame()           — score=0 reset、ARBugScene 生成（非 projectorServer のみ）、multipeerSession.send(.startGame())（接続なし時 no-op）
+│   │     resetGame()           — 全状態リセット（worldOriginTransform も nil に）、multipeerSession.send(.resetGame())（接続なし時 no-op）
+│   │     sendLaunch(angle:power:) — ARBugScene.fireNet() + multipeerSession.send(.launch())（接続なし時 no-op）
+│   │     sendBugSpawned(id:type:normalizedX:normalizedY:) — multipeerSession.send(.bugSpawned())（接続なし時 no-op、モード判定なし）
+│   │     sendBugRemoved(id:) — multipeerSession.send(.bugRemoved())（接続なし時 no-op、モード判定なし）
+│   │     ※ スタンドアロンとプロジェクタークライアントのスポーンシステムは完全共通（モード分岐なし）
+│   │     slingshotDragUpdate: ((CGSize, Bool) -> Void)? — ARGameView.Coordinator がセット。SlingshotView がドラッグ毎に呼ぶ
+│   │     onNetFired: ((CGSize, Float) -> Void)? — ARGameView.Coordinator がセット。SlingshotView が発射時に呼ぶ
+│   │     resetGame() で slingshotDragUpdate / onNetFired を nil にクリア
+│   │     BugHunterSceneDelegate: didUpdateScore/sceneDidFinish — standalone + projectorClient でスコアを state に反映
+│   │     MultipeerSessionDelegate: bugCaptured 受信 → score += bugType.points（後方互換）
 │   │
 │   ├── MultipeerSession.swift
 │   │     iOS 側 Multipeer Connectivity ラッパー（NSObject, ObservableObject）。
@@ -100,7 +110,10 @@ bonchi-festival/
 │   │       SKView (前面, 透過) — ARBugScene を presentScene する。allowsTransparency = true。
 │   │     内部 Coordinator クラス (ARSCNViewDelegate):
 │   │       startSpawning() / stopSpawning() — standalone + projectorClient でバグをスポーン（projectorServer のみ除外）
+│   │       ensureSlingshotAttached() — 冪等。SlingshotNode 未接続時のみ pointOfView に追加。.ready/.playing 両状態で呼ばれる
 │   │       spawnBug() — カメラ前方 0.5〜1.4m, 水平 ±37°, 垂直オフセット -0.3〜0.45m に ARAnchor 配置
+│   │         最大同時出現数: maxActiveBugs=5（超過時は 1.0s 後に再スケジュール）
+│   │         スポーン後 sendBugSpawned(id:type:normalizedX:normalizedY:) でプロジェクターに通知
 │   │         スポーン基点: gameManager.worldOriginTransform が非 nil ならそれを使用（固定エリア中心）、
 │   │                       nil の場合は frame.camera.transform にフォールバック（後方互換）
 │   │       randomBugType() — butterfly 60% / beetle 30% / stag 10%
@@ -108,9 +121,16 @@ bonchi-festival/
 │   │       renderer(_:updateAtTime:) — 毎フレーム 3D→2D 変換でプロキシ位置同期、距離ベーススケール
 │   │         scale = clamp(referenceDistance(3.0) / distance, 0.3, 5.0)
 │   │         cachedViewHeight で UIKit アクセスをメインスレッドに限定
-│   │       handleCapture(of:) — capture 時に Bug3DNode.captured() + ARAnchor 削除
+│   │         cachedDragOffset / cachedIsDragging → SlingshotNode.updateDrag() / resetDrag() を呼ぶ
+│   │         wasSlingshotDragging フラグで resetDrag() を 1 フレームのみ呼ぶ
+│   │         slingshotNode が未接続 (parent==nil) なら pointOfView に追加 (遅延アタッチ)
+│   │       launchNet3D(dragOffset:power:): カメラ変換から方向ベクトルを計算し Net3DNode を発射
+│   │         fork 世界座標 = cameraTransform × (0, -0.12, -0.28, 1)
+│   │         direction = normalize(fwd + right×normX×0.35 + up×normY×0.35)
+│   │       handleCapture(of:) — capture 時に Bug3DNode.captured() + sendBugRemoved(id:) + ARAnchor 削除
+│   │     updateUIView: .ready 状態では ensureSlingshotAttached() を呼ぶのみ（stopSpawning しない）
 │   │     antialiasingMode = .multisampling4X、lightingEnvironment.intensity = 1.5 (PBR 品質向上)
-│   │     难易度カーブ: nextDelay = max(0.6, 1.8 - spawnElapsed / 75.0)
+│   │     難易度カーブ: nextDelay = max(1.5, 3.5 - spawnElapsed / 75.0)
 │   │
 │   ├── ARBugScene.swift
 │   │     SKScene (backgroundColor = .clear)。照準・ロックオン・捕獲の全 UI を担当。
@@ -159,16 +179,49 @@ bonchi-festival/
 │   │             + 二次水平ドリフト（+X→-Z→-X→+Z スクエア軌道、±0.03m, 5s サイクル）
 │   │     captured(): removeAllActions() + 3 回グリッチ点滅 → SCNAction.fadeOut(easeIn, 0.18s) → removeFromParentNode
 │   │
+│   ├── SlingshotNode.swift
+│   │     SCNNode サブクラス。3D Y 字スリングショットを AR シーンに描画。
+│   │     arView.pointOfView の子として追加 → カメラ空間固定（端末の動きに追従）。
+│   │     フォーク中心位置: camera-local (0, -0.12, -0.28)。
+│   │     ノード構成:
+│   │       forkRoot — フォーク全体の親ノード（位置オフセット保持）
+│   │         stem     — stemBottom(0,-0.050,0) → branch(0,0.010,0) の SCNCylinder (r=0.007)
+│   │         leftArm  — branch → leftTip(-0.035,0.055,0) の SCNCylinder (r=0.006)
+│   │         rightArm — branch → rightTip(+0.035,0.055,0) の SCNCylinder (r=0.006)
+│   │         tip caps — 各チップに SCNSphere (r=0.009) の装飾球
+│   │         leftBandNode / rightBandNode — SCNCylinder。updateDrag() で毎フレーム更新
+│   │         pouchNode — トーラスリム + 8 スポーク + 同心リング × 2（網ポーチ）
+│   │     材質: wood (brown PBR r=0.82, m=0.04) / band (orange PBR) / pouch (green PBR + emission)
+│   │     updateDrag(offset:maxDrag:): pullPoint を計算してバンドとポーチを更新
+│   │       maxPullDepth=0.08m (+Z 方向), maxPullLateral=0.025m, maxPullDown=0.014m
+│   │     resetDrag(): pullPoint = neutralPull、pouchNode を非表示に
+│   │     alignCylinder(_:from:to:): Y 軸 → 方向ベクトル へのクォータニオン回転と高さ更新
+│   │
+│   ├── Net3DNode.swift
+│   │     SCNNode サブクラス。ARSCNView 空間を飛翔する 3D 網メッシュ。
+│   │     ノード構成:
+│   │       rim (SCNTorus, ringRadius=0.042, pipeRadius=0.0045) — プレイヤー色アクセント、eulerAngles=(π/2,0,0) でカメラ方向に向ける
+│   │       spokes × 8 (SCNBox 0.082×0.001×0.001) — 放射状スポーク
+│   │       inner rings × 2 (SCNTorus, r=0.020, 0.032) — 同心内リング
+│   │     accentColors: cyan / orange / magenta（Player 1〜3 に対応）
+│   │     launch(from:direction:power:completion:):
+│   │       origin から direction に 0.65〜1.85m 移動（easeOut, 0.55s）
+│   │       tumbling spin: X + Z 軸の複合回転（1.2〜2.7 ターン）
+│   │       scale: 0.25 → 1.0 → 0.5 の連続変化（unfurling 効果）
+│   │       opacity: 即時フェードイン → hold → フェードアウト
+│   │       完了後 completion() を呼び出し（removeFromParentNode 用）
+│   │
 │   ├── SlingshotView.swift
-│   │     SwiftUI フルスクリーンオーバーレイ。DragGesture で操作を検出。
-│   │     フォーク位置: 画面高さの 62% (forkYRatio=0.62)
+│   │     SwiftUI フルスクリーンオーバーレイ。ジェスチャ管理専用（3D 描画は SlingshotNode が担当）。
+│   │     フォーク位置参照: forkYRatio=0.62（PowerIndicatorView 配置のみに使用）
 │   │     最大ドラッグ距離: 220pt (maxDragDistance)。任意方向スワイプ可。
 │   │     angle = atan2(dragOffset.height, -dragOffset.width)（SpriteKit 座標系に変換）
 │   │     power = min(dragLength / 220, 1.0)
-│   │     SlingshotForkShape — Y 字 Shape（stem + 2本のフォーク）
-│   │     ゴム紐: leftFork → pullPoint と rightFork → pullPoint を Path で描画
+│   │     ドラッグ中: gameManager.slingshotDragUpdate?(offset, true) → Coordinator が SlingshotNode を更新
+│   │     発射時: gameManager.state == .ready なら gameManager.confirmReady() を先に呼ぶ（ゲーム開始シグナル）
+│   │             gameManager.onNetFired?(dragOffset, power) → Coordinator が Net3DNode を発射
+│   │             gameManager.sendLaunch(angle:power:) → ARBugScene の当たり判定を起動
 │   │     PowerIndicatorView — 水平バー (緑/黄/赤)、power に応じてリアルタイム更新
-│   │     net 飛翔アニメ: 発射方向に 🕸️ 絵文字が飛ぶ (scale 0.3→1.8→fade, 回転 270°〜810°)
 │   │
 │   └── SoundManager.swift
 │         AVAudioEngine + AVAudioPlayerNode × 6 によるシングルトンのサウンドマネージャ。
@@ -187,11 +240,13 @@ bonchi-festival/
 │
 ├── Shared/
 │   └── GameProtocol.swift
-│         MessageType: launch / gameState / startGame / resetGame / bugCaptured
-│         GameMessage: type + optional payloads (launchPayload, gameStatePayload, bugCapturedPayload)
+│         MessageType: launch / gameState / startGame / resetGame / bugCaptured / bugSpawned / bugRemoved
+│         GameMessage: type + optional payloads
 │         LaunchPayload:      angle(Float), power(Float), timestamp(Double)
 │         GameStatePayload:   state(String), score(Int=0), timeRemaining(Double)
-│         BugCapturedPayload: bugType(BugType), playerIndex(Int)
+│         BugCapturedPayload: bugType(BugType), playerIndex(Int) — 後方互換のみ、現在は未使用
+│         BugSpawnedPayload:  id(String), bugType(BugType), normalizedX(Float), normalizedY(Float)
+│         BugRemovedPayload:  id(String)
 │         BugType: butterfly(1pt, speed:110, size:40) / beetle(3pt, speed:70, size:55) / stag(5pt, speed:45, size:70)
 │           computed: points / emoji / displayName / speed / size / speedLabel / rarityLabel / lore
 │         PhysicsCategory: none(0) / bug(0x1) / net(0x2)
@@ -201,22 +256,28 @@ bonchi-festival/
     │     UIViewController。SCNView + SKView + ConnectedPlayersView の配置・管理。
     │     viewDidLoad で Bug3DNode.preloadAssets() を呼び出し USDZ を非同期プリロード（iOS AR パスと同様）。
     │     viewDidLayoutSubviews で初回レイアウト後に startGame() を直接呼び出す（3D を即時表示）。
-    │     presentWaitingScene(): bug3DCoordinator?.stopSpawning() のみ（coordinator は nil にしない）。
-    │       WaitingScene(isProjectorOverlay=true) を透過背景オーバーレイとして提示 → SceneKit 3D 環境が常に見える。
-    │     startGame(): 既存 coordinator を stopSpawning()+nil 後、BugHunterScene(isProjectorMode=true) 生成、ProjectorBug3DCoordinator.attach()+startSpawning()
-    │     fireNet(angle:power:playerIndex:): gameScene?.fireNet() に転送
-    │     BugHunterSceneDelegate:
-    │       didUpdateScore → sendGameState(payload) (score=0 固定)
-    │       sceneDidFinish → sendGameState + stopSpawning + 4秒後に presentWaitingScene
-    │     ProjectorGameManagerDelegate: startGame/reset/launch/playersUpdate を受信して処理
+    │     startGame(): 既存 coordinator を stopSpawning()+nil 後、BugHunterScene(isProjectorMode=true) 生成、
+    │       ProjectorBug3DCoordinator.attach() — バグスポーンなし（スマホ主導）
+    │     fireNet(angle:power:playerIndex:): gameScene?.fireNet() に転送（視覚のみ）
+    │     ProjectorGameManagerDelegate:
+    │       managerDidReceiveStartGame → startGame()
+    │       managerDidReceiveReset → bug3DCoordinator?.stopSpawning()（シーン遷移なし）
+    │       didReceiveLaunch → fireNet()
+    │       didReceiveBugSpawned → coordinator.addSyncedBug(id:type:normalizedX:normalizedY:)
+    │       didReceiveBugRemoved → coordinator.removeSyncedBug(id:)
+    │       didUpdateConnectedPlayers → connectedPlayersView.update(players:)
     │
     │     ─── ProjectorBug3DCoordinator（WorldViewController.swift 内の final class）───
     │       SCNScene に固定パースカメラ（cameraZ=3.5, FOV=65°）を設置。
     │       Bug3DNode を bugScaleMultiplier=10 でスケール拡大して scnView に表示。
-    │       毎フレーム scnView.projectPoint() → BugHunterScene 上の不可視プロキシ BugNode 位置を同期。
-    │       スポーン: 難易度カーブ max(0.6, 1.8 - spawnElapsed / 75)
-    │       捕獲時: Bug3DNode.captured() + プロキシ除去 + onCaptureNotify(bugType, playerIndex) コールバック
-    │       attach(to:bugScene:) / startSpawning() / stopSpawning() / updateCachedViewSize(_:)
+    │       独立スポーン機能なし・プロキシ BugNode なし。
+    │       addSyncedBug(id:type:normalizedX:normalizedY:):
+    │         normalizedX(-1〜1) → x = normalizedX × halfW × 0.70
+    │         normalizedY(0〜1)  → y = (normalizedY×2-1) × halfH × 0.60
+    │         フェードイン + スケールアップ + 常時ホバーアニメ
+    │       removeSyncedBug(id:): bug3D.captured() アニメ後 removeFromParentNode
+    │       stopSpawning(): 全 Bug3DNode を即削除
+    │       attach(to:bugScene:) / updateCachedViewSize(_:)
     │
     ├── WaitingScene.swift
     │     SKScene。isProjectorOverlay=true のとき backgroundColor=.clear（SceneKit 3D 層が透過して見える）。
@@ -229,23 +290,15 @@ bonchi-festival/
     │
     ├── BugHunterScene.swift
     │     SKScene。isProjectorMode=true のとき backgroundColor=.clear。
-    │     physicsWorld.contactDelegate = self（SKPhysicsContactDelegate）。
-    │     HUD: timeLabel (残り秒数)、timerBar (SKShapeNode, 最大幅 600pt, 残り時間に比例)
-    │     setupBackground(): isProjectorMode=false のとき標準背景を描画
-    │     BugSpawner を生成（isProjectorMode のとき spawner.start() は呼ばれない）
-    │     update(_:): 時間更新 + timerBar 更新 + gameDelegate?.scene(didUpdateScore:0, timeRemaining:)
-    │     endGame(): gameDelegate?.sceneDidFinish(finalScore:0) + 全 BugNode 消去
-    │     fireNet(angle:power:playerIndex:): origin = 画面下部中央 → NetProjectile.launch() → シーンに追加
-    │     didBegin(contact:): NetProjectile × BugNode 接触 → onBugCaptured?(bugNode, playerIndex)
-    │       + Bug3DNode 捕獲アニメ + BugNode 除去 + NetProjectile.playCapture()
+    │     タイマー・スコア・HUD・BugSpawner・physics contactDelegate なし（スマホ主導）。
+    │     fireNet(angle:power:playerIndex:): origin = 画面下部中央 → NetProjectile.launch() → シーンに追加（視覚のみ）
     │
     ├── BugSpawner.swift
-    │     BugNode をランダムエッジ位置にスポーン。ベジェ曲線パスで移動後 removeFromParent。
-    │     elapsed (外部から毎フレーム更新) を使って難易度カーブを適用。
-    │     duration = clamp(600 / speed, 3.0, 12.0)
+    │     旧 SpriteKit BugNode スポーナー（現在は未使用）。
     │
     ├── NetProjectile.swift
-    │     SKNode (name="net")。netLabel(🕸️ 64pt) + ringNode(circleOfRadius:34) + centerDot
+    │     SKNode (name="net")。netShape(spider-web SKShapeNode) + ringNode(accent ring) + centerDot
+    │     netShape: CGMutablePath。外周円 + 8 スポーク + 3 同心円。緑系 stroke + 薄い fill。
     │     playerIndex を保持。playerColors[playerIndex % 3] でリング色を決定。
     │     physicsBody: circleOfRadius=44, isDynamic=true, affectedByGravity=false
     │     launch(angle:power:from:sceneSize:):
@@ -261,10 +314,11 @@ bonchi-festival/
           maxPlayers = 3。usedSlots: Set<Int> で接続上限管理。
           playerSlots: [MCPeerID: Int] で peerID → slot 0/1/2 を管理。
           advertiser: 招待受け入れ時に usedSlots.count < maxPlayers を確認して拒否。
-          sendGameState(_:): 全ピアに gameState メッセージを broadcast。
-          sendBugCaptured(bugType:toPlayerAtSlot:): 該当スロットの peerID にのみ unicast。
+          sendGameState(_:): 全ピアに gameState メッセージを broadcast（後方互換のみ）。
+          sendBugCaptured(bugType:toPlayerAtSlot:): 後方互換のみ（現在は呼ばれない）。
           delegate: ProjectorGameManagerDelegate
-            managerDidReceiveStartGame / managerDidReceiveReset / didReceiveLaunch / didUpdateConnectedPlayers
+            managerDidReceiveStartGame / managerDidReceiveReset
+            didReceiveLaunch / didReceiveBugSpawned / didReceiveBugRemoved / didUpdateConnectedPlayers
 ```
 
 ---
@@ -276,11 +330,13 @@ bonchi-festival/
 ```swift
 // GameProtocol.swift に定義
 enum MessageType: String, Codable {
-    case launch       // iOS → Projector
-    case startGame    // iOS → Projector
-    case resetGame    // iOS → Projector
-    case gameState    // Projector → iOS（全員）
-    case bugCaptured  // Projector → iOS（該当プレイヤーのみ）
+    case launch       // iOS → Projector: スリングショット発射
+    case startGame    // iOS → Projector: ゲーム開始
+    case resetGame    // iOS → Projector: バグクリア
+    case bugSpawned   // iOS → Projector: バグ出現通知（スマホ主導同期）
+    case bugRemoved   // iOS → Projector: バグ捕獲通知（スマホ主導同期）
+    case gameState    // 後方互換のみ（現在は送信されない）
+    case bugCaptured  // 後方互換のみ（現在は送信されない）
 }
 ```
 
@@ -288,8 +344,10 @@ enum MessageType: String, Codable {
 
 ```swift
 struct LaunchPayload:      Codable { let angle: Float; let power: Float; let timestamp: Double }
-struct GameStatePayload:   Codable { let state: String; let score: Int; let timeRemaining: Double }
-struct BugCapturedPayload: Codable { let bugType: BugType; let playerIndex: Int }
+struct BugSpawnedPayload:  Codable { let id: String; let bugType: BugType; let normalizedX: Float; let normalizedY: Float }
+struct BugRemovedPayload:  Codable { let id: String }
+struct BugCapturedPayload: Codable { let bugType: BugType; let playerIndex: Int } // 後方互換
+struct GameStatePayload:   Codable { let state: String; let score: Int; let timeRemaining: Double } // 後方互換
 ```
 
 ### フロー図
@@ -299,12 +357,10 @@ iOS Controller (×最大3台)               Projector Server
     │                                        │
     │── startGame ──────────────────────────>│
     │── launch(angle, power, timestamp) ────>│  → playerIndex を peerID から特定
-    │                                        │  → 対応色の NetProjectile を発射
-    │                                        │  → 網がプロキシ BugNode に接触
-    │<── bugCaptured(bugType, playerIndex) ──│  ※ 該当プレイヤーにのみ unicast
-    │  score += bugType.points               │
-    │<── gameState(state, 0, timeRemaining) ─│  score 常に 0（iOS 側が独自管理）
-    │── resetGame ───────────────────────── >│
+    │                                        │  → NetProjectile を発射（視覚のみ）
+    │── bugSpawned(id, type, x, y) ─────────>│  → addSyncedBug: Bug3DNode を追加
+    │── bugRemoved(id) ─────────────────────>│  → removeSyncedBug: Bug3DNode をcaptured()で削除
+    │── resetGame ───────────────────────── >│  → stopSpawning: 全 Bug3DNode 即削除
 ```
 
 ---
@@ -332,10 +388,12 @@ enum BugType: String, CaseIterable, Codable {
 | 項目 | 値 |
 |------|---|
 | 制限時間 | 90 秒 |
-| スポーン間隔 | `max(0.6, 1.8 - elapsed / 75)` 秒 |
-| スコア管理 | iOS（クライアント）側のみ。プロジェクターは 0 固定 |
+| スポーン間隔 | `max(1.5, 3.5 - elapsed / 75)` 秒（スマホ側のみ） |
+| 同時出現上限 | 5 匹（maxActiveBugs=5） |
+| タイマー管理 | スマホ（iOS）側のみ。プロジェクターはタイマーなし |
+| スコア管理 | iOS（スタンドアロン・クライアント）側のみ |
 | 最大接続 | 3 台。4 台目以降は拒否 |
-| ゲーム終了 | プロジェクターは 4 秒後に自動で WaitingScene へ戻る |
+| プロジェクター表示 | 常時 3D シーン。終了画面・待機画面なし |
 
 ---
 
@@ -343,15 +401,15 @@ enum BugType: String, CaseIterable, Codable {
 
 ```
 ┌────────────────────────────────────────────────┐
-│  SCNView  — Bug3DNode（3D バグ）               │ ← 背面 (z=0)
+│  SCNView  — Bug3DNode（3D バグ、スマホ主導）    │ ← 背面 (z=0)
 │  SKView   — BugHunterScene 透過オーバーレイ     │ ← 前面 (透過)
-│               HUD / 網 / 不可視プロキシ BugNode  │
+│               NetProjectile（視覚的な網）        │
 │  ConnectedPlayersView ──────────────── [右下]   │ ← 常時最前面 UIKit
 └────────────────────────────────────────────────┘
 ```
 
-- **SCNView.backgroundColor**: `UIColor(red: 0.05, green: 0.12, blue: 0.05, alpha: 1)`（暗い緑）
-- **WaitingScene.backgroundColor**: `SKColor(red: 0.04, green: 0.08, blue: 0.04, alpha: 1)`（暗い緑）
+- 常時 3D シーンを表示し続ける（待機・終了画面への遷移なし）
+- バグの追加・削除はすべて iOS スマホ側からの `bugSpawned`/`bugRemoved` メッセージで制御される
 
 ---
 

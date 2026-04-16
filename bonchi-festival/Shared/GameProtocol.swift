@@ -18,6 +18,8 @@ enum MessageType: String, Codable {
     case startGame    // iOS → Projector: start the game
     case resetGame    // iOS → Projector: reset to waiting screen
     case bugCaptured  // Projector → iOS: a net hit a bug (score notification)
+    case bugSpawned   // iOS → Projector: a bug appeared in the shared AR world
+    case bugRemoved   // iOS → Projector: a bug was captured by the phone AR layer
 }
 
 /// Top-level wrapper for every Multipeer message.
@@ -26,25 +28,42 @@ struct GameMessage: Codable {
     let launchPayload: LaunchPayload?
     let gameStatePayload: GameStatePayload?
     let bugCapturedPayload: BugCapturedPayload?
+    let bugSpawnedPayload: BugSpawnedPayload?
+    let bugRemovedPayload: BugRemovedPayload?
 
     static func launch(_ payload: LaunchPayload) -> GameMessage {
-        GameMessage(type: .launch, launchPayload: payload, gameStatePayload: nil, bugCapturedPayload: nil)
+        GameMessage(type: .launch, launchPayload: payload, gameStatePayload: nil,
+                    bugCapturedPayload: nil, bugSpawnedPayload: nil, bugRemovedPayload: nil)
     }
 
     static func gameState(_ payload: GameStatePayload) -> GameMessage {
-        GameMessage(type: .gameState, launchPayload: nil, gameStatePayload: payload, bugCapturedPayload: nil)
+        GameMessage(type: .gameState, launchPayload: nil, gameStatePayload: payload,
+                    bugCapturedPayload: nil, bugSpawnedPayload: nil, bugRemovedPayload: nil)
     }
 
     static func startGame() -> GameMessage {
-        GameMessage(type: .startGame, launchPayload: nil, gameStatePayload: nil, bugCapturedPayload: nil)
+        GameMessage(type: .startGame, launchPayload: nil, gameStatePayload: nil,
+                    bugCapturedPayload: nil, bugSpawnedPayload: nil, bugRemovedPayload: nil)
     }
 
     static func resetGame() -> GameMessage {
-        GameMessage(type: .resetGame, launchPayload: nil, gameStatePayload: nil, bugCapturedPayload: nil)
+        GameMessage(type: .resetGame, launchPayload: nil, gameStatePayload: nil,
+                    bugCapturedPayload: nil, bugSpawnedPayload: nil, bugRemovedPayload: nil)
     }
 
     static func bugCaptured(_ payload: BugCapturedPayload) -> GameMessage {
-        GameMessage(type: .bugCaptured, launchPayload: nil, gameStatePayload: nil, bugCapturedPayload: payload)
+        GameMessage(type: .bugCaptured, launchPayload: nil, gameStatePayload: nil,
+                    bugCapturedPayload: payload, bugSpawnedPayload: nil, bugRemovedPayload: nil)
+    }
+
+    static func bugSpawned(_ payload: BugSpawnedPayload) -> GameMessage {
+        GameMessage(type: .bugSpawned, launchPayload: nil, gameStatePayload: nil,
+                    bugCapturedPayload: nil, bugSpawnedPayload: payload, bugRemovedPayload: nil)
+    }
+
+    static func bugRemoved(_ payload: BugRemovedPayload) -> GameMessage {
+        GameMessage(type: .bugRemoved, launchPayload: nil, gameStatePayload: nil,
+                    bugCapturedPayload: nil, bugSpawnedPayload: nil, bugRemovedPayload: payload)
     }
 }
 
@@ -74,6 +93,23 @@ struct BugCapturedPayload: Codable {
     let bugType: BugType
     /// The player slot index that fired the net (0-based).
     let playerIndex: Int
+}
+
+/// Sent from iOS → Projector when a new bug is spawned in the shared AR world.
+struct BugSpawnedPayload: Codable {
+    /// Stable identifier (anchor UUID string) used to track the bug on both devices.
+    let id: String
+    let bugType: BugType
+    /// Horizontal position hint normalized to –1…1 (left → right relative to spawn origin).
+    let normalizedX: Float
+    /// Vertical position hint normalized to 0…1 (bottom → top relative to spawn origin).
+    let normalizedY: Float
+}
+
+/// Sent from iOS → Projector when the phone's AR system captures a bug.
+struct BugRemovedPayload: Codable {
+    /// Matches the `id` in the corresponding `BugSpawnedPayload`.
+    let id: String
 }
 
 // MARK: - Bug types
