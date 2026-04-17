@@ -107,34 +107,57 @@ final class Bug3DNode: SCNNode {
 
     // MARK: - Public
 
-    /// Struggle-then-dissolve animation played when the bug is captured.
-    /// The bug spins and shrinks (trapped in net), then glitch-flashes before fading.
+    /// Entangle-struggle-dissolve animation played when the bug is captured by the net.
+    ///
+    /// Phases:
+    /// 1. **Impact jolt** — sudden scale-up as the net lands.
+    /// 2. **Violent thrash** — multi-axis spin with shrink/swell cycles (trying to escape).
+    /// 3. **Net constricts** — rapid shrink toward zero as the bug is bound.
+    /// 4. **Glitch blinks** — digital corruption flicker.
+    /// 5. **Dissolve** — final fade-out and removal.
     func captured() {
         removeAllActions()
 
-        // 1. Impact: brief scale-up
-        let impact = SCNAction.scale(to: 1.25, duration: 0.05)
+        // 1. Impact jolt
+        let impact = SCNAction.scale(to: 1.30, duration: 0.04)
 
-        // 2. Struggle: spin + shrink (trapped in net)
-        let spinY    = SCNAction.rotateBy(x: 0, y: CGFloat(.pi * 3.0), z: 0, duration: 0.28)
-        let spinZ    = SCNAction.rotateBy(x: 0, y: 0, z: CGFloat(.pi * 1.5), duration: 0.28)
-        let shrink   = SCNAction.scale(to: 0.70, duration: 0.28)
-        let struggle = SCNAction.group([spinY, spinZ, shrink])
+        // 2. Violent thrash: multi-axis struggle (net wraps around the bug)
+        let spinY1  = SCNAction.rotateBy(x: 0, y: CGFloat(.pi * 1.8), z: 0, duration: 0.10)
+        let spinY2  = SCNAction.rotateBy(x: 0, y: CGFloat(-.pi * 1.2), z: 0, duration: 0.08)
+        let spinY3  = SCNAction.rotateBy(x: 0, y: CGFloat(.pi * 0.7), z: 0, duration: 0.07)
+        let spinX1  = SCNAction.rotateBy(x: CGFloat(.pi * 0.55), y: 0, z: 0, duration: 0.09)
+        let spinX2  = SCNAction.rotateBy(x: CGFloat(-.pi * 0.40), y: 0, z: 0, duration: 0.08)
+        let spinZ1  = SCNAction.rotateBy(x: 0, y: 0, z: CGFloat(.pi * 0.65), duration: 0.09)
+        let spinZ2  = SCNAction.rotateBy(x: 0, y: 0, z: CGFloat(-.pi * 0.45), duration: 0.07)
+        let swell1  = SCNAction.scale(to: 0.78, duration: 0.10)
+        let swell2  = SCNAction.scale(to: 1.18, duration: 0.08)
+        let swell3  = SCNAction.scale(to: 0.62, duration: 0.07)
 
-        // 3. Glitch blink (digital corruption theme)
+        let thrash = SCNAction.group([
+            SCNAction.sequence([spinY1, spinY2, spinY3]),
+            SCNAction.sequence([spinX1, spinX2]),
+            SCNAction.sequence([spinZ1, spinZ2]),
+            SCNAction.sequence([swell1, swell2, swell3])
+        ])
+
+        // 3. Net constricts: rapid shrink-down as the bug is fully bound
+        let constrict = SCNAction.scale(to: 0.22, duration: 0.26)
+        constrict.timingMode = .easeIn
+
+        // 4. Digital glitch blinks (corruption theme)
         let blinkDur: TimeInterval = 0.055
         let blink = SCNAction.sequence([
             SCNAction.fadeOpacity(to: 0.0, duration: blinkDur * 0.35),
-            SCNAction.fadeOpacity(to: 1.0, duration: blinkDur * 0.25),
+            SCNAction.fadeOpacity(to: 0.85, duration: blinkDur * 0.25),
             SCNAction.fadeOpacity(to: 0.0, duration: blinkDur * 0.20),
-            SCNAction.fadeOpacity(to: 0.8, duration: blinkDur * 0.20),
+            SCNAction.fadeOpacity(to: 0.70, duration: blinkDur * 0.20)
         ])
 
-        // 4. Dissolve
-        let dissolve = SCNAction.fadeOut(duration: 0.15)
+        // 5. Final dissolve
+        let dissolve = SCNAction.fadeOut(duration: 0.22)
         dissolve.timingMode = .easeIn
 
-        runAction(SCNAction.sequence([impact, struggle, blink, dissolve,
+        runAction(SCNAction.sequence([impact, thrash, constrict, blink, dissolve,
                                       SCNAction.removeFromParentNode()]))
     }
 

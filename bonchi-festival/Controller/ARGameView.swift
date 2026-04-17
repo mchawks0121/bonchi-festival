@@ -209,7 +209,12 @@ extension ARGameView {
 
             ensureSlingshotAttached()
 
-            // Wire capture callback so ARBugScene can trigger anchor removal
+            // Wire capture callbacks so ARBugScene can drive the capture flow:
+            // - onBugCaptured3D: fires ~0.20 s after capture to start the 3-D animation
+            // - onCaptureBug:    fires at healingAnimationDuration to remove the anchor
+            gameManager?.arBugScene?.onBugCaptured3D = { [weak self] node in
+                self?.startBug3DCaptureAnimation(of: node)
+            }
             gameManager?.arBugScene?.onCaptureBug = { [weak self] node in
                 self?.handleCapture(of: node)
             }
@@ -347,37 +352,62 @@ extension ARGameView {
 
         // MARK: - Capture
 
+        /// Immediately starts the 3-D struggle animation on the Bug3DNode that corresponds
+        /// to `node` (the SpriteKit proxy container).  The Bug3DNode is reparented to the
+        /// scene root so its animation continues after the ARAnchor is later removed.
+        /// Also notifies the projector so its display stays in sync.
+        /// Called ~0.20 s after capture so the animation visually aligns with the net landing.
+        private func startBug3DCaptureAnimation(of node: SKNode) {
+            mapLock.lock()
+            let anchor = nodeAnchorMap[ObjectIdentifier(node)]
+            mapLock.unlock()
+            guard let anchor else { return }
+
+            // Remove from map immediately so handleCapture() won't trigger captured() again.
+            mapLock.lock()
+            let bug3D = anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
+            mapLock.unlock()
+
+            if let bug3D = bug3D, let rootNode = arView?.scene.rootNode {
+                let worldT = bug3D.simdWorldTransform
+                bug3D.removeFromParentNode()
+                rootNode.addChildNode(bug3D)
+                bug3D.simdWorldTransform = worldT
+                bug3D.captured()
+            }
+
+            // Notify the projector to remove the matching bug from its display.
+            gameManager?.sendBugRemoved(id: anchor.identifier.uuidString)
+        }
+
         private func handleCapture(of node: SKNode) {
             mapLock.lock()
             let anchor = nodeAnchorMap[ObjectIdentifier(node)]
             mapLock.unlock()
             guard let anchor else { return }
 
-            // Reparent the 3-D visual to the scene root so its captured() animation
-            // plays in full even after the ARAnchor (and its child hierarchy) is removed.
+            // startBug3DCaptureAnimation() will have already removed the Bug3DNode from
+            // anchorBug3DNodeMap and started its captured() animation.  If it wasn't called
+            // for any reason (edge case), handle it here as a fallback.
             mapLock.lock()
-            let bug3D = anchorBug3DNodeMap[anchor.identifier]
+            let bug3D = anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
             mapLock.unlock()
             if let bug3D = bug3D, let rootNode = arView?.scene.rootNode {
                 let worldT = bug3D.simdWorldTransform
                 bug3D.removeFromParentNode()
                 rootNode.addChildNode(bug3D)
                 bug3D.simdWorldTransform = worldT
+                bug3D.captured()
+                gameManager?.sendBugRemoved(id: anchor.identifier.uuidString)
             }
-            bug3D?.captured()
 
-            // Notify the projector to remove the matching bug from its display.
-            gameManager?.sendBugRemoved(id: anchor.identifier.uuidString)
-
-            // Clean up all maps
+            // Clean up remaining maps and remove proxy / anchor
             mapLock.lock()
             nodeAnchorMap.removeValue(forKey: ObjectIdentifier(node))
-            anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
             anchorProxyNodeMap.removeValue(forKey: anchor.identifier)
             bugAnchorMap.removeValue(forKey: anchor.identifier)
             mapLock.unlock()
 
-            // Remove proxy from the SpriteKit overlay and the AR anchor
             node.removeFromParent()
             arView?.session.remove(anchor: anchor)
         }

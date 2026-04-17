@@ -37,6 +37,10 @@ final class ARBugScene: SKScene {
     /// ARGameView can remove the corresponding ARAnchor from the session.
     var onCaptureBug: ((SKNode) -> Void)?
 
+    /// Called ~0.20 s after capture (when the net visually lands on the bug) so
+    /// ARGameView can immediately start the 3-D Bug3DNode struggle animation.
+    var onBugCaptured3D: ((SKNode) -> Void)?
+
     // MARK: Public state
 
     /// When true the countdown timer is frozen (used during the `.ready` pre-game phase).
@@ -357,10 +361,10 @@ final class ARBugScene: SKScene {
 
     // MARK: - Private: game flow
 
-    /// Duration of the post-capture healing animation (seconds).
-    /// The ARAnchor is removed from the AR session after this interval, so this
-    /// value must be ≥ the longest constituent animation (heal ripple: 0.55 s + buffer).
-    private static let healingAnimationDuration: TimeInterval = 0.75
+    /// Duration the capture animation runs before the ARAnchor is removed.
+    /// Must be ≥ the longest animation chain: net cinch (~0.3 s) + bug struggle (~0.4 s)
+    /// + dissolve (~0.4 s) = ~1.1 s; set to 1.2 s for safety.
+    private static let healingAnimationDuration: TimeInterval = 1.2
 
     private func endGame() {
         gameEnded = true
@@ -400,56 +404,57 @@ final class ARBugScene: SKScene {
         let pts = bugNode?.points ?? 1
         SoundManager.shared.playCapture(points: pts)
 
-        // ── 1. Existing BugNode captured() animation ─────────────────────
-        bugNode?.captured()
-
-        // ── 2. Space-restoration healing ripple ───────────────────────────
-        playHealRipple(at: container.position)
-
-        // ── 3. Net flies from screen centre → lands on bug and wraps it ─────
-        let netSprite = SKLabelNode(text: "🕸️")
-        netSprite.fontSize  = 72
-        netSprite.position  = CGPoint(x: size.width / 2, y: size.height / 2)
-        netSprite.zPosition = 62
-        netSprite.setScale(1.0)
-        netSprite.alpha     = 0.95
-        addChild(netSprite)
         let bugCenter = container.position
-        netSprite.run(SKAction.sequence([
-            // Fly to the bug and tighten as it wraps
-            SKAction.group([
-                SKAction.move(to: bugCenter, duration: 0.30),
-                SKAction.scale(to: 0.55, duration: 0.30),
-                SKAction.rotate(byAngle: -.pi * 1.8, duration: 0.30)
-            ]),
-            // Brief flare as the net cinches shut
-            SKAction.group([
-                SKAction.scale(to: 0.90, duration: 0.06),
-                SKAction.fadeOut(withDuration: 0.12)
-            ]),
-            SKAction.removeFromParent()
-        ]))
 
-        // Bug struggles in the net: rotation + scale pulse
-        // (position is synced each frame so only rotate/scale are used here)
+        // ── 1. Net entanglement: dramatic multi-piece wrap ────────────────────
+        playNetEntangle(at: bugCenter)
+
+        // ── 2. Trigger 3-D bug struggle when the net visually arrives (~0.20 s) ─
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) { [weak self] in
+            self?.onBugCaptured3D?(container)
+        }
+
+        // ── 3. 2-D proxy struggle: violent thrash → constrict → fade ─────────
+        //      (proxy container has no visible children; these run for consistency)
         container.run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.24),
+            SKAction.wait(forDuration: 0.18),
+            // Impact jolt
+            SKAction.group([
+                SKAction.scale(to: 1.40, duration: 0.05),
+                SKAction.rotate(byAngle: .pi * 0.30, duration: 0.05)
+            ]),
+            // Violent thrash — multi-axis struggle trying to escape the net
             SKAction.group([
                 SKAction.sequence([
-                    SKAction.rotate(byAngle:  .pi * 0.15, duration: 0.05),
-                    SKAction.rotate(byAngle: -.pi * 0.15, duration: 0.05),
-                    SKAction.rotate(byAngle:  .pi * 0.09, duration: 0.04),
-                    SKAction.rotate(byAngle: -.pi * 0.09, duration: 0.04)
+                    SKAction.rotate(byAngle:  .pi * 0.55, duration: 0.07),
+                    SKAction.rotate(byAngle: -.pi * 0.80, duration: 0.08),
+                    SKAction.rotate(byAngle:  .pi * 0.60, duration: 0.07),
+                    SKAction.rotate(byAngle: -.pi * 0.40, duration: 0.06)
                 ]),
                 SKAction.sequence([
-                    SKAction.scale(to: 1.25, duration: 0.06),
-                    SKAction.scale(to: 0.85, duration: 0.08),
-                    SKAction.scale(to: 1.00, duration: 0.04)
+                    SKAction.scale(to: 0.80, duration: 0.07),
+                    SKAction.scale(to: 1.25, duration: 0.07),
+                    SKAction.scale(to: 0.72, duration: 0.07),
+                    SKAction.scale(to: 1.10, duration: 0.07)
+                ])
+            ]),
+            // Net tightens — bug is subdued and shrinks as it's captured
+            SKAction.group([
+                SKAction.sequence([
+                    SKAction.scale(to: 0.60, duration: 0.20),
+                    SKAction.scale(to: 0.35, duration: 0.18)
+                ]),
+                SKAction.sequence([
+                    SKAction.wait(forDuration: 0.10),
+                    SKAction.fadeOut(withDuration: 0.32)
                 ])
             ])
         ]))
 
-        // ── 4. Brief cyan-white screen flash (world restored) ─────────────
+        // ── 4. Space-restoration healing ripple ───────────────────────────────
+        playHealRipple(at: bugCenter)
+
+        // ── 5. Brief cyan-white screen flash ──────────────────────────────────
         let flash = SKShapeNode(rect: CGRect(origin: .zero, size: size))
         flash.fillColor   = SKColor(red: 0.3, green: 1.0, blue: 0.9, alpha: 0.32)
         flash.strokeColor = .clear
@@ -460,7 +465,7 @@ final class ARBugScene: SKScene {
             SKAction.removeFromParent()
         ]))
 
-        // ── 5. Score pop ──────────────────────────────────────────────────
+        // ── 6. Score pop ──────────────────────────────────────────────────────
         let popText = pts == 5 ? "⭐+\(pts)pts" : "+\(pts)pts"
         let pop = SKLabelNode(text: popText)
         pop.fontName  = "HiraginoSans-W7"
@@ -468,7 +473,7 @@ final class ARBugScene: SKScene {
         pop.fontColor = pts == 5
             ? SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 1)
             : SKColor(red: 1,   green: 0.85, blue: 0,  alpha: 1)
-        pop.position  = CGPoint(x: container.position.x, y: container.position.y + 30)
+        pop.position  = CGPoint(x: bugCenter.x, y: bugCenter.y + 30)
         pop.zPosition = 65
         pop.setScale(0.4)
         addChild(pop)
@@ -487,15 +492,125 @@ final class ARBugScene: SKScene {
             SKAction.removeFromParent()
         ]))
 
-        // ── 6. Crosshair flashes green ────────────────────────────────────
+        // ── 7. Crosshair flashes green ────────────────────────────────────────
         pulseCrosshair(success: true)
 
-        // ── 7. Tell ARGameView to remove the ARAnchor (after animations) ──
+        // ── 8. Anchor cleanup after all animations complete ───────────────────
         DispatchQueue.main.asyncAfter(deadline: .now() + ARBugScene.healingAnimationDuration) { [weak self] in
             self?.onCaptureBug?(container)
         }
 
         score += pts
+    }
+
+    /// Enhanced net entanglement animation at the bug's 2-D screen position.
+    ///
+    /// Three layers compose a "net wraps and cinches" feel:
+    /// - **Main net** (🕸️): flies from screen centre, billows open on impact, cinches tight.
+    /// - **Four binding strands** (small 🕸️): snap outward like threads, then constrict back.
+    /// - **Constricting ring**: yellow circle that contracts around the bug.
+    private func playNetEntangle(at bugPos: CGPoint) {
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+
+        // ── Main net ──────────────────────────────────────────────────────────
+        let mainNet = SKLabelNode(text: "🕸️")
+        mainNet.fontSize  = 88
+        mainNet.position  = center
+        mainNet.zPosition = 62
+        mainNet.setScale(0.8)
+        mainNet.alpha     = 1.0
+        addChild(mainNet)
+
+        mainNet.run(SKAction.sequence([
+            // Fly toward the bug, spinning and growing as it approaches
+            SKAction.group([
+                SKAction.move(to: bugPos, duration: 0.20),
+                SKAction.rotate(byAngle: -.pi * 2.4, duration: 0.20),
+                SKAction.scale(to: 1.65, duration: 0.20)
+            ]),
+            // Billow open on impact
+            SKAction.group([
+                SKAction.scale(to: 2.7, duration: 0.07),
+                SKAction.rotate(byAngle: -.pi * 0.3, duration: 0.07)
+            ]),
+            // Cinch tight around the bug
+            SKAction.group([
+                SKAction.scale(to: 0.50, duration: 0.24),
+                SKAction.rotate(byAngle: .pi * 1.3, duration: 0.24)
+            ]),
+            // Linger while the bug struggles
+            SKAction.wait(forDuration: 0.38),
+            // Shrink to nothing as bug fades
+            SKAction.group([
+                SKAction.scale(to: 0.20, duration: 0.26),
+                SKAction.fadeOut(withDuration: 0.26)
+            ]),
+            SKAction.removeFromParent()
+        ]))
+
+        // ── Four binding strands ──────────────────────────────────────────────
+        let bindAngles: [CGFloat] = [.pi / 5, .pi / 5 + .pi,
+                                     3 * .pi / 5, 3 * .pi / 5 + .pi]
+        for (i, angle) in bindAngles.enumerated() {
+            let strand = SKLabelNode(text: "🕸️")
+            strand.fontSize  = 30
+            strand.position  = bugPos
+            strand.zPosition = 61
+            strand.alpha     = 0.0
+            strand.setScale(0.3)
+            addChild(strand)
+
+            let delay: Double = Double(i) * 0.04 + 0.22
+            let reach: CGFloat = 46
+            let tx = bugPos.x + cos(angle) * reach
+            let ty = bugPos.y + sin(angle) * reach
+
+            strand.run(SKAction.sequence([
+                SKAction.wait(forDuration: delay),
+                // Snap outward
+                SKAction.group([
+                    SKAction.fadeAlpha(to: 0.90, duration: 0.06),
+                    SKAction.move(to: CGPoint(x: tx, y: ty), duration: 0.09),
+                    SKAction.scale(to: 0.88, duration: 0.09),
+                    SKAction.rotate(byAngle: .pi * 1.2, duration: 0.09)
+                ]),
+                // Constrict back
+                SKAction.group([
+                    SKAction.move(to: bugPos, duration: 0.14),
+                    SKAction.scale(to: 0.38, duration: 0.14),
+                    SKAction.rotate(byAngle: .pi * 0.6, duration: 0.14)
+                ]),
+                SKAction.wait(forDuration: 0.28),
+                SKAction.fadeOut(withDuration: 0.18),
+                SKAction.removeFromParent()
+            ]))
+        }
+
+        // ── Constricting ring ─────────────────────────────────────────────────
+        let ring = SKShapeNode(circleOfRadius: 54)
+        ring.strokeColor = SKColor(red: 1.0, green: 0.85, blue: 0.1, alpha: 0.9)
+        ring.fillColor   = SKColor(red: 1.0, green: 0.95, blue: 0.3, alpha: 0.08)
+        ring.lineWidth   = 2.5
+        ring.position    = bugPos
+        ring.zPosition   = 60
+        ring.alpha       = 0
+        addChild(ring)
+
+        ring.run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.20),
+            SKAction.group([
+                SKAction.fadeAlpha(to: 0.85, duration: 0.06),
+                SKAction.scale(to: 0.88, duration: 0.06)
+            ]),
+            // Cinch tight
+            SKAction.group([
+                SKAction.scale(to: 0.22, duration: 0.32),
+                SKAction.fadeAlpha(to: 0.35, duration: 0.32)
+            ]),
+            SKAction.wait(forDuration: 0.22),
+            SKAction.fadeOut(withDuration: 0.18),
+            SKAction.removeFromParent()
+        ]))
     }
 
     /// Expanding cyan ripple that signals the space has been restored.
