@@ -72,53 +72,84 @@ final class Net3DNode: SCNNode {
 
     // MARK: - Launch animation
 
-    /// Fly the net from `origin` in `direction`, then call `completion` when done.
+    /// Fly the net from `origin` in `direction` with a realistic parabolic arc,
+    /// then call `completion` when done.
+    ///
+    /// Trajectory: horizontal velocity is constant; vertical velocity decreases
+    /// under simulated world-space gravity (pos(t) = origin + v·t + ½·g·t²).
+    /// This makes weak throws arc and drop noticeably, while strong throws fly
+    /// flatter and farther — matching player expectation from the drag gesture.
+    ///
     /// - Parameters:
     ///   - origin:    World-space start position.
     ///   - direction: Normalised world-space flight direction.
-    ///   - power:     0–1 factor that scales travel distance and spin.
+    ///   - power:     0–1 factor that scales initial speed and spin.
     ///   - completion: Called after the animation finishes (use to remove from scene).
     func launch(from origin: SCNVector3, direction: SCNVector3,
                 power: Float, completion: @escaping () -> Void) {
         position = origin
 
-        let distance: Float   = 0.65 + power * 1.20   // 0.65–1.85 m
-        let travelTime: TimeInterval = 0.55
+        // Initial speed proportional to power (2.0 – 5.5 m/s).
+        let speed: Float = 2.0 + power * 3.5
 
-        let dest = SCNVector3(
-            origin.x + direction.x * distance,
-            origin.y + direction.y * distance,
-            origin.z + direction.z * distance
-        )
+        // Velocity components in world space — pure kinematic, no artificial bias.
+        let vx = direction.x * speed
+        let vy = direction.y * speed
+        let vz = direction.z * speed
 
-        // Travel
-        let move = SCNAction.move(to: dest, duration: travelTime)
-        move.timingMode = .easeOut
+        // World-space gravitational acceleration (m/s²) — close to real-world 9.8 m/s².
+        let g: Float = -9.0
 
-        // Tumbling spin: X + Z give a dynamic "coin-toss" look
-        let turns    = Double(1.2 + Double(power) * 1.5)   // 1.2–2.7 full turns
-        let spinZ    = SCNAction.rotateBy(x: 0, y: 0, z: CGFloat(.pi * 2 * turns),
-                                          duration: travelTime)
-        let spinX    = SCNAction.rotateBy(x: CGFloat(.pi * turns * 0.4), y: 0, z: 0,
-                                          duration: travelTime)
+        // Travel time grows with power so harder shots reach farther.
+        let travelTime: TimeInterval = 0.60 + Double(power) * 0.40  // 0.60–1.00 s
+
+        // Capture origin as plain Floats (value types) for the physics closure.
+        let ox = origin.x, oy = origin.y, oz = origin.z
+
+        // Orient rim to face the direction of travel at launch.
+        let flatLen = sqrt(direction.x * direction.x + direction.z * direction.z)
+        if flatLen > 0.05 {
+            eulerAngles = SCNVector3(0, atan2(direction.x, -direction.z), 0)
+        }
+
+        // Parabolic position: pos(t) = origin + velocity·t + ½·g·t²
+        // SCNAction.customAction provides `elapsed` = time since action started (not delta),
+        // so the kinematic equations can be applied directly each frame.
+        let physicsMove = SCNAction.customAction(duration: travelTime) { node, elapsed in
+            let t = Float(elapsed)
+            node.position = SCNVector3(
+                ox + vx * t,
+                oy + vy * t + 0.5 * g * t * t,
+                oz + vz * t
+            )
+        }
+
+        // Tumbling spin — two axes for a natural toss look; faster at higher power.
+        let turns = Double(0.8 + Double(power) * 2.0)   // 0.8–2.8 full turns
+        let spinZ = SCNAction.rotateBy(x: 0, y: 0, z: CGFloat(.pi * 2.0 * turns),
+                                       duration: travelTime)
+        let spinX = SCNAction.rotateBy(x: CGFloat(.pi * turns * 0.45), y: 0, z: 0,
+                                       duration: travelTime)
         spinZ.timingMode = .easeOut
         spinX.timingMode = .easeOut
 
-        // Scale: compact at start → full size → shrink on landing
-        scale = SCNVector3(0.25, 0.25, 0.25)
-        let scaleUp   = SCNAction.scale(to: 1.0, duration: travelTime * 0.35)
-        let scaleHold = SCNAction.scale(to: 1.0, duration: travelTime * 0.35)
-        let scaleDown = SCNAction.scale(to: 0.5, duration: travelTime * 0.30)
-        let scaleSeq  = SCNAction.sequence([scaleUp, scaleHold, scaleDown])
+        // Scale: compact at launch → fully open → slight compress on landing.
+        scale = SCNVector3(0.22, 0.22, 0.22)
+        let scaleSeq = SCNAction.sequence([
+            SCNAction.scale(to: 1.0,  duration: travelTime * 0.30),
+            SCNAction.scale(to: 1.0,  duration: travelTime * 0.42),
+            SCNAction.scale(to: 0.55, duration: travelTime * 0.28),
+        ])
 
-        // Fade: appear quickly, linger, then dissolve
+        // Fade: snap in → linger → dissolve.
         opacity = 0
-        let fadeIn  = SCNAction.fadeIn(duration: 0.06)
-        let hold    = SCNAction.wait(duration: travelTime * 0.55)
-        let fadeOut = SCNAction.fadeOut(duration: travelTime * 0.45)
-        let fadeSeq = SCNAction.sequence([fadeIn, hold, fadeOut])
+        let fadeSeq = SCNAction.sequence([
+            SCNAction.fadeIn(duration: 0.07),
+            SCNAction.wait(duration: travelTime * 0.52),
+            SCNAction.fadeOut(duration: travelTime * 0.48),
+        ])
 
-        runAction(SCNAction.group([move, spinZ, spinX, scaleSeq, fadeSeq])) {
+        runAction(SCNAction.group([physicsMove, spinZ, spinX, scaleSeq, fadeSeq])) {
             completion()
         }
     }

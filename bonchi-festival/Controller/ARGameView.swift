@@ -86,14 +86,6 @@ struct ARGameView: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {
         let coordinator = context.coordinator
 
-        // In the ready state: ensure the 3-D slingshot is attached and interactive
-        // so the player can practice the gesture before the game starts.
-        // The ARBugScene (and bug spawning) begin only when confirmReady() is called.
-        if gameManager.state == .ready {
-            coordinator.ensureSlingshotAttached()
-            return
-        }
-
         if let scene = gameManager.arBugScene,
            coordinator.skView?.scene !== scene {
             scene.scaleMode = .resizeFill
@@ -217,7 +209,12 @@ extension ARGameView {
 
             ensureSlingshotAttached()
 
-            // Wire capture callback so ARBugScene can trigger anchor removal
+            // Wire capture callbacks so ARBugScene can drive the capture flow:
+            // - onBugCaptured3D: fires ~0.20 s after capture to start the 3-D animation
+            // - onCaptureBug:    fires at healingAnimationDuration to remove the anchor
+            gameManager?.arBugScene?.onBugCaptured3D = { [weak self] node in
+                self?.startBug3DCaptureAnimation(of: node)
+            }
             gameManager?.arBugScene?.onCaptureBug = { [weak self] node in
                 self?.handleCapture(of: node)
             }
@@ -355,30 +352,62 @@ extension ARGameView {
 
         // MARK: - Capture
 
+        /// Immediately starts the 3-D struggle animation on the Bug3DNode that corresponds
+        /// to `node` (the SpriteKit proxy container).  The Bug3DNode is reparented to the
+        /// scene root so its animation continues after the ARAnchor is later removed.
+        /// Also notifies the projector so its display stays in sync.
+        /// Called ~0.20 s after capture so the animation visually aligns with the net landing.
+        private func startBug3DCaptureAnimation(of node: SKNode) {
+            mapLock.lock()
+            let anchor = nodeAnchorMap[ObjectIdentifier(node)]
+            mapLock.unlock()
+            guard let anchor else { return }
+
+            // Remove from map immediately so handleCapture() won't trigger captured() again.
+            mapLock.lock()
+            let bug3D = anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
+            mapLock.unlock()
+
+            if let bug3D = bug3D, let rootNode = arView?.scene.rootNode {
+                let worldT = bug3D.simdWorldTransform
+                bug3D.removeFromParentNode()
+                rootNode.addChildNode(bug3D)
+                bug3D.simdWorldTransform = worldT
+                bug3D.captured()
+            }
+
+            // Notify the projector to remove the matching bug from its display.
+            gameManager?.sendBugRemoved(id: anchor.identifier.uuidString)
+        }
+
         private func handleCapture(of node: SKNode) {
             mapLock.lock()
             let anchor = nodeAnchorMap[ObjectIdentifier(node)]
             mapLock.unlock()
             guard let anchor else { return }
 
-            // Play dismissal animation on the 3-D visual (no lock needed — read-only SCNNode call)
+            // startBug3DCaptureAnimation() will have already removed the Bug3DNode from
+            // anchorBug3DNodeMap and started its captured() animation.  If it wasn't called
+            // for any reason (edge case), handle it here as a fallback.
             mapLock.lock()
-            let bug3D = anchorBug3DNodeMap[anchor.identifier]
+            let bug3D = anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
             mapLock.unlock()
-            bug3D?.captured()
+            if let bug3D = bug3D, let rootNode = arView?.scene.rootNode {
+                let worldT = bug3D.simdWorldTransform
+                bug3D.removeFromParentNode()
+                rootNode.addChildNode(bug3D)
+                bug3D.simdWorldTransform = worldT
+                bug3D.captured()
+                gameManager?.sendBugRemoved(id: anchor.identifier.uuidString)
+            }
 
-            // Notify the projector to remove the matching bug from its display.
-            gameManager?.sendBugRemoved(id: anchor.identifier.uuidString)
-
-            // Clean up all maps
+            // Clean up remaining maps and remove proxy / anchor
             mapLock.lock()
             nodeAnchorMap.removeValue(forKey: ObjectIdentifier(node))
-            anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
             anchorProxyNodeMap.removeValue(forKey: anchor.identifier)
             bugAnchorMap.removeValue(forKey: anchor.identifier)
             mapLock.unlock()
 
-            // Remove proxy from the SpriteKit overlay and the AR anchor
             node.removeFromParent()
             arView?.session.remove(anchor: anchor)
         }
@@ -441,7 +470,7 @@ extension ARGameView {
             // Reading cachedDragOffset / cachedIsDragging from the render thread is safe by
             // the same convention as cachedViewHeight (written on main, read here).
             if cachedIsDragging {
-                slingshotNode?.updateDrag(offset: cachedDragOffset, maxDrag: 220)
+                slingshotNode?.updateDrag(offset: cachedDragOffset, maxDrag: 300)
                 wasSlingshotDragging = true
             } else if wasSlingshotDragging {
                 slingshotNode?.resetDrag()
@@ -506,8 +535,20 @@ extension ARGameView {
         /// indicated by the player's drag gesture.  Called on the main thread via
         /// the `onNetFired` callback wired during `startSpawning()`.
         func launchNet3D(dragOffset: CGSize, power: Float) {
-            guard let arView = arView,
-                  let cameraT = arView.session.currentFrame?.camera.transform else { return }
+            guard let arView = arView else { return }
+
+            // Prefer the ARKit camera transform for accuracy; fall back to the
+            // SceneKit pointOfView transform (always available even before the AR
+            // session delivers its first frame — e.g. on the very first shot after
+            // the CalibrationView restarts the AR session).
+            let cameraT: simd_float4x4
+            if let frame = arView.session.currentFrame {
+                cameraT = frame.camera.transform
+            } else if let pov = arView.pointOfView {
+                cameraT = pov.simdWorldTransform
+            } else {
+                return
+            }
 
             // Camera basis vectors in world space.
             let fwd   = simd_float3(-cameraT.columns.2.x, -cameraT.columns.2.y, -cameraT.columns.2.z)
@@ -517,7 +558,7 @@ extension ARGameView {
             // Drag → directional bias (mirrors the 2-D launch convention in SlingshotView):
             //   pull right (positive width) → fire left (−right)
             //   pull down  (positive height)→ fire up   (+up)
-            let maxDrag: Float  = 220
+            let maxDrag: Float  = 300
             let normX = Float(-dragOffset.width  / CGFloat(maxDrag))
             let normY = Float( dragOffset.height / CGFloat(maxDrag))
             let direction = simd_normalize(fwd + right * normX * 0.35 + up * normY * 0.35)

@@ -227,6 +227,16 @@ final class ProjectorBug3DCoordinator: NSObject {
     /// Maps stable bug ID (phone anchor UUID string) → Bug3DNode.
     private var bug3DNodes: [String: Bug3DNode] = [:]
 
+    /// Bug3DNode instances spawned autonomously (without a phone connection).
+    private var autonomousBugs: [Bug3DNode] = []
+
+    /// Timer driving the autonomous spawn cycle.
+    private var autonomousSpawnTimer: Timer?
+
+    /// Wall-clock time when autonomous spawning started; used for difficulty ramp.
+    /// Set to `Date()` as a placeholder; reset to the actual start time in `startAutonomousSpawning()`.
+    private var autonomousStartTime: Date = Date()
+
     /// Cached on the main thread so helpers can read it without accessing the view.
     private var cachedViewSize: CGSize = UIScreen.main.bounds.size
 
@@ -244,6 +254,7 @@ final class ProjectorBug3DCoordinator: NSObject {
         scnView.scene    = scnScene
         scnView.isPlaying = true   // keep rendering even with no camera movement
         if scnView.bounds.size.height > 0 { cachedViewSize = scnView.bounds.size }
+        startAutonomousSpawning()
     }
 
     // MARK: - SceneKit scene setup
@@ -276,8 +287,19 @@ final class ProjectorBug3DCoordinator: NSObject {
 
     /// Remove all active bugs (e.g. on game reset).
     func stopSpawning() {
+        // Stop autonomous spawner
+        autonomousSpawnTimer?.invalidate()
+        autonomousSpawnTimer = nil
+
+        // Remove autonomous bugs
+        autonomousBugs.forEach { $0.removeFromParentNode() }
+        autonomousBugs.removeAll()
+
+        // Remove phone-synced bugs
         bug3DNodes.values.forEach { $0.removeFromParentNode() }
         bug3DNodes.removeAll()
+
+        notifyBugCountChanged()
     }
 
     // MARK: - Phone-driven bug management
@@ -316,6 +338,8 @@ final class ProjectorBug3DCoordinator: NSObject {
         floatDown.timingMode = .easeInEaseOut
         bug3D.runAction(SCNAction.repeatForever(SCNAction.sequence([floatUp, floatDown])),
                         forKey: "hover")
+
+        notifyBugCountChanged()
     }
 
     /// Remove a bug from the projector scene, playing the capture animation.
@@ -324,6 +348,123 @@ final class ProjectorBug3DCoordinator: NSObject {
         bug3D.removeAction(forKey: "hover")
         bug3D.captured()
         bug3DNodes.removeValue(forKey: id)
+        notifyBugCountChanged()
+    }
+
+    // MARK: - Autonomous bug spawning
+
+    /// Start the autonomous spawn cycle.  Bugs appear on-screen even when no phone is connected,
+    /// so the projector world is always corrupted and alive.
+    private func startAutonomousSpawning() {
+        autonomousSpawnTimer?.invalidate()
+        autonomousStartTime = Date()
+        scheduleNextAutonomousSpawn(after: 1.5)
+    }
+
+    private func scheduleNextAutonomousSpawn(after delay: TimeInterval) {
+        autonomousSpawnTimer?.invalidate()
+        autonomousSpawnTimer = Timer.scheduledTimer(
+            withTimeInterval: delay, repeats: false
+        ) { [weak self] _ in
+            self?.spawnAutonomousBug()
+        }
+    }
+
+    /// Fractional off-screen margin used for autonomous bug spawn/exit positions.
+    private static let spawnMargin: Float = 1.25
+
+    private func spawnAutonomousBug() {
+        guard let scnView else { return }
+
+        let elapsed   = Date().timeIntervalSince(autonomousStartTime)
+        let (halfW, halfH) = visibleHalfExtents(in: scnView)
+
+        // Spawn at a random edge of the visible frustum
+        let edge = Int.random(in: 0..<4)
+        let startX: Float
+        let startY: Float
+        switch edge {
+        case 0:  startX = Float.random(in: -halfW...halfW);  startY =  halfH * Self.spawnMargin   // top
+        case 1:  startX = Float.random(in: -halfW...halfW);  startY = -halfH * Self.spawnMargin   // bottom
+        case 2:  startX = -halfW * Self.spawnMargin;         startY = Float.random(in: -halfH...halfH)  // left
+        default: startX =  halfW * Self.spawnMargin;         startY = Float.random(in: -halfH...halfH)  // right
+        }
+
+        let bugType = randomAutonomousBugType()
+        let bug3D   = Bug3DNode(type: bugType)
+        let s       = CGFloat(Self.bugScaleMultiplier)
+        bug3D.scale    = SCNVector3(s * 0.05, s * 0.05, s * 0.05)
+        bug3D.position = SCNVector3(startX, startY, 0)
+        bug3D.opacity  = 0
+        scnScene.rootNode.addChildNode(bug3D)
+        autonomousBugs.append(bug3D)
+
+        // Pop-in appearance
+        bug3D.runAction(SCNAction.group([
+            SCNAction.fadeIn(duration: 0.5),
+            SCNAction.scale(to: s, duration: 0.5),
+        ]))
+
+        // Movement path: 2–3 interior waypoints then exit off-screen
+        let bugDuration  = max(4.0, min(600.0 / Double(bugType.speed), 14.0))
+        let waypointCount = Int.random(in: 2...3)
+        let segDur        = bugDuration / Double(waypointCount + 1)
+
+        var actions: [SCNAction] = []
+        for _ in 0..<waypointCount {
+            let wx   = Float.random(in: -halfW * 0.75 ... halfW * 0.75)
+            let wy   = Float.random(in: -halfH * 0.65 ... halfH * 0.65)
+            let move = SCNAction.move(to: SCNVector3(wx, wy, 0), duration: segDur)
+            move.timingMode = .easeInEaseOut
+            actions.append(move)
+        }
+
+        // Exit toward the opposite edge
+        let exitX = Float.random(in: -halfW * 0.8 ... halfW * 0.8)
+        let exitY = Float.random(in: -halfH * 0.8 ... halfH * 0.8)
+        let exitMargin = Self.spawnMargin * 1.04   // slightly beyond spawnMargin to ensure off-screen
+        let exitPoint: SCNVector3
+        switch edge {
+        case 0:  exitPoint = SCNVector3(exitX, -halfH * exitMargin, 0)
+        case 1:  exitPoint = SCNVector3(exitX,  halfH * exitMargin, 0)
+        case 2:  exitPoint = SCNVector3( halfW * exitMargin, exitY, 0)
+        default: exitPoint = SCNVector3(-halfW * exitMargin, exitY, 0)
+        }
+        let exitMove = SCNAction.move(to: exitPoint, duration: segDur)
+        exitMove.timingMode = .easeIn
+        actions.append(exitMove)
+
+        // Removal on the main thread (SCNAction.run fires on the render thread)
+        actions.append(SCNAction.run { _ in
+            DispatchQueue.main.async { [weak self, weak bug3D] in
+                guard let bug3D else { return }
+                bug3D.removeFromParentNode()
+                self?.autonomousBugs.removeAll { $0 === bug3D }
+                self?.notifyBugCountChanged()
+            }
+        })
+
+        bug3D.runAction(SCNAction.sequence(actions))
+        notifyBugCountChanged()
+
+        // Progressive spawn interval: 1.8 s → 0.6 s over 90 s
+        let nextDelay = max(0.6, 1.8 - elapsed / 90.0)
+        scheduleNextAutonomousSpawn(after: nextDelay)
+    }
+
+    private func randomAutonomousBugType() -> BugType {
+        let roll = Double.random(in: 0..<1)
+        switch roll {
+        case ..<0.60: return .butterfly
+        case ..<0.90: return .beetle
+        default:      return .stag
+        }
+    }
+
+    /// Notify `bugScene` of the current total bug count so it can update distortion.
+    private func notifyBugCountChanged() {
+        let total = autonomousBugs.count + bug3DNodes.count
+        bugScene?.updateWorldDistortion(bugCount: total)
     }
 
     // MARK: - 3-D position helpers

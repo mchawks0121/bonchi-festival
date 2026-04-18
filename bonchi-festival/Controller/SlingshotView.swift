@@ -20,7 +20,7 @@ struct SlingshotView: View {
     @EnvironmentObject var gameManager: GameManager
 
     /// Maximum drag distance (upward) mapped to power = 1.0.
-    private let maxDragDistance: CGFloat = 220
+    private let maxDragDistance: CGFloat = 300
 
     /// Fractional Y position of the slingshot fork (0 = top, 1 = bottom) of the
     /// full-screen view.  Kept for PowerIndicatorView positioning only.
