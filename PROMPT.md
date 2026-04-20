@@ -1,19 +1,53 @@
-# ぼんち祭り バグハンター — AI 開発プロンプト
+# ぼんち祭り バグハンター — 完全再現プロンプト
 
 ## このドキュメントについて
 
-このファイルは、**ぼんち祭り バグハンター** プロジェクトを AI（GitHub Copilot 等）に継続開発させるための包括的なコンテキスト・プロンプトです。  
-プロジェクトの概要・現在の実装状態・アーキテクチャ・コーディング規約・未実装タスクをすべて記載しています。
+このファイルは **ぼんち祭り バグハンター** を **ゼロから完全再現できる** レベルで記述した AI コンテキスト・プロンプトです。  
+全ソースファイルを精査した上で、定数・アニメーション秒数・マテリアル RGB 値・分岐ロジックをすべて網羅しています。  
+AI（GitHub Copilot 等）に継続開発・バグ修正・機能追加をさせる際のコンテキストとして利用してください。
 
 ---
 
 ## プロジェクト概要
 
-**ぼんち祭り バグハンター** は、ARKit × SpriteKit × SceneKit × MultipeerConnectivity を組み合わせた iOS／iPad ゲームです。
+**ぼんち祭り バグハンター** は、ARKit × SpriteKit × SceneKit × MultipeerConnectivity を組み合わせた iOS ゲームです。
 
-- **テーマ**: 腐敗したデジタルワールドに出現する「バグ（害虫）」を、スリングショットで網を飛ばして捕獲する。  
-- **コンセプト**: バグたちは `NullReferenceException`、自己増殖するウイルス、致命的なデータ破壊グリッチとして擬人化される。世界は感染しており、プレイヤーは「バグハンター」として世界を浄化する。  
-- **ロケーション**: 祭り（ぼんち祭り）会場での大型スクリーン展示を想定。観客が iPhone でスリングショットをプレイ。
+- **テーマ**: 腐敗したデジタルワールドに出現する「バグ（害虫）」を、スリングショットで網を飛ばして捕獲する。
+- **コンセプト**: バグは `NullReferenceException`・自己増殖ウイルス・致命的データ破壊グリッチとして擬人化される。プレイヤーは「バグハンター」として世界を浄化する。
+- **ロケーション**: 祭り（ぼんち祭り）会場での大型スクリーン展示。観客が iPhone でスリングショットをプレイ。
+
+---
+
+## Xcode プロジェクト設定
+
+| 項目 | 値 |
+|------|---|
+| Bundle Identifier | com.mchreo0121.bonchi-festival（参考値） |
+| Deployment Target | iOS 17.0 |
+| Swift | 5.9 以上 |
+| Xcode | 15 以上 |
+| AppDelegate ベース | `@main class AppDelegate: UIResponder, UIApplicationDelegate` |
+| ライフサイクル | UIKit AppDelegate（SwiftUI App プロトコルは **使用しない**） |
+
+### Info.plist 必須エントリ
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>AR でバグを捕獲するためにカメラが必要です</string>
+<key>NSLocalNetworkUsageDescription</key>
+<string>プロジェクターと接続するためにローカルネットワークが必要です</string>
+<key>NSBonjourServices</key>
+<array>
+    <string>_bughunter-game._tcp</string>
+    <string>_bughunter-game._udp</string>
+</array>
+```
+
+### Capabilities
+
+- **ARKit**: 実機専用（シミュレーター非対応）
+- **Multipeer Connectivity**: プロジェクターモードに必要
+- 外部ライブラリ不使用。Apple 標準フレームワークのみ。
 
 ---
 
@@ -22,7 +56,7 @@
 | デバイス | 役割 | ターゲット |
 |---------|------|-----------|
 | iPhone (最大3台) | コントローラー（ARスリングショット） | iOS 17.0+ |
-| iPad / Mac | プロジェクターサーバー（大画面表示） | iOS 17.0+ (Catalyst or iPad) |
+| iPad / Mac | プロジェクターサーバー（大画面表示） | iOS 17.0+ |
 
 ---
 
@@ -31,358 +65,1050 @@
 | モード | GameMode 列挙値 | 説明 |
 |--------|----------------|------|
 | スタンドアロン | `.standalone` | 1台の iPhone で完結する AR バグハンター |
-| プロジェクター・クライアント | `.projectorClient` | iPhone がコントローラー。スリングショット操作をプロジェクターへ送信 |
+| プロジェクター・クライアント | `.projectorClient` | iPhone がコントローラー。操作をプロジェクターへ送信 |
 | プロジェクター・サーバー | `.projectorServer` | 大画面表示デバイス。最大3台の iPhone を受け付ける |
 
 ---
 
-## ファイル構成と責務
+## ファイル構成と責務（詳細）
 
 ```
 bonchi-festival/
-├── AppDelegate.swift
-│     UIWindow を生成し UIHostingController(rootView: ContentView()) をルートに設定。
-│     SwiftUI ライフサイクルではなく UIKit AppDelegate ベース。
-│
-├── ContentView.swift
-│     SwiftUI ルートビュー。GameManager を @StateObject で保持。
-│     GameManager.state に応じて以下のビューを切り替え（.animation + .transition(.opacity)）:
-│       .waiting     → WaitingView
-│       .calibrating → CalibrationView（AR カメラ + 照準レティクル + 基準点設定ボタン）
-│       .ready,.playing → PlayingView（同一 case で ARGameView インスタンスを維持したまま状態遷移）
-│                         gameMode が .projectorServer なら ProjectorServerView、それ以外は ARPlayingView
-│       .finished    → FinishedView
-│
-│     サブビュー:
-│       WaitingView         — モード選択カード(ModeCard)、接続状態ピル、「バグ狩り開始」ボタン、
-│                             バグ一覧カード(BugLegendRow)、ミッション説明。compact/regular レイアウト分岐あり。
-│                             「バグ狩り開始」は startCalibration() を呼ぶ（projectorServer は直接 startGame()）。
-│       CalibrationView     — UIViewRepresentable。ARSCNView フルスクリーン + UIKit オーバーレイ。
-│                             中央に照準レティクル (CAShapeLayer)、説明ラベル、確定ボタン、戻るボタン。
-│                             CalibrationCoordinator: confirmTapped → gameManager.setWorldOrigin(transform:) → .ready
-│                                                      backTapped   → gameManager.resetGame()
-│       ARPlayingView       — ARGameView（フルスクリーン） + ReadyOverlay (.ready 時) / HUD (.playing 時) + SlingshotView
-│                             ARGameView は .ready,.playing 両状態で同一インスタンスを維持
-│       ReadyOverlay        — 「スリングショットを引いて網を射出するとゲームスタート！」案内。allowsHitTesting=false
-│       ProjectorServerView — WorldViewControllerWrapper（UIViewControllerRepresentable）+ 戻るボタン
-│       FinishedView        — 最終スコア表示・「再デバッグ」ボタン
-│       ModeCard            — アイコン・タイトル・サブタイトル付き選択カード。compact/regular でレイアウト変化
-│       BugLegendRow        — バグ絵文字・表示名・レアリティ・ポイント・速度ラベルの1行
-│       WorldViewControllerWrapper — UIViewControllerRepresentable で WorldViewController をラップ
-│
+├── AppDelegate.swift            ← UIKit AppDelegate。UIHostingController(ContentView()) をルートに設定
+├── ContentView.swift            ← SwiftUI ルートビュー
 ├── Controller/
-│   ├── GameManager.swift
-│   │     ObservableObject。iOS 側ゲーム全体を管理。
-│   │     @Published: state(GameState), score(Int), timeRemaining(Double),
-│   │                 isConnected(Bool), gameMode(GameMode), arBugScene(ARBugScene?)
-│   │     var worldOriginTransform: simd_float4x4? — キャリブレーション時に記録するスポーン基点
-│   │     GameState 列挙: .waiting / .calibrating / .ready / .playing / .finished
-│   │     GameMode 列挙: .standalone / .projectorClient / .projectorServer
-│   │     selectMode(_:)        — モード切替。projectorClient 選択時に MultipeerSession.start()
-│   │     startCalibration()    — .calibrating 状態へ遷移（projectorServer は直接 startGame()）
-│   │     setWorldOrigin(transform:) — worldOriginTransform を記録して state = .ready に遷移
-│   │     confirmReady()        — .ready → startGame() へ遷移（最初のスリングショット発射時に呼ばれる）
-│   │     startGame()           — score=0 reset、ARBugScene 生成（非 projectorServer のみ）、multipeerSession.send(.startGame())（接続なし時 no-op）
-│   │     resetGame()           — 全状態リセット（worldOriginTransform も nil に）、multipeerSession.send(.resetGame())（接続なし時 no-op）
-│   │     sendLaunch(angle:power:) — ARBugScene.fireNet() + multipeerSession.send(.launch())（接続なし時 no-op）
-│   │     sendBugSpawned(id:type:normalizedX:normalizedY:) — multipeerSession.send(.bugSpawned())（接続なし時 no-op、モード判定なし）
-│   │     sendBugRemoved(id:) — multipeerSession.send(.bugRemoved())（接続なし時 no-op、モード判定なし）
-│   │     ※ スタンドアロンとプロジェクタークライアントのスポーンシステムは完全共通（モード分岐なし）
-│   │     slingshotDragUpdate: ((CGSize, Bool) -> Void)? — ARGameView.Coordinator がセット。SlingshotView がドラッグ毎に呼ぶ
-│   │     onNetFired: ((CGSize, Float) -> Void)? — ARGameView.Coordinator がセット。SlingshotView が発射時に呼ぶ
-│   │     resetGame() で slingshotDragUpdate / onNetFired を nil にクリア
-│   │     BugHunterSceneDelegate: didUpdateScore/sceneDidFinish — standalone + projectorClient でスコアを state に反映
-│   │     MultipeerSessionDelegate: bugCaptured 受信 → score += bugType.points（後方互換）
-│   │
-│   ├── MultipeerSession.swift
-│   │     iOS 側 Multipeer Connectivity ラッパー（NSObject, ObservableObject）。
-│   │     serviceType = "bughunter-game"（ProjectorGameManager と一致必須）
-│   │     MCSession + MCNearbyServiceAdvertiser + MCNearbyServiceBrowser を同時起動。
-│   │     start() / stop() で広告・ブラウジングを制御。
-│   │     send(_:) — 全接続ピアへ reliable 送信。
-│   │     MultipeerSessionDelegate プロトコル:
-│   │       didReceive(message:from:) / peerDidConnect / peerDidDisconnect
-│   │     コールバックはすべて DispatchQueue.main.async で配送。
-│   │
-│   ├── ARGameView.swift
-│   │     UIViewRepresentable。UIView コンテナ（=makeUIView の戻り値）に以下を重ねる:
-│   │       ARSCNView (背面) — SceneKit で 3D バグを描画。ARWorldTrackingConfiguration 使用。
-│   │       SKView (前面, 透過) — ARBugScene を presentScene する。allowsTransparency = true。
-│   │     内部 Coordinator クラス (ARSCNViewDelegate):
-│   │       startSpawning() / stopSpawning() — standalone + projectorClient でバグをスポーン（projectorServer のみ除外）
-│   │       ensureSlingshotAttached() — 冪等。SlingshotNode 未接続時のみ pointOfView に追加。.ready/.playing 両状態で呼ばれる
-│   │       spawnBug() — カメラ前方 0.5〜1.4m, 水平 ±37°, 垂直オフセット -0.3〜0.45m に ARAnchor 配置
-│   │         最大同時出現数: maxActiveBugs=5（超過時は 1.0s 後に再スケジュール）
-│   │         スポーン後 sendBugSpawned(id:type:normalizedX:normalizedY:) でプロジェクターに通知
-│   │         スポーン基点: gameManager.worldOriginTransform が非 nil ならそれを使用（固定エリア中心）、
-│   │                       nil の場合は frame.camera.transform にフォールバック（後方互換）
-│   │       randomBugType() — butterfly 60% / beetle 30% / stag 10%
-│   │       renderer(_:nodeFor:) — ARAnchor → Bug3DNode (SCNNode) + 不可視プロキシ SKNode を生成
-│   │       renderer(_:updateAtTime:) — 毎フレーム 3D→2D 変換でプロキシ位置同期、距離ベーススケール
-│   │         scale = clamp(referenceDistance(3.0) / distance, 0.3, 5.0)
-│   │         cachedViewHeight で UIKit アクセスをメインスレッドに限定
-│   │         cachedDragOffset / cachedIsDragging → SlingshotNode.updateDrag() / resetDrag() を呼ぶ
-│   │         wasSlingshotDragging フラグで resetDrag() を 1 フレームのみ呼ぶ
-│   │         slingshotNode が未接続 (parent==nil) なら pointOfView に追加 (遅延アタッチ)
-│   │       launchNet3D(dragOffset:power:): カメラ変換から方向ベクトルを計算し Net3DNode を発射
-│   │         fork 世界座標 = cameraTransform × (0, -0.12, -0.28, 1)
-│   │         direction = normalize(fwd + right×normX×0.35 + up×normY×0.35)
-│   │       handleCapture(of:) — capture 時に Bug3DNode.captured() + sendBugRemoved(id:) + ARAnchor 削除
-│   │     updateUIView: .ready 状態では ensureSlingshotAttached() を呼ぶのみ（stopSpawning しない）
-│   │     antialiasingMode = .multisampling4X、lightingEnvironment.intensity = 1.5 (PBR 品質向上)
-│   │     難易度カーブ: nextDelay = max(1.5, 3.5 - spawnElapsed / 75.0)
-│   │
-│   ├── ARBugScene.swift
-│   │     SKScene (backgroundColor = .clear)。照準・ロックオン・捕獲の全 UI を担当。
-│   │     BugHunterSceneDelegate プロトコルをこのファイルで定義:
-│   │       func scene(_:didUpdateScore:timeRemaining:) — 毎フレームスコア/残り時間を通知
-│   │       func sceneDidFinish(_:finalScore:) — タイムアップ時に最終スコアを通知
-│   │     public API:
-│   │       fireNet(angle:power:) — 2段階当たり判定:
-│   │         1. ロックオン (catchRadius=150pt 以内の最近傍 bugContainer)
-│   │         2. 弾道判定 (hitBand=90pt × netRange=power×最長辺×0.8+200pt)
-│   │         捕獲後 catchBug(container:bugNode:) → onCaptureBug コールバック
-│   │     照準クロスヘア: 画面中央固定、crosshairRing (SKShapeNode)
-│   │     ロックオンリング: lockOnRing (オレンジ) が最近傍バグの位置に追従
-│   │     distortionLayer: グリッチバー × 12本 (赤/紫/シアン/オレンジ)
-│   │       バグ数 0→1→2→3+ で alpha 0→38%→66%→100% に遷移
-│   │       各バーは独立したランダムフリッカーアクション
-│   │
-│   ├── Bug3DNode.swift
-│   │     SCNNode サブクラス。USDZ モデル優先（Apple AR Quick Look ギャラリーのファイルを使用）。
-│   │     USDZ が見つからない場合は手続き的 PBR ジオメトリにフォールバック。
-│   │     モデルマッピング（USDZ ファイルを Xcode プロジェクトに追加して使用）:
-│   │       butterfly → toy_biplane.usdz  (scale: 0.005)
-│   │       beetle    → gramophone.usdz   (scale: 0.004)
-│   │       stag      → toy_drummer.usdz  (scale: 0.004)
-│   │     preloadAssets(): ゲーム起動直後にバックグラウンドで全 USDZ を非同期プリロード。
-│   │       NSLock + loadingInProgress セットで重複 I/O 防止。スポーン時はキャッシュからクローン。
-│   │     usdzScale(for:): 網羅的 switch でバグタイプ別スケール定数を返す（コンパイル時漏れ検知）。
-│   │     butterfly (🐞):
-│   │       abdomen: SCNCapsule(capRadius:0.009, height:0.048)、茶色 PBR + シアンブルーエミッシブ
-│   │       upper wings: SCNPlane(0.095×0.070)、monarch オレンジ、半透明、isDoubleSided
-│   │       lower wings: SCNPlane(0.065×0.052)、暗いオレンジ
-│   │       antennae: SCNCylinder + SCNSphere ball tip
-│   │       アニメ: 翼ピボットノード (uwR/uwL/lwR/lwL) の Z 回転フラッピング + 体 Y ドリフト
-│   │     beetle (🦠):
-│   │       body: SCNSphere(r=0.040) × scale(1.05, 0.68, 1.22)、赤光沢 PBR + 毒グリーンエミッシブ
-│   │       suture: SCNCylinder(r=0.0028)、暗赤黒
-│   │       thorax + head: addSphere ヘルパー
-│   │       compound eyes: 球 × 2
-│   │       legs: 3ペア × 2段セグメント (addLeg ヘルパー)
-│   │       アニメ: Y 回転 (5.5s) + Z ロック (0.38s サイクル)
-│   │     stag (👾):
-│   │       body: SCNCapsule(capRadius:0.028, height:0.068)、暗金属 PBR + 赤オレンジエミッシブ
-│   │       thorax + head + eyes: addSphere
-│   │       mandibles: SCNCapsule × 2 + 内側 SCNCone tooth
-│   │       legs: 3ペア × addLeg
-│   │       elbowed antennae: SCNCylinder + SCNSphere tip
-│   │       アニメ: Y 回転 (7.5s) + X 軸頷き (1.4s サイクル)
-│   │     全共通: フェードイン (0.25s) + ホバー (±1.8cm, 0.65〜0.85s サイクル)
-│   │             + 二次水平ドリフト（+X→-Z→-X→+Z スクエア軌道、±0.03m, 5s サイクル）
-│   │     captured(): removeAllActions() + 3 回グリッチ点滅 → SCNAction.fadeOut(easeIn, 0.18s) → removeFromParentNode
-│   │
-│   ├── SlingshotNode.swift
-│   │     SCNNode サブクラス。3D Y 字スリングショットを AR シーンに描画。
-│   │     arView.pointOfView の子として追加 → カメラ空間固定（端末の動きに追従）。
-│   │     フォーク中心位置: camera-local (0, -0.12, -0.28)。
-│   │     ノード構成:
-│   │       forkRoot — フォーク全体の親ノード（位置オフセット保持）
-│   │         stem     — stemBottom(0,-0.050,0) → branch(0,0.010,0) の SCNCylinder (r=0.007)
-│   │         leftArm  — branch → leftTip(-0.035,0.055,0) の SCNCylinder (r=0.006)
-│   │         rightArm — branch → rightTip(+0.035,0.055,0) の SCNCylinder (r=0.006)
-│   │         tip caps — 各チップに SCNSphere (r=0.009) の装飾球
-│   │         leftBandNode / rightBandNode — SCNCylinder。updateDrag() で毎フレーム更新
-│   │         pouchNode — トーラスリム + 8 スポーク + 同心リング × 2（網ポーチ）
-│   │     材質: wood (brown PBR r=0.82, m=0.04) / band (orange PBR) / pouch (green PBR + emission)
-│   │     updateDrag(offset:maxDrag:): pullPoint を計算してバンドとポーチを更新
-│   │       maxPullDepth=0.08m (+Z 方向), maxPullLateral=0.025m, maxPullDown=0.014m
-│   │     resetDrag(): pullPoint = neutralPull、pouchNode を非表示に
-│   │     alignCylinder(_:from:to:): Y 軸 → 方向ベクトル へのクォータニオン回転と高さ更新
-│   │
-│   ├── Net3DNode.swift
-│   │     SCNNode サブクラス。ARSCNView 空間を飛翔する 3D 網メッシュ。
-│   │     ノード構成:
-│   │       rim (SCNTorus, ringRadius=0.042, pipeRadius=0.0045) — プレイヤー色アクセント、eulerAngles=(π/2,0,0) でカメラ方向に向ける
-│   │       spokes × 8 (SCNBox 0.082×0.001×0.001) — 放射状スポーク
-│   │       inner rings × 2 (SCNTorus, r=0.020, 0.032) — 同心内リング
-│   │     accentColors: cyan / orange / magenta（Player 1〜3 に対応）
-│   │     launch(from:direction:power:completion:):
-│   │       origin から direction に 0.65〜1.85m 移動（easeOut, 0.55s）
-│   │       tumbling spin: X + Z 軸の複合回転（1.2〜2.7 ターン）
-│   │       scale: 0.25 → 1.0 → 0.5 の連続変化（unfurling 効果）
-│   │       opacity: 即時フェードイン → hold → フェードアウト
-│   │       完了後 completion() を呼び出し（removeFromParentNode 用）
-│   │
-│   ├── SlingshotView.swift
-│   │     SwiftUI フルスクリーンオーバーレイ。ジェスチャ管理専用（3D 描画は SlingshotNode が担当）。
-│   │     フォーク位置参照: forkYRatio=0.62（PowerIndicatorView 配置のみに使用）
-│   │     最大ドラッグ距離: 220pt (maxDragDistance)。任意方向スワイプ可。
-│   │     angle = atan2(dragOffset.height, -dragOffset.width)（SpriteKit 座標系に変換）
-│   │     power = min(dragLength / 220, 1.0)
-│   │     ドラッグ中: gameManager.slingshotDragUpdate?(offset, true) → Coordinator が SlingshotNode を更新
-│   │     発射時: gameManager.state == .ready なら gameManager.confirmReady() を先に呼ぶ（ゲーム開始シグナル）
-│   │             gameManager.onNetFired?(dragOffset, power) → Coordinator が Net3DNode を発射
-│   │             gameManager.sendLaunch(angle:power:) → ARBugScene の当たり判定を起動
-│   │     PowerIndicatorView — 水平バー (緑/黄/赤)、power に応じてリアルタイム更新
-│   │
-│   └── SoundManager.swift
-│         AVAudioEngine + AVAudioPlayerNode × 6 によるシングルトンのサウンドマネージャ。
-│         外部音声ファイルなし。PCM サイン波バッファをランタイムで生成。
-│         makeTone(frequency:duration:amplitude:fadeIn:fadeOut:) — 純音（サイン波 + 線形エンベロープ）
-│         makeSweep(startFreq:endFreq:duration:amplitude:) — 周波数グライドサイン波
-│         playSequence(_:noteDuration:noteGap:amplitude:) — DispatchQueue.asyncAfter でノートを順次発音
-│         公開 API:
-│           playThrow()              — 高→低スイープ（網発射時）
-│           playCapture(points:)     — 上昇アルペジオ（捕獲時。ポイント数で音数変化）
-│           playMiss()               — 下降スイープ（ミス時）
-│           playLockOn()             — 短ビープ（ロックオン取得時）
-│           playGameStart()          — C5→E5→G5→C6 ファンファーレ（ゲーム開始時）
-│           playGameEnd()            — G5→E5→C5→G4 下降メロディ（ゲーム終了時）
-│         AVAudioSession.Category.ambient: 他アプリ音楽と共存、サイレントスイッチ非対応
-│
+│   ├── GameManager.swift        ← iOS 側ゲーム状態管理 ObservableObject
+│   ├── MultipeerSession.swift   ← iOS 側 Multipeer Connectivity ラッパー
+│   ├── ARGameView.swift         ← UIViewRepresentable (ARSCNView + SKView 重ね合わせ)
+│   ├── ARBugScene.swift         ← SpriteKit 透過シーン（照準・捕獲 UI）
+│   ├── Bug3DNode.swift          ← SCNNode サブクラス（3D バグ表示）
+│   ├── SlingshotNode.swift      ← SCNNode サブクラス（3D Y 字スリングショット）
+│   ├── Net3DNode.swift          ← SCNNode サブクラス（3D 飛翔網メッシュ）
+│   ├── SlingshotView.swift      ← SwiftUI ジェスチャオーバーレイ
+│   └── SoundManager.swift       ← AVAudioEngine ベースサウンドマネージャ（シングルトン）
 ├── Shared/
-│   └── GameProtocol.swift
-│         MessageType: launch / gameState / startGame / resetGame / bugCaptured / bugSpawned / bugRemoved
-│         GameMessage: type + optional payloads
-│         LaunchPayload:      angle(Float), power(Float), timestamp(Double)
-│         GameStatePayload:   state(String), score(Int=0), timeRemaining(Double)
-│         BugCapturedPayload: bugType(BugType), playerIndex(Int) — 後方互換のみ、現在は未使用
-│         BugSpawnedPayload:  id(String), bugType(BugType), normalizedX(Float), normalizedY(Float)
-│         BugRemovedPayload:  id(String)
-│         BugType: butterfly(1pt, speed:110, size:40) / beetle(3pt, speed:70, size:55) / stag(5pt, speed:45, size:70)
-│           computed: points / emoji / displayName / speed / size / speedLabel / rarityLabel / lore
-│         PhysicsCategory: none(0) / bug(0x1) / net(0x2)
-│
+│   └── GameProtocol.swift       ← Multipeer 共有型 (BugType, GameMessage 等)
 └── World/
-    ├── WorldViewController.swift
-    │     UIViewController。SCNView + SKView + ConnectedPlayersView の配置・管理。
-    │     viewDidLoad で Bug3DNode.preloadAssets() を呼び出し USDZ を非同期プリロード（iOS AR パスと同様）。
-    │     viewDidLayoutSubviews で初回レイアウト後に startGame() を直接呼び出す（3D を即時表示）。
-    │     startGame(): 既存 coordinator を stopSpawning()+nil 後、BugHunterScene(isProjectorMode=true) 生成、
-    │       ProjectorBug3DCoordinator.attach() — バグスポーンなし（スマホ主導）
-    │     fireNet(angle:power:playerIndex:): gameScene?.fireNet() に転送（視覚のみ）
-    │     ProjectorGameManagerDelegate:
-    │       managerDidReceiveStartGame → startGame()
-    │       managerDidReceiveReset → bug3DCoordinator?.stopSpawning()（シーン遷移なし）
-    │       didReceiveLaunch → fireNet()
-    │       didReceiveBugSpawned → coordinator.addSyncedBug(id:type:normalizedX:normalizedY:)
-    │       didReceiveBugRemoved → coordinator.removeSyncedBug(id:)
-    │       didUpdateConnectedPlayers → connectedPlayersView.update(players:)
-    │
-    │     ─── ProjectorBug3DCoordinator（WorldViewController.swift 内の final class）───
-    │       SCNScene に固定パースカメラ（cameraZ=3.5, FOV=65°）を設置。
-    │       Bug3DNode を bugScaleMultiplier=10 でスケール拡大して scnView に表示。
-    │       独立スポーン機能なし・プロキシ BugNode なし。
-    │       addSyncedBug(id:type:normalizedX:normalizedY:):
-    │         normalizedX(-1〜1) → x = normalizedX × halfW × 0.70
-    │         normalizedY(0〜1)  → y = (normalizedY×2-1) × halfH × 0.60
-    │         フェードイン + スケールアップ + 常時ホバーアニメ
-    │       removeSyncedBug(id:): bug3D.captured() アニメ後 removeFromParentNode
-    │       stopSpawning(): 全 Bug3DNode を即削除
-    │       attach(to:bugScene:) / updateCachedViewSize(_:)
-    │
-    ├── WaitingScene.swift
-    │     SKScene。isProjectorOverlay=true のとき backgroundColor=.clear（SceneKit 3D 層が透過して見える）。
-    │     isProjectorOverlay=false のとき backgroundColor = 暗い緑（スタンドアロン用）。
-    │     タイトル "君は、バグハンター 🦟" (HiraginoSans-W7, 80pt) + パルスアニメ
-    │     サブタイトル "You are the Bug Hunter" (W3, 40pt)
-    │     浮遊バグ絵文字 (🦋/🐛/🪲 × ポイント表示) — 独立した上下フロートアニメ
-    │     接続待ちテキスト (W3, 34pt) — フェードブリンクアニメ
-    │     操作説明テキスト (W3, 30pt)
-    │
-    ├── BugHunterScene.swift
-    │     SKScene。isProjectorMode=true のとき backgroundColor=.clear。
-    │     タイマー・スコア・HUD・BugSpawner・physics contactDelegate なし（スマホ主導）。
-    │     fireNet(angle:power:playerIndex:): origin = 画面下部中央 → NetProjectile.launch() → シーンに追加（視覚のみ）
-    │
-    ├── BugSpawner.swift
-    │     旧 SpriteKit BugNode スポーナー（現在は未使用）。
-    │
-    ├── NetProjectile.swift
-    │     SKNode (name="net")。netShape(spider-web SKShapeNode) + ringNode(accent ring) + centerDot
-    │     netShape: CGMutablePath。外周円 + 8 スポーク + 3 同心円。緑系 stroke + 薄い fill。
-    │     playerIndex を保持。playerColors[playerIndex % 3] でリング色を決定。
-    │     physicsBody: circleOfRadius=44, isDynamic=true, affectedByGravity=false
-    │     launch(angle:power:from:sceneSize:):
-    │       travelSpeed = power×1400+500 pt/s、travelTime=0.55s
-    │       baseMove(easeOut) + arcAction(上昇+下降) + unfurl(scale 0.3→1.3→1.0) + spin(easeOut)
-    │       arc 強度 = sceneSize.height×0.06×|cos(angle)|×(power+0.3)
-    │       rotation = π×(1.5 + power×2) rad
-    │     playCapture(): アクション停止 + physicsBody=nil + pulse + fadeOut → removeFromParent
-    │
-    └── ProjectorGameManager.swift
-          MCSession + MCNearbyServiceAdvertiser + MCNearbyServiceBrowser。
-          serviceType = "bughunter-game"
-          maxPlayers = 3。usedSlots: Set<Int> で接続上限管理。
-          playerSlots: [MCPeerID: Int] で peerID → slot 0/1/2 を管理。
-          advertiser: 招待受け入れ時に usedSlots.count < maxPlayers を確認して拒否。
-          sendGameState(_:): 全ピアに gameState メッセージを broadcast（後方互換のみ）。
-          sendBugCaptured(bugType:toPlayerAtSlot:): 後方互換のみ（現在は呼ばれない）。
-          delegate: ProjectorGameManagerDelegate
-            managerDidReceiveStartGame / managerDidReceiveReset
-            didReceiveLaunch / didReceiveBugSpawned / didReceiveBugRemoved / didUpdateConnectedPlayers
+    ├── WorldViewController.swift  ← プロジェクター側 UIViewController + ProjectorBug3DCoordinator
+    ├── ProjectorGameManager.swift ← プロジェクター側 Multipeer ラッパー
+    ├── BugHunterScene.swift       ← プロジェクター用 SKScene（透過オーバーレイ）
+    ├── WaitingScene.swift         ← 待機画面 SKScene（ほぼ未使用）
+    ├── NetProjectile.swift        ← プロジェクター用 網 SKNode
+    └── BugSpawner.swift           ← 旧 SpriteKit スポーナー（現在未使用）
+```
+
+---
+
+## AppDelegate.swift
+
+```swift
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    var window: UIWindow?
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        window.rootViewController = UIHostingController(rootView: ContentView())
+        self.window = window
+        window.makeKeyAndVisible()
+        return true
+    }
+}
+```
+
+---
+
+## ContentView.swift
+
+`GameManager` を `@StateObject` で保持するルートビュー。
+
+### 設計トークン（ファイル先頭のプライベート定数）
+
+```swift
+private let accentCyan  = Color(red: 0.20, green: 1.00, blue: 0.80)
+private let accentBlue  = Color(red: 0.10, green: 0.60, blue: 1.00)
+private let bgTop       = Color(red: 0.03, green: 0.04, blue: 0.10)
+private let bgBottom    = Color(red: 0.00, green: 0.00, blue: 0.00)
+```
+
+### 状態遷移とビュー切り替え
+
+```swift
+switch gameManager.state {
+case .waiting:    WaitingView()
+case .calibrating: CalibrationView()
+case .ready, .playing: PlayingView()   // 同一ケースで ARGameView インスタンスを維持
+case .finished:   FinishedView()
+}
+// 全遷移: .animation(.easeInOut(duration:0.35)) + .transition(.opacity)
+```
+
+**PlayingView の内訳**:
+- `gameManager.gameMode == .projectorServer` → `ProjectorServerView`
+- それ以外 → `ARPlayingView`
+
+### WaitingView
+
+- 背景: `LinearGradient(colors:[bgTop, bgBottom], startPoint:.top, endPoint:.bottom)`
+- 上部: `HeroLogo`（compact 高さ<750pt: icon 88pt / タイトル 66pt / サブタイトル 32pt、regular: 118/90/44pt）
+- `ModeCard` × 3（standalone/projectorClient/projectorServer）
+  - compact 時は `.horizontal` `ScrollView`（横並び）、regular 時は縦 `ScrollView`
+- 接続状態ピル: `.connected` 時シアン、`.notConnected` 時グレー
+- 「バグ狩り開始」ボタン（accentCyan）:
+  - projectorServer 選択 → `gameManager.startGame()` 直接
+  - それ以外 → `gameManager.startCalibration()`
+- `BugLegendRow` × 3（バグ一覧カード）+ ミッション説明テキスト
+
+**ModeCard**: アイコン + タイトル + サブタイトル。選択中は accentCyan 枠線 + 薄いシアン背景。  
+**BugLegendRow**: バグ絵文字 + 表示名 + レアリティ + ポイント + 速度ラベル（`BugType` computed から取得）。
+
+### CalibrationView（UIViewRepresentable）
+
+`ARSCNView` フルスクリーン + UIKit オーバーレイを重ねる `UIView` を返す。
+
+```
+UIView (container)
+├── ARSCNView (fullscreen)
+│     ARWorldTrackingConfiguration で AR セッション開始
+└── UIView (overlay)
+    ├── 照準レティクル (CAShapeLayer: 十字 + 円、中央固定)
+    ├── 説明ラベル（上部）
+    ├── 「基準点を設定」UIButton → confirmTapped → gameManager.setWorldOrigin(transform:)
+    └── 「戻る」UIButton → backTapped → gameManager.resetGame()
+```
+
+`CalibrationCoordinator`:
+- `confirmTapped()`: `arView.session.currentFrame?.camera.transform` を取得して `gameManager.setWorldOrigin(transform:)` → state = `.ready`
+- `backTapped()`: `gameManager.resetGame()` → state = `.waiting`
+
+### ARPlayingView
+
+```
+ZStack
+├── ARGameView() (ignoresSafeArea)
+├── if state == .ready: ReadyOverlay (allowsHitTesting: false)
+├── if state == .playing: HUD（スコア + タイマーバー）
+└── SlingshotView() (フルスクリーン、ジェスチャのみ)
+```
+
+**タイマーバー色**:
+```swift
+// 残り30秒以上 → accentCyan / 残り10-29秒 → .yellow / 残り10秒未満 → .red
+```
+
+**ReadyOverlay**: 「スリングショットを引いて網を射出するとゲームスタート！」。半透明黒背景角丸パネル、`allowsHitTesting(false)`。
+
+### ProjectorServerView
+
+```swift
+struct WorldViewControllerWrapper: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> WorldViewController { WorldViewController() }
+    func updateUIViewController(_ vc: WorldViewController, context: Context) {}
+}
+```
+
+フルスクリーンに `WorldViewControllerWrapper` + 左上に戻るボタン。
+
+### FinishedView
+
+最終スコアを大きく表示（accentCyan）+ 「再デバッグ」ボタン → `gameManager.resetGame()`。  
+背景: `LinearGradient(bgTop → bgBottom)`。
+
+---
+
+## Controller/GameManager.swift
+
+`ObservableObject`。iOS 側ゲーム全体の状態管理。
+
+### 列挙体
+
+```swift
+enum GameState { case waiting, calibrating, ready, playing, finished }
+enum GameMode  { case standalone, projectorClient, projectorServer }
+```
+
+### @Published プロパティ
+
+```swift
+@Published var state: GameState = .waiting
+@Published var score: Int = 0
+@Published var timeRemaining: Double = 90.0
+@Published var isConnected: Bool = false
+@Published var gameMode: GameMode = .standalone
+@Published var arBugScene: ARBugScene? = nil
+```
+
+### その他のプロパティ
+
+```swift
+var worldOriginTransform: simd_float4x4? = nil
+var slingshotDragUpdate: ((CGSize, Bool) -> Void)? = nil
+var onNetFired: ((CGSize, Float) -> Void)? = nil
+private let multipeerSession = MultipeerSession()
+```
+
+### 主要メソッド
+
+| メソッド | 動作 |
+|---------|------|
+| `selectMode(_:)` | `gameMode` を切替。`.projectorClient` 選択時に `multipeerSession.start()` |
+| `startCalibration()` | `.projectorServer` 以外は `state = .calibrating`。`.projectorServer` は直接 `startGame()` |
+| `setWorldOrigin(transform:)` | `worldOriginTransform = transform`; `state = .ready` |
+| `confirmReady()` | `.ready` → `startGame()` |
+| `startGame()` | `score=0` / `timeRemaining=90` リセット; `.projectorServer` 以外は `ARBugScene` 生成; `multipeerSession.send(.startGame())` |
+| `resetGame()` | 全状態リセット; `worldOriginTransform=nil`; `slingshotDragUpdate=nil`; `onNetFired=nil`; `multipeerSession.send(.resetGame())` |
+| `sendLaunch(angle:power:)` | `arBugScene?.fireNet(angle:power:)` + `multipeerSession.send(.launch(...))` |
+| `sendBugSpawned(id:type:normalizedX:normalizedY:)` | `multipeerSession.send(.bugSpawned(...))` （モード判定なし; 接続なし時 no-op） |
+| `sendBugRemoved(id:)` | `multipeerSession.send(.bugRemoved(...))` （モード判定なし; 接続なし時 no-op） |
+
+**BugHunterSceneDelegate 実装**:
+- `didUpdateScore(_:timeRemaining:)` → `self.score = score`; `self.timeRemaining = timeRemaining`
+- `sceneDidFinish(_:finalScore:)` → `self.score = finalScore`; `state = .finished`
+
+**MultipeerSessionDelegate 実装**:
+- `peerDidConnect(_:)` → `isConnected = true`
+- `peerDidDisconnect(_:)` → `isConnected = (session.connectedPeers.count > 0)`
+- `didReceive(message:from:)` の `.bugCaptured` → `score += bugType.points`（後方互換）
+
+**重要**: `sendBugSpawned`/`sendBugRemoved` は接続モードに関わらず常に呼ばれる。接続なし時は no-op。
+
+---
+
+## Controller/MultipeerSession.swift
+
+iOS 側 Multipeer Connectivity ラッパー（`NSObject, ObservableObject`）。
+
+```swift
+static let serviceType = "bughunter-game"   // ProjectorGameManager と必ず一致
+// MCSession + MCNearbyServiceAdvertiser + MCNearbyServiceBrowser を同時起動
+// start() / stop() で制御
+// send(_ message: GameMessage) — 全接続ピアへ .reliable 送信（JSON エンコード）
+// 受信コールバックはすべて DispatchQueue.main.async で配送
+```
+
+**MultipeerSessionDelegate プロトコル**:
+```swift
+func didReceive(message: GameMessage, from peer: MCPeerID)
+func peerDidConnect(_ peer: MCPeerID)
+func peerDidDisconnect(_ peer: MCPeerID)
+```
+
+---
+
+## Controller/ARGameView.swift
+
+`UIViewRepresentable`。`UIView` コンテナに `ARSCNView`（背面）+ `SKView`（前面・透過）を重ねる。
+
+### makeUIView レイヤー構成
+
+```
+UIView (container, UIScreen.main.bounds)
+├── ARSCNView (autoresizingMask: flexible, 背面)
+│     autoenablesDefaultLighting = true
+│     automaticallyUpdatesLighting = true
+│     antialiasingMode = .multisampling4X
+│     scene.lightingEnvironment.intensity = 1.5
+│     config = ARWorldTrackingConfiguration()
+└── SKView (autoresizingMask: flexible, 前面)
+      backgroundColor = .clear, isOpaque = false, allowsTransparency = true
+```
+
+`makeUIView` で `Bug3DNode.preloadAssets()` を呼び出し（USDZ を事前ロード）。
+
+### Coordinator 定数
+
+```swift
+private static let minSpawnDistance:     Float = 0.5
+private static let maxSpawnDistance:     Float = 1.4
+private static let horizontalAngleRange: ClosedRange<Float> = -0.65...0.65  // ±~37°
+private static let verticalOffsetRange:  ClosedRange<Float> = -0.30...0.45
+private static let referenceDistance:    Float = 3.0   // 距離ベーススケール基準
+private static let minBugScale:          Float = 0.3
+private static let maxBugScale:          Float = 5.0
+private static let maxActiveBugs:        Int   = 5
+```
+
+### アンカー辞書（全て `mapLock: NSLock` で保護）
+
+```swift
+private var bugAnchorMap:       [UUID: BugType]               // anchor.identifier → BugType
+private var anchorBug3DNodeMap: [UUID: Bug3DNode]              // anchor.identifier → Bug3DNode
+private var anchorProxyNodeMap: [UUID: SKNode]                 // anchor.identifier → proxy SKNode
+private var nodeAnchorMap:      [ObjectIdentifier: ARAnchor]   // proxy SKNode → ARAnchor
+```
+
+### startSpawning()
+
+1. `gameMode == .projectorServer` → 即 return
+2. `stopSpawning()` → アンカー辞書を全クリア
+3. `ensureSlingshotAttached()`
+4. `arBugScene?.onBugCaptured3D` / `onCaptureBug` コールバックを登録
+5. `scheduleNextSpawn(delay: 0.9)`
+
+### ensureSlingshotAttached()（冪等）
+
+```swift
+// projectorServer → return
+// slingshotNode != nil → return
+let sn = SlingshotNode()
+slingshotNode = sn
+arView?.pointOfView?.addChildNode(sn)
+gameManager?.slingshotDragUpdate = { [weak self] offset, isDragging in
+    self?.cachedDragOffset = offset; self?.cachedIsDragging = isDragging
+}
+gameManager?.onNetFired = { [weak self] dragOffset, power in
+    self?.launchNet3D(dragOffset: dragOffset, power: power)
+}
+```
+
+### spawnBug()
+
+```swift
+// currentBugCount >= 5 → 1.0s 後に再試行
+let distance        = Float.random(in: 0.5...1.4)
+let horizontalAngle = Float.random(in: -0.65...0.65)
+let verticalOffset  = Float.random(in: -0.30...0.45)
+// camera-local → world 変換
+let baseTransform = gameManager?.worldOriginTransform ?? frame.camera.transform
+let worldPos = baseTransform * simd_float4(
+    distance * sin(horizontalAngle), verticalOffset,
+    -distance * cos(horizontalAngle), 1)
+// ARAnchor をセッションに追加、bugAnchorMap に登録
+// normalizedX = horizontalAngle / 0.65
+// normalizedY = (verticalOffset - (-0.30)) / (0.45 - (-0.30))
+// sendBugSpawned(id:type:normalizedX:normalizedY:)
+// 難易度カーブ: nextDelay = max(1.5, 3.5 - spawnElapsed / 75.0)
+```
+
+**randomBugType()**: butterfly 60% / beetle 30% / stag 10%
+
+### renderer(_:nodeFor:) — ARSCNViewDelegate
+
+```swift
+// 1. bugAnchorMap から BugType 取得
+// 2. Bug3DNode(type:) を生成
+// 3. proxy SKNode（name="bugContainer"）+ BugNode(type:) 子として生成
+// 4. 各辞書に登録（mapLock 下）
+// 5. DispatchQueue.main.async で arBugScene に proxy を追加、fadeIn(0.25s)
+// 6. Bug3DNode を返す（SceneKit が anchor 位置に配置）
+```
+
+### renderer(_:updateAtTime:) — 毎フレーム
+
+```swift
+// 1. slingshotNode?.parent == nil → pointOfView に遅延アタッチ
+// 2. cachedIsDragging → SlingshotNode.updateDrag / resetDrag
+//    wasSlingshotDragging で resetDrag を 1 フレームのみ呼ぶ
+// 3. mapLock 下でスナップショット取得、ロック解放後に投影計算
+// 4. 各 Bug3DNode:
+//    scale = clamp(referenceDistance(3.0) / distance, 0.3, 5.0)
+//    projected = arView.projectPoint(bug3D.worldPosition)
+//    skPoint = (projected.x, cachedViewHeight - projected.y)
+//    projected.z が 0〜1 の範囲内のみ更新
+// 5. DispatchQueue.main.async でプロキシ位置を一括更新
+```
+
+### launchNet3D(dragOffset:power:)
+
+```swift
+// カメラ変換から basis vectors 取得（columns）
+let maxDrag: Float = 300   // SlingshotView.maxDragDistance と一致
+let normX = Float(-dragOffset.width  / 300)
+let normY = Float( dragOffset.height / 300)
+let direction = normalize(fwd + right * normX * 0.35 + up * normY * 0.35)
+// フォーク世界座標（カメラ空間でのポーチ位置）
+let forkCam = simd_float4(0, -0.12, -0.28, 1)
+let forkW   = cameraT * forkCam
+let net = Net3DNode(playerIndex: 0)
+arView.scene.rootNode.addChildNode(net)
+net.launch(from: SCNVector3(forkW.x, forkW.y, forkW.z),
+           direction: SCNVector3(direction.x, direction.y, direction.z),
+           power: power) { [weak net] in net?.removeFromParentNode() }
+```
+
+---
+
+## Controller/ARBugScene.swift
+
+`SKScene`（`backgroundColor = .clear`）。照準・ロックオン・捕獲の全 UI を担当。
+
+### 定数
+
+```swift
+static let catchRadius: CGFloat         = 150    // ロックオン捕獲半径（画面中央からの距離）
+private static let distortionPerBug: CGFloat = 0.50  // バグ 2 匹で distortionLayer 最大
+// ← BugHunterScene の 0.38 とは異なる値
+```
+
+### crosshair / lockOn ノード
+
+```swift
+// lockOnRing: SKShapeNode(circleOfRadius:58), orange, lineWidth=3.5, alpha=0
+// crosshairRing: SKShapeNode(circleOfRadius:54), cyan(0.2,1.0,0.8,0.85), lineWidth=2.5
+//   idle pulse: scale 1.07→1.0 (0.85s サイクル)
+// 中央ドット: SKShapeNode(circleOfRadius:5), fill=cyan
+// 4方向ティック: gap=64pt, length=14pt, cyan, lineWidth=2.5
+```
+
+### distortionLayer（ARBugScene 版・12本）
+
+```swift
+// 全体ティント: SKColor(0.55, 0.0, 0.55, 0.07), zPosition=-1
+// 12 本のバー（3〜14pt 高）: 赤/紫/シアン/オレンジ各3本
+// 各バー独立フリッカー: wait 0.3〜5.0s, on 0.03〜0.14s, hold 0.02〜0.10s, off 0.05〜0.22s
+// updateDistortion(bugCount:): alpha → min(count×0.50, 1.0), duration=0.6s
+```
+
+### fireNet(angle:power:)
+
+```swift
+SoundManager.shared.playThrow()
+// 第 1 段階: catchRadius(150pt) 以内の最近傍 bugContainer を closest とする
+// 第 2 段階（closest==nil）: 弾道判定
+//   hitBand=90pt, netRange=power×max(W,H)×0.8+200pt
+//   正射影 0<proj≤netRange かつ perp<hitBand の最小 proj のバグ
+// flyTarget: closest → bugPos×55% / else → center + direction×(power×180+120)
+playNetThrowAnimation(toward: flyTarget)
+if closest { catchBug(container:bugNode:) } else { playMissAnimation(near:center) }
+```
+
+### catchBug(container:bugNode:)
+
+```swift
+SoundManager.shared.playCapture(points: pts)
+
+// ── 1. 0.20s 後: onBugCaptured3D コールバック（Bug3DNode.captured() 開始）──
+
+// ── 2. 3層 net エンタングルメント（playNetEntangle） ───────────────────────
+// Main net (🕸️ 88pt, zPosition=62):
+//   flyTo bugCenter (0.20s, spin -2.4π, scale 1.65)
+//   → billow (scale 2.7, rotate -0.3π, 0.07s)
+//   → cinch  (scale 0.50, rotate +1.3π, 0.24s)
+//   → wait 0.38s → shrink + fadeOut (scale 0.20, 0.26s) → remove
+// Binding strands × 4 (🕸️ 30pt, zPosition=61):
+//   各 delay=i×0.04+0.22s, 角度=[π/5, π/5+π, 3π/5, 3π/5+π]
+//   reach 46pt 先スナップ(0.06+0.09s) → bugCenter へ収縮 (0.14s) → wait 0.28s → fadeOut 0.18s
+// 収縮リング (radius=54, 黄色):
+//   wait 0.20s → appear (scale 0.88, alpha 0.85, 0.06s) → cinch (scale 0.22, 0.32s)
+//   → wait 0.22s → fadeOut 0.18s
+
+// ── 3. ヒールリップル（playHealRipple） ─────────────────────────────────────
+// SKShapeNode(circleOfRadius:20), cyan: scale×5.0 + fadeOut (0.55s)
+
+// ── 4. 画面フラッシュ ────────────────────────────────────────────────────────
+// SKColor(0.3, 1.0, 0.9, 0.32) 全画面矩形 → fadeAlpha(0, 0.30s) → remove
+
+// ── 5. スコアポップ ──────────────────────────────────────────────────────────
+// pts==5: "⭐+5pts" (64pt HiraginoSans-W7, cyan)
+// else: "+Xpts" (54pt HiraginoSans-W7, 金黄色)
+// scale 0.4→1.2 (0.18s) + moveBy(0, 70, 0.60s) + fadeOut(0.30s)
+
+// ── 6. 照準フラッシュ ────────────────────────────────────────────────────────
+// pulseCrosshair(success:true): 緑→scale 1.4→1.0→cyan
+
+// ── 7. ARAnchor 削除 ────────────────────────────────────────────────────────
+// DispatchQueue.main.asyncAfter(+1.2s) { onCaptureBug?(container) }
+score += pts
+```
+
+### playNetThrowAnimation(toward:)
+
+```swift
+// 🕸️ (fontSize=64pt) を center から flyTarget に向けて発射
+// 0→2.0 倍拡大 (0.30s) + 270° 回転 (0.42s) + fadeOut (0.22s 後に開始, 0.20s)
+// 白い展開リング (radius=28pt): 0.3→3.8 倍 + fadeOut (0.45s)
+```
+
+### playMissAnimation(near:)
+
+```swift
+pulseCrosshair(success: false)   // 赤フラッシュ
+SoundManager.shared.playMiss()
+// "MISS" (fontSize=42, 赤): fadeIn(0.08s) + moveBy(0,28,0.38s) → fadeOut(0.20s)
+```
+
+### endGame()
+
+```swift
+SoundManager.shared.playGameEnd()
+// 全 bugContainer フェードアウト(0.5s) + remove
+// distortionLayer.fadeOut(0.7s)
+// gameDelegate?.sceneDidFinish(self, finalScore: score)
+// 黒半透明(alpha=0.45)全画面矩形をフェードイン(0.7s) showEndOverlay
+```
+
+---
+
+## Shared/GameProtocol.swift
+
+### BugType
+
+```swift
+enum BugType: String, CaseIterable, Codable {
+    case butterfly  // Null Bug:  1pt, speed=110, size=40, emoji="🐞", rarity="Common"
+    case beetle     // Virus Bug: 3pt, speed=70,  size=55, emoji="🦠", rarity="Rare"
+    case stag       // Glitch:    5pt, speed=45,  size=70, emoji="👾", rarity="Epic"
+}
+// computed: points / emoji / displayName / speed / size / speedLabel / rarityLabel / lore
+```
+
+### MessageType & GameMessage
+
+```swift
+enum MessageType: String, Codable {
+    case launch; case startGame; case resetGame; case bugSpawned; case bugRemoved
+    case gameState; case bugCaptured  // 後方互換のみ（送信なし）
+}
+struct LaunchPayload:     Codable { let angle: Float; let power: Float; let timestamp: Double }
+struct BugSpawnedPayload: Codable { let id: String; let bugType: BugType
+                                    let normalizedX: Float; let normalizedY: Float }
+struct BugRemovedPayload: Codable { let id: String }
+struct BugCapturedPayload: Codable { let bugType: BugType; let playerIndex: Int }  // 後方互換
+struct GameStatePayload:  Codable { let state: String; let score: Int; let timeRemaining: Double } // 後方互換
+```
+
+### PhysicsCategory
+
+```swift
+struct PhysicsCategory {
+    static let none: UInt32 = 0
+    static let bug:  UInt32 = 0x1 << 0
+    static let net:  UInt32 = 0x1 << 1
+}
+```
+
+---
+
+## Controller/Bug3DNode.swift
+
+`SCNNode` サブクラス。USDZ モデル優先、不在時は手続き的 PBR ジオメトリにフォールバック。
+
+### USDZ モデルマッピング
+
+| BugType | USDZ ファイル | usdzScale |
+|---------|-------------|-----------|
+| butterfly | toy_biplane.usdz | 0.005 |
+| beetle | gramophone.usdz | 0.004 |
+| stag | toy_drummer.usdz | 0.004 |
+
+Apple AR Quick Look ギャラリー（https://developer.apple.com/jp/augmented-reality/quick-look/）から取得。
+
+### preloadAssets()（static）
+
+```swift
+// qos: .userInitiated バックグラウンドスレッドで非同期ロード
+// NSLock + loadingInProgress: Set<String> で重複 I/O 防止
+// sceneCache[bugType.rawValue] = SCNScene
+// SCNSceneSource.AnimationImportPolicy.playRepeatedly でアニメ自動再生
+```
+
+`ARGameView.makeUIView` と `WorldViewController.viewDidLoad` の **両方** から呼び出す。
+
+### 手続き的ジオメトリ（フォールバック）
+
+#### butterfly (Null Bug) — PBR 定数
+
+```swift
+// abdomen: SCNCapsule(capRadius:0.009, height:0.048)
+//   diffuse(0.10, 0.05, 0.01), roughness=0.65, metalness=0.02
+//   emission(0.0, 0.14, 0.35)  ← シアンブルー
+// head: SCNSphere(r=0.011) at (0, 0.033, 0)
+// upper wings: SCNPlane(0.095×0.070), pivot uvR/uvL at (x=±0.009, y=0.008)
+//   diffuse(0.95, 0.50, 0.05, 0.90), emit(0.22,0.08,0.0,0.22)
+//   roughness=0.70, metalness=0.0, isDoubleSided=true, transparency=0.08
+// lower wings: SCNPlane(0.065×0.052), pivot lwR/lwL at (x=±0.007, y=-0.004)
+//   diffuse(0.82, 0.35, 0.05, 0.88), emit(0.18,0.06,0.0,0.18)
+// antennae: SCNCylinder(r=0.0018, h=0.036) + SCNSphere(r=0.004) tip
+//   at (x=±0.010, y=0.051), eulerZ=±π/7
+```
+
+**butterfly アニメ**: 翼 pivot の Z 軸フラッピング（±π/2, 0.12〜0.16s; 下翼は amplitude×0.75, period×1.06）+ body Y 回転 9.0s
+
+#### beetle (Virus Bug) — PBR 定数
+
+```swift
+// shellMat: diffuse(0.55, 0.08, 0.08), roughness=0.14, metalness=0.62
+//   emission(0.0, 0.18, 0.04)  ← 毒グリーン
+// body: SCNSphere(r=0.040), scale(1.05, 0.68, 1.22)
+// suture: SCNCylinder(r=0.0028, h=0.074), eulerX=π/2, at (0, 0.022, 0)
+//   diffuse(0.18, 0.02, 0.02), roughness=0.08, metalness=0.72
+// thorax: SCNSphere(r=0.022) at (0, 0.006, -0.052)
+// head: SCNSphere(r=0.018) at (0, 0.002, -0.076)
+// eyes: SCNSphere(r=0.007) at (±0.015, 0.010, -0.080)
+//   diffuse(0.04, 0.04, 0.04), roughness=0.04, metalness=0.08
+// legs: 3 pairs, legZ=[0.010, -0.025, -0.052], outAngle=[π/2.2, π/2.5, π/2.3]
+//   diffuse(0.22, 0.04, 0.04), roughness=0.40, metalness=0.28
+// antennae: SCNCylinder(r=0.0016, h=0.028) + SCNSphere(r=0.003) tip
+//   at (x=±0.010, z=-0.080), eulerX=-π/8, eulerZ=±π/6
+```
+
+**beetle アニメ**: Y 回転 5.5s + Z 軸ロック（±π/18, 0.38s サイクル、easeInEaseOut）
+
+#### stag (Glitch Bug) — PBR 定数
+
+```swift
+// darkMat: diffuse(0.14, 0.08, 0.02), roughness=0.20, metalness=0.65
+//   emission(0.28, 0.05, 0.0)  ← 赤オレンジ
+// body: SCNCapsule(capRadius:0.028, height:0.068)
+// thorax: SCNSphere(r=0.024) at (0, 0.050, 0)
+// head: SCNSphere(r=0.022) at (0, 0.082, 0)
+// eyes: SCNSphere(r=0.006) at (±0.018, 0.090, 0.014)
+// mandibles: SCNCapsule(r=0.005, h=0.052) at (±0.022, 0.106, 0.010)
+//   eulerX=π/2.2, eulerZ=±π/8
+//   inner tooth: SCNCone(top=0, bottom=0.005, h=0.013) at (±0.006, 0, -0.012), eulerX=-π/3
+// legs: 3 pairs, legY=[0.038, 0.008, -0.024], outAngle=[π/2.6, π/2.5, π/2.4]
+// antennae: SCNCylinder(r=0.0018, h=0.030) + SCNSphere(r=0.003) tip
+//   at (x=±0.015, y=0.090, z=0.012), eulerX=-π/5, eulerZ=±π/5
+```
+
+**stag アニメ**: Y 回転 7.5s + X 軸頷き（±π/22, 1.4s サイクル、easeInEaseOut）
+
+#### addLeg ヘルパー
+
+```swift
+// upper: SCNCylinder(r=0.0040, h=0.026)
+// knee = origin + (sign×0.026×sin(outAngle), -0.026×cos(outAngle))
+// lower: SCNCylinder(r=0.0030, h=0.022), lowerAngle=outAngle+π/6
+// legMat: diffuse(バグ種別色), roughness=0.40, metalness=0.28
+```
+
+### startAnimations()（全 Bug 共通）
+
+```swift
+opacity = 0; runAction(.fadeIn(duration: 0.25))
+// 共通ホバー: ±0.018m、easeInEaseOut、random 0.65〜0.85s サイクル
+// 二次水平ドリフト（+X→-Z→-X→+Z 正方形軌道、±0.010m、random 6.5〜8.5s サイクル）
+```
+
+### captured() アニメーション
+
+```swift
+removeAllActions()
+// 1. Impact jolt: scale → 1.30 (0.04s)
+// 2. Violent thrash (group):
+//    Y: rotateBy(π×1.8, 0.10s) + (-π×1.2, 0.08s) + (π×0.7, 0.07s)
+//    X: rotateBy(π×0.55, 0.09s) + (-π×0.40, 0.08s)
+//    Z: rotateBy(π×0.65, 0.09s) + (-π×0.45, 0.07s)
+//    scale: 0.78(0.10s) → 1.18(0.08s) → 0.62(0.07s)
+// 3. Net constricts: scale → 0.22 (0.26s, easeIn)
+// 4. Glitch blinks (blinkDur=0.055s):
+//    opacity: 0.0(35%) → 0.85(25%) → 0.0(20%) → 0.70(20%)
+// 5. Dissolve: fadeOut(0.22s, easeIn) → removeFromParentNode
+```
+
+---
+
+## Controller/SlingshotNode.swift
+
+`SCNNode` サブクラス。`arView.pointOfView` の子として追加し、カメラ空間に固定表示。
+
+### ジオメトリ定数（forkRoot ローカル座標）
+
+```swift
+// camera-local での forkRoot 全体位置（arView.pointOfView の子として配置）
+private static let forkCenter    = SCNVector3(0, -0.09, -0.26)
+
+// forkRoot ローカル座標（フォークの各頂点）
+private static let stemBottom    = SCNVector3(0, -0.058, 0)
+private static let branch        = SCNVector3(0,  0.006, 0)
+private static let leftTip       = SCNVector3(-0.052,  0.068, -0.005)
+private static let rightTip      = SCNVector3( 0.052,  0.068, -0.005)
+private static let neutralPull   = SCNVector3(0, 0.042, 0.0)  // 待機時のポーチ位置
+
+// ドラッグ変形量（最大値）
+private static let maxPullDepth:    Float = 0.080   // +Z 方向（カメラ側に引く）
+private static let maxPullLateral:  Float = 0.022   // 横方向
+private static let maxPullDown:     Float = 0.012   // 下方向
+```
+
+### マテリアル
+
+```swift
+// フォーク本体（bodyMat）— 暗いアノダイズドメタル
+// diffuse(0.09, 0.09, 0.11), roughness=0.28, metalness=0.85
+
+// チップ装飾（tipMat）— ネオンシアン発光キャップ
+// diffuse(0.10, 1.00, 0.82), roughness=0.25, metalness=0.10, emission(0.04, 0.48, 0.36)
+
+// ゴム紐（bandMat）— ネオンシアン
+// diffuse(0.08, 0.92, 0.70), roughness=0.50, metalness=0.0, emission(0.03, 0.38, 0.26)
+
+// ポーチ（neonMat）— ネオングリーン球
+// diffuse(0.08, 0.90, 0.66), roughness=0.30, metalness=0.08, emission(0.03, 0.36, 0.24)
+```
+
+### ノード構成
+
+```
+forkRoot (position = forkCenter)
+├── stem: cylinderBetween(stemBottom, branch, r=0.008, bodyMat)
+├── leftTine: cylinderBetween(branch, leftTip, r=0.007, bodyMat)
+├── rightTine: cylinderBetween(branch, rightTip, r=0.007, bodyMat)
+├── leftTipCap: SCNSphere(r=0.010, tipMat) at leftTip
+├── rightTipCap: SCNSphere(r=0.010, tipMat) at rightTip
+├── leftBandNode: SCNCylinder(r=0.0028, bandMat) — alignCylinder で毎フレーム更新
+├── rightBandNode: SCNCylinder(r=0.0028, bandMat) — alignCylinder で毎フレーム更新
+└── pouchNode: SCNSphere(r=0.012, neonMat), isHidden=true（ドラッグ中のみ表示）
+```
+
+### updateDrag(offset:maxDrag:)
+
+```swift
+let nx = Float(offset.width  / maxDrag)   // -1〜1
+let ny = Float(offset.height / maxDrag)   // 0〜1
+pullPoint = SCNVector3(
+     nx * maxPullLateral,      // 横 ±0.022m
+     neutralPull.y - ny * maxPullDown,  // 下 0.012m
+     ny * maxPullDepth         // +Z カメラ側 0.080m
+)
+updateBands()   // leftBandNode / rightBandNode を alignCylinder で更新
+pouchNode.isHidden = false
+```
+
+### alignCylinder(_:from:to:)
+
+Y 軸 → 方向ベクトルへのクォータニオン回転（cross product + arccos）。アンチパラレル（dot < -0.9999）の場合は X 軸で 180° 反転。
+
+---
+
+## Controller/Net3DNode.swift
+
+`SCNNode` サブクラス。ARSCNView 空間を飛翔する 3D 網メッシュ。
+
+### ノード構成
+
+```swift
+// accentColors: [cyan(0,1,1), orange(1,0.55,0), magenta(1,0.2,0.8)]
+// rimMat: accent + emission(accent×0.45), roughness=0.55, metalness=0.20
+// meshMat: diffuse(0.30,0.90,0.45,0.90), roughness=0.80, isDoubleSided=true
+// rim: SCNTorus(ringRadius=0.042, pipeRadius=0.0045), eulerAngles=(π/2,0,0)
+// spokes × 8: SCNBox(0.082×0.0015×0.0015), eulerZ=i×π/4
+// innerRings: SCNTorus r=0.020, SCNTorus r=0.032, eulerAngles=(π/2,0,0)
+// castsShadow = false
+```
+
+### launch(from:direction:power:completion:)
+
+```swift
+// speed    = 2.0 + power × 3.5   (2.0〜5.5 m/s)
+// velocity: vx/vy/vz = direction × speed
+// g        = -9.0 m/s²（放物線重力）
+// travelTime = 0.60 + power × 0.40   (0.60〜1.00 s)
+// 発射時向き: eulerAngles.y = atan2(dir.x, -dir.z)
+
+// physicsMove（放物線キネマティクス）:
+// SCNAction.customAction(duration: travelTime) { node, elapsed in
+//     let t = Float(elapsed)
+//     node.position = SCNVector3(ox+vx*t, oy+vy*t + 0.5*g*t*t, oz+vz*t)
+// }
+// spinZ = rotateBy(z: 2π×(0.8+power×2.0), duration:travelTime), easeOut
+// spinX = rotateBy(x: π×turns×0.45, duration:travelTime), easeOut
+// scaleSeq: 0.22 → 1.0(30%) → 1.0(42%) → 0.55(28%)
+// fadeSeq: fadeIn(0.07s) → wait(travelTime×0.52s) → fadeOut(travelTime×0.48s)
+// group([physicsMove, spinZ, spinX, scaleSeq, fadeSeq]) → completion()
+```
+
+---
+
+## Controller/SlingshotView.swift
+
+SwiftUI フルスクリーンオーバーレイ。ジェスチャ管理専用（3D 描画は SlingshotNode / Net3DNode が担当）。
+
+```swift
+private let maxDragDistance: CGFloat = 300   // ← 正しい値は 300（220 ではない）
+private static let forkYRatio: CGFloat = 0.62
+private static let forkHeight: CGFloat = 130
+```
+
+### fireSlingshot(sceneSize:)
+
+```swift
+let power = Float(min(dragLength / 300, 1.0))
+let dx    = -dragOffset.width;  let dy = dragOffset.height   // dy は反転しない
+let angle = Float(atan2(dy, dx))
+if gameManager.state == .ready { gameManager.confirmReady() }
+gameManager.onNetFired?(dragOffset, power)
+withAnimation(.spring(response: 0.25)) { dragOffset = .zero }
+gameManager.slingshotDragUpdate?(.zero, false)
+gameManager.sendLaunch(angle: angle, power: power)
+```
+
+### PowerIndicatorView
+
+```swift
+// power <0.4: 緑 / 0.4..<0.7: 黄 / 0.7+: 赤
+// バー幅=90pt×power、バー高さ=10pt、cornerRadius=4
+// 「Power」ラベル (caption2.bold, white)
+// padding: horizontal 10pt, vertical 6pt; background black×0.4; cornerRadius 8
+```
+
+---
+
+## Controller/SoundManager.swift
+
+`AVAudioEngine` + `AVAudioPlayerNode × 6` によるシングルトン（`SoundManager.shared`）。PCM サイン波をランタイム生成。外部音声ファイルなし。
+
+### 音声セッション
+
+```swift
+// .ambient カテゴリ: 他アプリ音楽と共存、サイレントスイッチでも消音されない
+// options: [.mixWithOthers]
+```
+
+### サウンド一覧（全周波数）
+
+| メソッド | 生成方法 | 周波数 / 音階 | 秒数 | 振幅 |
+|---------|---------|-------------|------|-----|
+| `playThrow()` | makeSweep | 550→200 Hz | 0.14s | 0.40 |
+| `playCapture(points:1)` | playSequence | A5(880.0), C#6(1108.73) Hz | noteDur=0.16s, gap=0.065s | 0.42 |
+| `playCapture(points:3)` | playSequence | E5(659.25), G5(783.99), B5(987.77) Hz | same | same |
+| `playCapture(points:5)` | playSequence | C5(523.25), E5(659.25), G5(783.99), C6(1046.5) Hz | same | same |
+| `playMiss()` | makeSweep | 280→120 Hz | 0.22s | 0.32 |
+| `playLockOn()` | makeTone | 1200 Hz | 0.055s, fadeIn=0.005s, fadeOut=0.025s | 0.28 |
+| `playGameStart()` | playSequence | C5, E5, G5, C6 | noteDur=0.20s, gap=0.095s | 0.38 |
+| `playGameEnd()` | playSequence | G5(783.99), E5(659.25), C5(523.25), G4(392.0) Hz | noteDur=0.26s, gap=0.11s | 0.36 |
+
+### バッファ生成
+
+```swift
+// makeTone: samples[i] = amplitude × envelope(t) × sin(2π × freq × t)
+// makeSweep: 位相累積方式; freq(t) = start + (end-start) × (t/duration)
+// envelope: fadeIn 区間で線形上昇、fadeOut 区間で線形下降、中間は 1.0
+// playSequence: DispatchQueue.global(.userInteractive).asyncAfter(delay=noteGap×i)
+```
+
+---
+
+## World/WorldViewController.swift
+
+プロジェクター側のルート `UIViewController`。
+
+### viewDidLoad レイアウト
+
+```swift
+// scnView.backgroundColor = UIColor(red:0.05, green:0.12, blue:0.05, alpha:1)
+// scnView.autoenablesDefaultLighting = false
+// skView.backgroundColor = .clear; isOpaque=false; allowsTransparency=true
+// 両ビューを Auto Layout 4辺固定（フルスクリーン）
+// Bug3DNode.preloadAssets() を呼び出し（iOS AR パスと同様に必須）
+// ConnectedPlayersView: trailing-16, bottom-16, width=220 (Auto Layout)
+```
+
+### startGame()
+
+```swift
+bug3DCoordinator?.stopSpawning(); bug3DCoordinator = nil; gameScene = nil
+let scene = BugHunterScene(size: skView.bounds.size)
+scene.scaleMode = .resizeFill; scene.isProjectorMode = true
+skView.presentScene(scene, transition: .fade(0.5s)); gameScene = scene
+let coordinator = ProjectorBug3DCoordinator()
+coordinator.attach(to: scnView, bugScene: scene)
+bug3DCoordinator = coordinator
+```
+
+---
+
+## ProjectorBug3DCoordinator（WorldViewController.swift 内に定義）
+
+`final class ProjectorBug3DCoordinator: NSObject`
+
+### カメラ・スケール定数
+
+```swift
+private static let cameraZ:            Float   = 3.5
+private static let cameraFOV:          CGFloat = 65     // 垂直 FOV 度
+private static let bugScaleMultiplier: Float   = 10     // Bug3DNode 表示スケール
+private static let spawnMargin:        Float   = 1.25   // 画面外スポーン余白比
+```
+
+### attach(to:bugScene:)
+
+```swift
+scnView.scene = scnScene; scnView.isPlaying = true
+startAutonomousSpawning()  // ← 電話接続なしでも自律スポーン開始
+```
+
+### addSyncedBug(id:type:normalizedX:normalizedY:)
+
+```swift
+// normalizedX(-1〜1) → x = normalizedX × halfW × 0.70
+// normalizedY(0〜1)  → y = (normalizedY×2-1) × halfH × 0.60
+// Bug3DNode を s=10 でスケール; start scale = s×0.1 (pop-in)
+// 出現アニメ: fadeIn(0.4s) + scale→s(0.4s)
+// ホバー: moveBy(0, halfH×0.06, 0, 1.8s), easeInEaseOut, repeatForever (key="hover")
+```
+
+### 自律スポーン（Autonomous Spawning）
+
+**重要**: 電話接続なしでも常時バグが出現する機能。`attach()` から自動的に開始。
+
+```swift
+// startAutonomousSpawning():
+//   autonomousSpawnTimer を reset; autonomousStartTime = Date()
+//   scheduleNextAutonomousSpawn(after: 1.5s)
+
+// spawnAutonomousBug():
+//   elapsed = Date().timeIntervalSince(autonomousStartTime)
+//   4辺のいずれかからランダムスポーン（spawnMargin=1.25 倍先）
+//   2〜3 個の内部経由点（halfW×0.75, halfH×0.65 内）を通る SCNAction.sequence
+//     move(to:, duration: segDur), easeInEaseOut
+//   最後に反対エッジに退場（spawnMargin×1.04 倍先）
+//   bugDuration = max(4.0, min(600.0 / Double(bugType.speed), 14.0))
+//   segDur = bugDuration / (waypointCount + 1)
+//   SCNAction.run → DispatchQueue.main.async で removeFromParentNode
+//   autonomousBugs: [Bug3DNode] で追跡（bug3DNodes とは別）
+
+// 自律スポーン間隔:
+//   max(0.6, 1.8 - elapsed / 90.0)   (1.8s → 0.6s over 90s)
+
+// 出現確率: butterfly 60% / beetle 30% / stag 10%
+```
+
+### notifyBugCountChanged()
+
+```swift
+let total = autonomousBugs.count + bug3DNodes.count
+bugScene?.updateWorldDistortion(bugCount: total)   // distortionLayer 強度更新
+```
+
+---
+
+## World/BugHunterScene.swift
+
+プロジェクター用 `SKScene`。透過オーバーレイとして機能。
+
+```swift
+var isProjectorMode: Bool = false
+// backgroundColor: isProjectorMode ? .clear : SKColor(0.05, 0.12, 0.05)
+// physicsWorld.gravity = .zero
+// isProjectorMode == true → setupDistortionLayer() 呼び出し
+// タイマー・スコア・HUD・BugSpawner・physicsContactDelegate なし（スマホ主導）
+```
+
+### distortionLayer（BugHunterScene 版）
+
+```swift
+private static let distortionPerBug: CGFloat = 0.38
+// 0 匹→0% / 1 匹→38% / 2 匹→66% / 3 匹→100%（ARBugScene の 0.50 と異なる）
+// 14 本のバー（ARBugScene は 12 本）: 高さ 3〜16pt
+// 紫赤ティント: SKColor(0.60, 0.0, 0.60, 0.06)
+// updateWorldDistortion(bugCount:) → fadeAlpha(to: min(count×0.38, 1.0), duration: 0.7s)
+```
+
+---
+
+## World/NetProjectile.swift
+
+`SKNode`（`name="net"`）。プロジェクター画面を飛翔する網 SKNode。
+
+### 構成
+
+```swift
+// playerColors: [cyan(0,1,1), orange(1,0.55,0), magenta(1,0.2,0.8)]
+// netShape: CGPath(outerRadius:34, spokeCount:8, ringCount:3)
+//   stroke: SKColor(0.30,0.92,0.45,0.95), fill: SKColor(0.10,0.55,0.20,0.12)
+//   lineWidth=2.2, lineCap=.round
+// ringNode: circleOfRadius=38, stroke=playerColor×0.80, fill=playerColor×0.06, lineWidth=3.5
+// centerDot: circleOfRadius=6, fill=playerColor
+// physicsBody: circleOfRadius=44, isDynamic=true, affectedByGravity=false
+```
+
+### launch(angle:power:from:sceneSize:)
+
+```swift
+// travelSpeed = power×1400+500 pt/s (500〜1900)
+// travelTime = 0.55s
+// dx=cos(angle)×travelSpeed×0.55, dy=sin(angle)×travelSpeed×0.55
+// baseMove(easeOut) + arcAction(up=sceneH×0.06×|cos|×(power+0.3), easeOut/easeIn 0.22/0.33s)
+// unfurl: scale 0.3→1.3(0.35×0.55s) → 1.0(0.65×0.55s)
+// ringNode: scale 0.4→3.2 + alpha 0.85→0.5(0.25s) → 0(0.25s)
+// spin: rotate(π×(1.5+power×2), 0.55s), easeOut
+// group([baseMove, arcAction, unfurl, spin]) → removeFromParent
+```
+
+---
+
+## World/ProjectorGameManager.swift
+
+```swift
+static let serviceType = "bughunter-game"
+static let maxPlayers  = 3
+// MCSession(encryptionPreference:.required)
+// MCNearbyServiceAdvertiser + MCNearbyServiceBrowser を同時使用
+// start() / stop() で制御
+// playerSlots: [MCPeerID: Int], usedSlots: Set<Int>
+// 接続: 最小空きスロット(0,1,2)を割り当て
+// 招待: usedSlots.count < maxPlayers の場合のみ accept
+// 受信: すべて DispatchQueue.main.async で delegate に転送
+```
+
+---
+
+## World/WaitingScene.swift
+
+```swift
+var isProjectorOverlay: Bool = false
+// backgroundColor: isProjectorOverlay ? .clear : SKColor(0.04, 0.08, 0.04)
+
+// タイトル "君は、バグハンター 🦟": HiraginoSans-W7, 80pt, white, (w/2, h×0.72)
+//   パルスアニメ: scale 1.05→0.95 (1.2s サイクル)
+// サブタイトル "You are the Bug Hunter": W3, 40pt, white×0.65, (w/2, h×0.62)
+// 浮遊バグ [("🦋",1pt), ("🐛",3pt), ("🪲",5pt)]: spacing=240pt, y=h×0.40
+//   ホバー: moveBy(0, 18, 1.0+i×0.5s サイクル), easeInEaseOut
+// 接続待ちテキスト: W3, 34pt, white×0.55, (w/2, h×0.20), フェードブリンク (0.7s)
+// 操作説明: W3, 30pt, white×0.45, (w/2, h×0.12)
+```
+
+---
+
+## World/BugSpawner.swift / BugNode
+
+```swift
+// BugSpawner: 旧 SpriteKit スポーナー（BugHunterScene では現在未使用）
+//   scheduleNextSpawn(delay:) → spawnBug() のループ
+//   BugNode を randomEdgePosition に配置 → randomPath で bezier 移動 → remove
+
+// BugNode（BugSpawner.swift 内に定義）:
+//   physicsBody: circleOfRadius=type.size/2, isDynamic=false
+//   category=bug(0x1), contactTest=net(0x2)
 ```
 
 ---
 
 ## 通信プロトコル（Multipeer Connectivity）
 
-### メッセージ型
-
-```swift
-// GameProtocol.swift に定義
-enum MessageType: String, Codable {
-    case launch       // iOS → Projector: スリングショット発射
-    case startGame    // iOS → Projector: ゲーム開始
-    case resetGame    // iOS → Projector: バグクリア
-    case bugSpawned   // iOS → Projector: バグ出現通知（スマホ主導同期）
-    case bugRemoved   // iOS → Projector: バグ捕獲通知（スマホ主導同期）
-    case gameState    // 後方互換のみ（現在は送信されない）
-    case bugCaptured  // 後方互換のみ（現在は送信されない）
-}
-```
-
-### ペイロード
-
-```swift
-struct LaunchPayload:      Codable { let angle: Float; let power: Float; let timestamp: Double }
-struct BugSpawnedPayload:  Codable { let id: String; let bugType: BugType; let normalizedX: Float; let normalizedY: Float }
-struct BugRemovedPayload:  Codable { let id: String }
-struct BugCapturedPayload: Codable { let bugType: BugType; let playerIndex: Int } // 後方互換
-struct GameStatePayload:   Codable { let state: String; let score: Int; let timeRemaining: Double } // 後方互換
-```
-
 ### フロー図
 
 ```
 iOS Controller (×最大3台)               Projector Server
     │                                        │
-    │── startGame ──────────────────────────>│
-    │── launch(angle, power, timestamp) ────>│  → playerIndex を peerID から特定
-    │                                        │  → NetProjectile を発射（視覚のみ）
-    │── bugSpawned(id, type, x, y) ─────────>│  → addSyncedBug: Bug3DNode を追加
-    │── bugRemoved(id) ─────────────────────>│  → removeSyncedBug: Bug3DNode をcaptured()で削除
-    │── resetGame ───────────────────────── >│  → stopSpawning: 全 Bug3DNode 即削除
+    │── startGame ──────────────────────────>│ → startGame()
+    │── launch(angle, power, timestamp) ────>│ → playerIndex で色分け + NetProjectile 発射
+    │── bugSpawned(id, type, x, y) ─────────>│ → addSyncedBug: Bug3DNode 追加
+    │── bugRemoved(id) ─────────────────────>│ → removeSyncedBug: captured() アニメで削除
+    │── resetGame ───────────────────────── >│ → stopSpawning: 全 Bug3DNode 即削除
+```
+
+### normalizedX / normalizedY の計算
+
+```swift
+// iOS 側 spawnBug() で算出:
+normalizedX = horizontalAngle / 0.65                          // -1〜1
+normalizedY = (verticalOffset - (-0.30)) / (0.45 - (-0.30))  // 0〜1 (0=下, 1=上)
+// プロジェクター側 addSyncedBug() で 3D 座標に復元:
+x = normalizedX × halfW × 0.70
+y = (normalizedY × 2.0 - 1.0) × halfH × 0.60
 ```
 
 ---
 
 ## バグ仕様
 
-```swift
-enum BugType: String, CaseIterable, Codable {
-    case butterfly  // Null Bug  — 1pt, 速い(110), 60%
-    case beetle     // Virus Bug — 3pt, 普通(70), 30%
-    case stag       // Glitch    — 5pt, 遅い(45), 10%
-}
-```
-
-| 種類 | 絵文字 | ポイント | 速度 | フォントサイズ | 出現率 | ロア |
-|------|--------|---------|------|--------------|-------|------|
-| Null (butterfly) | 🐞 | 1 pt | 110 | 40pt | 60 % | 軽微な未定義参照エラー |
-| Virus (beetle) | 🦠 | 3 pt | 70 | 55pt | 30 % | 自己増殖型ランタイムエラー |
-| Glitch (stag) | 👾 | 5 pt | 45 | 70pt | 10 % | 致命的なデータ破壊バグ |
+| 種類 | 列挙値 | emoji | ポイント | speed | size | 出現率 |
+|------|--------|-------|---------|-------|------|-------|
+| Null | `.butterfly` | 🐞 | 1pt | 110 | 40pt | 60% |
+| Virus | `.beetle` | 🦠 | 3pt | 70 | 55pt | 30% |
+| Glitch | `.stag` | 👾 | 5pt | 45 | 70pt | 10% |
 
 ---
 
@@ -391,111 +1117,95 @@ enum BugType: String, CaseIterable, Codable {
 | 項目 | 値 |
 |------|---|
 | 制限時間 | 90 秒 |
-| スポーン間隔 | `max(1.5, 3.5 - elapsed / 75)` 秒（スマホ側のみ） |
-| 同時出現上限 | 5 匹（maxActiveBugs=5） |
-| タイマー管理 | スマホ（iOS）側のみ。プロジェクターはタイマーなし |
-| スコア管理 | iOS（スタンドアロン・クライアント）側のみ |
-| 最大接続 | 3 台。4 台目以降は拒否 |
-| プロジェクター表示 | 常時 3D シーン。終了画面・待機画面なし |
+| スポーン間隔 | `max(1.5, 3.5 - spawnElapsed / 75.0)` 秒 |
+| 初期スポーン遅延 | 0.9 秒 |
+| 同時出現上限 | 5 匹（`maxActiveBugs=5`） |
+| タイマー管理 | iOS 側のみ（`ARBugScene` が計時、`GameManager` が受信）|
+| スコア管理 | iOS 側のみ（`GameManager.score`）|
+| 最大接続 | 3 台（4 台目以降は `advertiser` が拒否） |
+| プロジェクター表示 | 常時 3D シーン（待機・終了画面なし）|
 
 ---
 
 ## プロジェクター レイアウト
 
 ```
-┌────────────────────────────────────────────────┐
-│  SCNView  — Bug3DNode（3D バグ、スマホ主導）    │ ← 背面 (z=0)
-│  SKView   — BugHunterScene 透過オーバーレイ     │ ← 前面 (透過)
-│               NetProjectile（視覚的な網）        │
-│  ConnectedPlayersView ──────────────── [右下]   │ ← 常時最前面 UIKit
-└────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────┐
+│  SCNView (backgroundColor: darkGreen, 背面)          │ ← 常時アクティブ
+│    camera: Z=3.5, FOV=65°                            │
+│    Bug3DNode × n (phone-synced + autonomous)         │
+│    scale ×10 で表示                                  │
+│    autonomous: 電話接続なし時も 1.8s→0.6s 間隔でスポーン│
+│  SKView (transparent, 前面)                          │
+│    BugHunterScene (isProjectorMode=true, clear bg)   │
+│    NetProjectile: 視覚的な網アニメ                    │
+│    distortionLayer: 14 本グリッチバー, 0.38/bug       │
+│  ConnectedPlayersView (UIKit, 右下, width=220)        │
+└────────────────────────────────────────────────────┘
 ```
-
-- 常時 3D シーンを表示し続ける（待機・終了画面への遷移なし）
-- バグの追加・削除はすべて iOS スマホ側からの `bugSpawned`/`bugRemoved` メッセージで制御される
-
----
-
-## プレイヤー色分け
-
-| スロット | 色名 | UIColor (R, G, B) | SKColor |
-|---------|------|------------------|---------|
-| Player 1 | シアン | (0.0, 1.0, 1.0) | `.cyan` |
-| Player 2 | オレンジ | (1.0, 0.55, 0.0) | — |
-| Player 3 | マゼンタ | (1.0, 0.2, 0.8) | — |
-
----
-
-## スコア設計（重要）
-
-1. **プロジェクター側はスコアを一切持たない。** `BugHunterScene` はスコア変数を持たず、`GameStatePayload.score` は常に `0`。
-2. バグ捕獲時: `ProjectorGameManager.sendBugCaptured(bugType:toPlayerAtSlot:)` が当該プレイヤーの `MCPeerID` にのみ `bugCaptured` を unicast。
-3. iOS 側 `GameManager` が `bugCaptured` を受信し `score += bugType.points`。
-4. スタンドアロンモードは `ARBugScene.fireNet` → `BugHunterSceneDelegate` 経由でスコアを更新。
-5. **projectorClient モードでは ARBugScene 上にバグがスポーンしない**（Coordinator.startSpawning で `gameMode == .standalone` チェックあり）。スコアは bugCaptured のみで加算。
-
----
-
-## AR（スタンドアロン・クライアント）の仕組み
-
-```
-ARSCNView (3D バグ)
-    │ Bug3DNode: SCNNode + 手続き的 PBR ジオメトリ
-    │   butterfly: 4枚翅（ピボットノードで羽ばたき）+ 触角
-    │   beetle: 光沢ドームウイング + suture + 6脚 + 複眼
-    │   stag: 大顎 + 6脚 + elbowed antenna
-SKView (透過オーバーレイ)
-    └── ARBugScene
-        ├── 照準クロスヘア（中央固定）
-        ├── ロックオンリング（バグ接近時オレンジ）
-        ├── distortionLayer（グリッチバー × 12本、バグ数に比例）
-        ├── プロキシ bugContainer SKNode（3D 投影座標に毎フレーム同期）
-        └── 捕獲エフェクト
-```
-
-- `ARSCNViewDelegate` でカメラ姿勢を毎フレーム取得し、Bug3DNode の 3D 座標を 2D 画面座標に変換してプロキシを移動。
-- `cachedViewHeight` でレンダースレッドからの UIKit アクセスを回避。
-- 捕獲半径 150pt（`ARBugScene.catchRadius`）、弾道ヒットバンド 90pt。
-
----
-
-## 物理衝突
-
-```swift
-// PhysicsCategory (GameProtocol.swift)
-static let bug: UInt32 = 0x1 << 0   // BugNode
-static let net: UInt32 = 0x1 << 1   // NetProjectile
-
-// BugNode
-physicsBody?.isDynamic          = false
-physicsBody?.categoryBitMask    = PhysicsCategory.bug
-physicsBody?.contactTestBitMask = PhysicsCategory.net
-physicsBody?.collisionBitMask   = 0
-
-// NetProjectile (circleOfRadius: 44 pt)
-physicsBody?.isDynamic          = true
-physicsBody?.affectedByGravity  = false
-physicsBody?.categoryBitMask    = PhysicsCategory.net
-physicsBody?.contactTestBitMask = PhysicsCategory.bug
-physicsBody?.collisionBitMask   = 0
-```
-
-接触 → `BugHunterScene.didBegin(_:)` → `onBugCaptured?(bugNode, netNode.playerIndex)`
 
 ---
 
 ## コーディング規約
 
-- **言語**: Swift 5.9 以上。`final class` を基本とする。
-- **UI**: SwiftUI（iOS 側）、UIKit + SpriteKit + SceneKit（プロジェクター側）。
-- **スレッド — UIKit**: SceneKit レンダースレッドから UIKit にアクセスしない（`cachedViewHeight` パターン参照）。
-- **スレッド — アンカー辞書**: `ARGameView.Coordinator` の `bugAnchorMap`, `anchorBug3DNodeMap`, `anchorProxyNodeMap`, `nodeAnchorMap` はメインスレッドとレンダースレッドから同時アクセスされるため、`mapLock`（`NSLock`）で全アクセスを保護する。
-- **スレッド — スナップショットパターン**: `renderer(_:updateAtTime:)` ではロック下で辞書スナップショットを取得し、ロック解放後に重い投影計算を行う（ロック保持時間を最小化）。
-- **Multipeer 受信コールバック**は常に `DispatchQueue.main.async` でメインスレッドに戻す。
-- **コメント**: 日本語・英語どちらでも可。`// MARK: -` でセクション分け。
-- **ファイル分割**: iOS 側は `Controller/`、プロジェクター側は `World/`、共有型は `Shared/`。
-- **依存ライブラリ**: 追加しない。Apple 標準フレームワークのみ使用。
-- **アセット**: 外部画像・サウンドファイルなし。すべて手続き的に生成（`CGPath`, `SKShapeNode`, `SCNGeometry`, PCM バッファ等）。
+- **Swift 5.9+**。`final class` を基本とする。
+- **BugType switch**: `default` を使わず網羅的 switch（新ケース追加時のコンパイルエラー検知）。
+- **スレッド — UIKit**: SceneKit レンダースレッドから UIKit にアクセスしない（`cachedViewHeight` パターン）。
+- **スレッド — アンカー辞書**: `ARGameView.Coordinator` の 4 辞書は `mapLock`（`NSLock`）で全アクセスを保護。
+- **スナップショットパターン**: `renderer(_:updateAtTime:)` でロック下でスナップショット取得後、ロック解放して重い計算を行う。
+- **Multipeer コールバック**: 常に `DispatchQueue.main.async` でメインスレッドに戻す。
+- **アセット**: 外部画像・音声ファイルなし。すべて手続き的に生成。
+- **定数**: `private static let` でクラスに閉じ込め、マジックナンバーを避ける。
+- **スレッドセーフキャッシュ**: `Bug3DNode.cacheLock`（`NSLock`）を使用。
+
+---
+
+## よく使うコードパターン
+
+### PBR マテリアル生成
+
+```swift
+let m = SCNMaterial()
+m.diffuse.contents   = UIColor(red: 0.55, green: 0.08, blue: 0.08, alpha: 1)
+m.roughness.contents = NSNumber(value: 0.14)
+m.metalness.contents = NSNumber(value: 0.62)
+m.emission.contents  = UIColor(red: 0.0, green: 0.18, blue: 0.04, alpha: 1)
+m.lightingModel      = .physicallyBased
+```
+
+### 3D → 2D 座標変換
+
+```swift
+// ARSCNView（iOS）
+let proj = arView.projectPoint(bug3D.worldPosition)
+// guard proj.z > 0 && proj.z < 1
+let skPoint = CGPoint(x: CGFloat(proj.x), y: cachedViewHeight - CGFloat(proj.y))
+
+// SCNView（プロジェクター）
+let proj = scnView.projectPoint(SCNVector3(x, y, z))
+let skPoint = CGPoint(x: CGFloat(proj.x), y: viewHeight - CGFloat(proj.y))
+```
+
+### Multipeer メッセージ送信
+
+```swift
+let msg = GameMessage.bugSpawned(BugSpawnedPayload(
+    id: anchor.identifier.uuidString, bugType: .stag,
+    normalizedX: 0.3, normalizedY: 0.6))
+let data = try! JSONEncoder().encode(msg)
+mcSession.send(data, toPeers: mcSession.connectedPeers, with: .reliable)
+```
+
+### SoundManager 呼び出し
+
+```swift
+SoundManager.shared.playThrow()
+SoundManager.shared.playCapture(points: bugNode.points)
+SoundManager.shared.playMiss()
+SoundManager.shared.playLockOn()
+SoundManager.shared.playGameStart()
+SoundManager.shared.playGameEnd()
+```
 
 ---
 
@@ -525,62 +1235,15 @@ physicsBody?.collisionBitMask   = 0
 
 ## 既知の制約・注意事項
 
-- `SCNView` と `SKView` を重ねるとき、`SKView.allowsTransparency = true` かつ `SKView.isOpaque = false` が必須。
-- `WaitingScene` は `isProjectorOverlay = true` のとき `backgroundColor = .clear` になる。SCNView は常に有効なままで、WaitingScene は透過オーバーレイとして表示される。
-- `ProjectorBug3DCoordinator` の生成・破棄は `startGame()` 呼び出し時のみ行う。`presentWaitingScene()` では coordinator を nil にせず `stopSpawning()` のみ呼ぶ。
-- Multipeer Connectivity のコールバックはバックグラウンドスレッドで届く。UI 操作は必ず `DispatchQueue.main.async`。
+- `SCNView` と `SKView` を重ねる際 `SKView.allowsTransparency = true` かつ `SKView.isOpaque = false` が必須。
+- **`SlingshotView.maxDragDistance = 300`**（SPEC.md・旧ドキュメントの 220 は誤り）。
+- **`ARBugScene.distortionPerBug = 0.50`**（phone 側）、**`BugHunterScene.distortionPerBug = 0.38`**（projector 側）は異なる値。
+- **`ProjectorBug3DCoordinator` には自律スポーン機能がある**（`startAutonomousSpawning()` が `attach()` から呼ばれる）。電話接続なしでも常時バグが出現する。
+- `ProjectorGameManagerDelegate.managerDidReceiveReset` では `stopSpawning()` のみ呼ぶ（coordinator は破棄しない）。
+- `ProjectorBug3DCoordinator` は `WorldViewController.swift` 内の `final class` として定義（別ファイルなし）。
+- `ConnectedPlayersView` も `WorldViewController.swift` 内に定義（別ファイルなし）。
+- Multipeer Connectivity コールバックはバックグラウンドスレッド → 必ず `DispatchQueue.main.async`。
 - ARKit は実機専用。シミュレーターでは `ARSession` が起動しない。
-- `ProjectorBug3DCoordinator` は `WorldViewController.swift` 内で `final class` として定義されている（別ファイルではない）。
-
----
-
-## よく使うコードパターン
-
-### SKAction で無限ループ
-
-```swift
-node.run(SKAction.repeatForever(SKAction.sequence([
-    SKAction.wait(forDuration: 0.08, withRange: 0.06),
-    SKAction.run { [weak self] in self?.doSomething() }
-])))
-```
-
-### Multipeer メッセージ送信
-
-```swift
-let msg = GameMessage.bugCaptured(BugCapturedPayload(bugType: .stag, playerIndex: 1))
-let data = try! JSONEncoder().encode(msg)
-session.send(data, toPeers: [targetPeer], with: .reliable)
-```
-
-### SceneKit 3D → 2D 画面座標変換
-
-```swift
-let projected = scnView.projectPoint(SCNVector3(x, y, z))
-let screenPoint = CGPoint(x: CGFloat(projected.x), y: CGFloat(projected.y))
-```
-
-### PBR マテリアル生成（Bug3DNode パターン）
-
-```swift
-let m = SCNMaterial()
-m.diffuse.contents   = UIColor(red: 0.55, green: 0.08, blue: 0.08, alpha: 1)
-m.roughness.contents = NSNumber(value: 0.14)
-m.metalness.contents = NSNumber(value: 0.62)
-m.lightingModel      = .physicallyBased
-```
-
-### SoundManager（サウンドエフェクト再生）
-
-```swift
-// 単音再生（ARBugScene 等から直接呼び出す）
-SoundManager.shared.playThrow()
-SoundManager.shared.playCapture(points: bugNode.points)
-SoundManager.shared.playMiss()
-SoundManager.shared.playLockOn()
-SoundManager.shared.playGameStart()
-SoundManager.shared.playGameEnd()
-```
 
 ---
 
@@ -588,77 +1251,41 @@ SoundManager.shared.playGameEnd()
 
 ### 1. プロジェクター背景を「腐敗したデジタルワールド」に変更（優先度: 高）
 
-#### 要件
-
-プロジェクターの全画面表示を、**サイバーパンク／腐敗したデジタルワールド**のビジュアルテーマに変更する。  
-現在の背景色（暗い緑）から、テーマに合った暗い青黒ベースのデジタル演出に差し替える。
-
-#### 変更対象ファイル
-
 | ファイル | 変更内容 |
 |---------|---------|
-| `World/WorldViewController.swift` | `scnView.backgroundColor` を暗い青黒 `UIColor(red:0.03, green:0.03, blue:0.10)` に変更。SceneKit シーンに Tron スタイルのグリッド床・背景壁を追加（`SCNPlane` + 手続き生成テクスチャ）。 |
-| `World/WaitingScene.swift` | 背景色を暗い青黒に変更。マトリックスレイン（落下する日本語カタカナ/16進数文字）、グリッドライン、スキャンライン、グリッチフラッシュを追加。 |
-| `World/BugHunterScene.swift` | `isProjectorMode=false` のとき背景色を暗い青黒に変更。`isProjectorMode=true` のときグリッドライン・スキャンライン（低透明度）を SK オーバーレイに追加（3D バグの視認性を損なわない程度）。 |
-
-#### デザイン仕様
+| `World/WorldViewController.swift` | `scnView.backgroundColor` を暗い青黒 `UIColor(red:0.03, green:0.03, blue:0.10)` に変更。SceneKit シーンに Tron グリッド床・背景壁を追加（`SCNPlane` + 手続き生成テクスチャ）。 |
+| `World/WaitingScene.swift` | 背景色を暗い青黒に。マトリックスレイン・グリッドライン・スキャンライン・グリッチフラッシュを追加。 |
+| `World/BugHunterScene.swift` | `isProjectorMode=true` のときグリッドライン・スキャンライン（低透明度）を追加（3D バグの視認性を損なわない程度）。 |
 
 **カラーパレット**
+
 ```
-背景ベース : UIColor(red: 0.03, green: 0.03, blue: 0.10, alpha: 1)  // 深い青黒
-グリッドライン: UIColor(red: 0.0,  green: 0.6,  blue: 1.0,  alpha: 0.4) // シアン
+背景ベース : UIColor(red: 0.03, green: 0.03, blue: 0.10, alpha: 1)
+グリッドライン: UIColor(red: 0.0,  green: 0.6,  blue: 1.0,  alpha: 0.4)
 マトリックス文字（ヘッド）: SKColor(red: 0.9, green: 1.0, blue: 0.9, alpha: 1.0)
 マトリックス文字（テール）: SKColor(red: 0.0, green: 0.9, blue: 0.4, alpha: 0.0〜0.8)
-腐敗色（文字の一部）: SKColor(red: 0.8, green: 0.1, blue: 0.6, alpha: ...)  // マゼンタ
+腐敗色（一部文字）: SKColor(red: 0.8, green: 0.1, blue: 0.6)
 グリッチフラッシュ: SKColor(red: 0.0, green: 1.0, blue: 0.5, alpha: 0.07)
 スキャンライン: SKColor(white: 1.0, alpha: 0.05)
 ```
 
-**WaitingScene の背景エフェクト実装ガイド**
+**WaitingScene 背景エフェクト実装ガイド**
 
 ```swift
-// 1. グリッドライン (zPosition: -2)
-//    48pt セル幅の縦横ライン。上記シアン色、alpha 0.07。
-
-// 2. マトリックスレイン (zPosition: -1)
-//    SKAction.repeatForever で 0.08 秒ごとに spawnMatrixDrop() を呼ぶ。
-//    各ドロップ: SKNode コンテナ + 子 SKLabelNode × 6〜18 文字。
-//    フォント "Menlo-Bold" 16pt。文字セット: "01アイウエオカキクケコ#$%&ABCDEF0123456789"
-//    コンテナを画面上端から下端まで速度 100〜250 pt/s で落下させ removeFromParent。
-//    末尾の一部文字をマゼンタ（腐敗色）でランダムに着色。
-
-// 3. スキャンライン (zPosition: 5)
-//    高さ 2pt の水平バー × 3 本。独立した速度(60〜120 pt/s)で上から下へループ。
-
-// 4. グリッチフラッシュ (zPosition: 15)
-//    画面全体を覆う SKShapeNode。3〜7 秒おきに alpha 0.07 → 0 → 0.04 → 0 と点滅。
+// 1. グリッドライン (zPosition: -2): 48pt セル幅の縦横ライン、シアン alpha 0.07
+// 2. マトリックスレイン (zPosition: -1): 0.08s ごとに spawnMatrixDrop()
+//    Menlo-Bold 16pt、文字セット "01アイウエオカキクケコ#$%&ABCDEF0123456789"
+//    落下速度 100〜250 pt/s、末尾一部文字をマゼンタで着色
+// 3. スキャンライン (zPosition: 5): 高さ 2pt × 3 本、60〜120 pt/s でループ
+// 4. グリッチフラッシュ (zPosition: 15): 3〜7s おきに alpha 0.07→0→0.04→0
 ```
 
-**SceneKit 背景グリッド実装ガイド（ProjectorBug3DCoordinator の setupScene に追加）**
+**SceneKit 背景グリッド（ProjectorBug3DCoordinator.setupScene に追加）**
 
 ```swift
 // scnScene.background.contents = UIColor(red:0.03, green:0.03, blue:0.10, alpha:1)
-
-// Tron スタイルグリッド床
-// SCNPlane(width: 20, height: 20)
-// .eulerAngles.x = -.pi / 2  // 水平配置
-// .position = SCNVector3(0, -2.8, -3)
-// material.diffuse.contents = makeGridTexture(base:line:)
-
-// 背景壁
-// SCNPlane(width: 20, height: 12)
-// .position = SCNVector3(0, 0, -4)
-// material.diffuse.contents = makeGridTexture(base:line:)
-
-// makeGridTexture: UIGraphicsImageRenderer で 512×512 の UIImage を生成。
-// セルサイズ 64pt の格子線を描画。
-```
-
-**BugHunterScene プロジェクターモード用オーバーレイ**
-
-```swift
-// isProjectorMode == true のとき setupBackground() で追加
-// グリッドライン: alpha 0.04（ゲームプレイの邪魔にならない最小限）
-// スキャンライン: 1本、alpha 0.04、ゆっくり(90秒で1往復程度)
-// マトリックスレインは追加しない（3D バグの視認性を損なうため）
+// グリッド床: SCNPlane(20×20), eulerX=-π/2, position=(0,-2.8,-3)
+// 背景壁: SCNPlane(20×12), position=(0,0,-4)
+// makeGridTexture(): UIGraphicsImageRenderer(512×512), 64pt セル格子線
+//   lineColor: UIColor(red:0.0, green:0.6, blue:1.0, alpha:0.4)
 ```
