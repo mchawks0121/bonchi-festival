@@ -543,13 +543,29 @@ final class CalibrationCoordinator: NSObject {
     weak var arView: ARSCNView?
     var onConfirm: ((simd_float4x4) -> Void)?
     var onBack: (() -> Void)?
+    private var isTransitioning = false
+
+    /// Stops the calibration AR session before SwiftUI swaps in the gameplay AR view.
+    /// Implementation intent: avoid running two camera-backed AR sessions at once.
+    /// Security consideration: only tears down the local in-app AR session; no data leaves the device.
+    /// Constraint: must be called on the main thread because ARSCNView / ARSession are UI-owned objects.
+    private func stopCalibrationSession() {
+        arView?.session.pause()
+        arView?.session.delegate = nil
+    }
 
     @objc func confirmTapped(_ sender: UIButton) {
+        guard !isTransitioning else { return }
         guard let frame = arView?.session.currentFrame else { return }
+        isTransitioning = true
+        stopCalibrationSession()
         onConfirm?(frame.camera.transform)
     }
 
     @objc func backTapped(_ sender: UIButton) {
+        guard !isTransitioning else { return }
+        isTransitioning = true
+        stopCalibrationSession()
         onBack?()
     }
 }
