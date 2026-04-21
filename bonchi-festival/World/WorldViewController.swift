@@ -265,10 +265,16 @@ final class ProjectorBug3DCoordinator {
         cameraAnchor.addChild(cam)
         arView.scene.addAnchor(cameraAnchor)
 
-        // Ambient + directional lighting (replacing the former SCNLight setup)
-        var ambientLight = ImageBasedLightComponent(source: .color(.init(white: 0.8, alpha: 1)))
-        cameraAnchor.components.set(ambientLight)
-        cameraAnchor.components.set(ImageBasedLightReceiverComponent())
+        // Directional light from upper-right (replaces the former SCNLight directional setup).
+        // Added to the scene root anchor so the light illuminates all bug entities uniformly.
+        let dirLightEntity = Entity()
+        var dirLight = DirectionalLightComponent(color: .white, intensity: 1200,
+                                                  isRealWorldProxy: false)
+        dirLightEntity.components.set(dirLight)
+        // Tilt 45° down and 45° to the right to match original SCNLight euler angles.
+        dirLightEntity.orientation = simd_quatf(angle: -.pi / 4, axis: SIMD3<Float>(1, 0, 0))
+            * simd_quatf(angle: .pi / 4, axis: SIMD3<Float>(0, 1, 0))
+        cameraAnchor.addChild(dirLightEntity)
     }
 
     // MARK: - Lifecycle

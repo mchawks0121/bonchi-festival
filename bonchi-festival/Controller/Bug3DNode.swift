@@ -550,8 +550,8 @@ final class Bug3DNode {
         let start  = Date()
         hoverBaseY = entity.position.y
 
-        hoverTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
-            guard let self else { return }
+        hoverTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
             let t = Float(Date().timeIntervalSince(start))
             self.entity.position.y = self.hoverBaseY + amplitude * sin(2 * Float.pi * t / period)
         }
@@ -561,8 +561,8 @@ final class Bug3DNode {
     private func startRotation(period: Double) {
         let speed = Float(2 * Double.pi / period)
         let start = Date()
-        rotationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
-            guard let self else { return }
+        rotationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
             let t = Float(Date().timeIntervalSince(start))
             self.entity.orientation = simd_quatf(angle: speed * t, axis: SIMD3<Float>(0, 1, 0))
         }
@@ -575,8 +575,8 @@ final class Bug3DNode {
         let rockAmp:  Float  = .pi / 18
         let rockPer:  Float  = 0.76
         let start = Date()
-        wingFlapTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
-            guard let self else { return }
+        wingFlapTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
             let t    = Float(Date().timeIntervalSince(start))
             let yRot = simd_quatf(angle: rotSpeed * t, axis: SIMD3<Float>(0, 1, 0))
             let roll = rockAmp * sin(2 * Float.pi * t / rockPer)
@@ -590,8 +590,8 @@ final class Bug3DNode {
         let period: Float = Float.random(in: 0.24...0.32)
         let angle:  Float = .pi / 2.0
         let start = Date()
-        wingFlapTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
-            guard let self else { return }
+        wingFlapTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
             let t = Float(Date().timeIntervalSince(start))
             let a = angle * sin(2 * Float.pi * t / period)
             self.rightWingPivot?.orientation      = simd_quatf(angle:  a,        axis: SIMD3<Float>(0, 0, 1))
