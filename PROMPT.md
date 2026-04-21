@@ -178,8 +178,8 @@ UIView (container)
 ```
 
 `CalibrationCoordinator`:
-- `confirmTapped()`: `arView.session.currentFrame?.camera.transform` を取得して `gameManager.setWorldOrigin(transform:)` → state = `.ready`
-- `backTapped()`: `gameManager.resetGame()` → state = `.waiting`
+- `confirmTapped()`: 多重押下を防止しつつ `arView.session.currentFrame?.camera.transform` を取得。遷移前にキャリブレーション用 AR セッションを `pause()` / delegate 解放してから `gameManager.setWorldOrigin(transform:)` → state = `.ready`
+- `backTapped()`: 同様にキャリブレーション用 AR セッションを停止してから `gameManager.resetGame()` → state = `.waiting`
 
 ### ARPlayingView
 
@@ -582,7 +582,7 @@ struct PhysicsCategory {
 
 ## Controller/Bug3DNode.swift
 
-RealityKit `Entity` ラッパー。USDZ モデル優先（Entity.load + availableAnimations ループ）、不在時は手続き的 PBR ジオメトリにフォールバック。
+RealityKit `Entity` ラッパー。USDZ モデル優先（Entity.loadAsync で事前ロードし、clone 後に availableAnimations ループ）、不在時は手続き的 PBR ジオメトリにフォールバック。
 
 ### USDZ モデルマッピング
 
@@ -595,6 +595,10 @@ RealityKit `Entity` ラッパー。USDZ モデル優先（Entity.load + availabl
 Apple AR Quick Look ギャラリー（https://developer.apple.com/jp/augmented-reality/quick-look/）から取得。
 
 ### preloadAssets()（static）
+
+- `Entity.loadAsync(named:)` を使って USDZ を事前ロードする。
+- `NSLock` 保護の `entityCache` / `loadingInProgress` で重複ロードを防ぐ。
+- プリロード未完了または失敗時は `init(type:)` 側が手続きジオメトリにフォールバックする。
 
 ```swift
 // qos: .userInitiated バックグラウンドスレッドで非同期ロード

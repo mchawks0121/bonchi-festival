@@ -6,9 +6,9 @@
 //
 //  Implementation intent:
 //    Strictly uses RealityKit (no SceneKit) for all 3-D/AR processing as required.
-//    USDZ assets are loaded with Entity.load(named:), all available animations are
-//    retrieved via availableAnimations and played in an infinite loop with
-//    playAnimation(animation.repeat(duration: .infinity)).
+//    USDZ assets are preloaded with Entity.loadAsync(named:), then cached entities'
+//    availableAnimations are played in an infinite loop when cloned for display.
+//    This avoids synchronous bundle parsing on app-managed background threads.
 //
 //  3-D models are loaded from USDZ files obtained from Apple's AR Quick Look gallery:
 //    https://developer.apple.com/jp/augmented-reality/quick-look/
@@ -37,6 +37,7 @@
 import RealityKit
 import ARKit
 import UIKit
+import Combine
 
 // MARK: - Bug3DNode
 
@@ -88,9 +89,11 @@ final class Bug3DNode {
     private static var entityCache: [String: Entity] = [:]
     /// Tracks assets currently being loaded to prevent concurrent duplicate I/O.
     private static var loadingInProgress = Set<String>()
+    /// Holds async load subscriptions until each preload request finishes.
+    private static var preloadCancellables = Set<AnyCancellable>()
 
-    /// Preloads all USDZ entities off the main thread so the first instantiation
-    /// clones from memory rather than reading from disk.
+    /// Preloads all USDZ entities via RealityKit's async loader so the first
+    /// instantiation clones from memory rather than performing synchronous I/O.
     /// Call this once early in the app lifecycle (e.g. from ARGameView.makeUIView
     /// and from WorldViewController.viewDidLoad for the projector path).
     static func preloadAssets() {
@@ -99,30 +102,34 @@ final class Bug3DNode {
             (.beetle,    "gramophone"),
             (.stag,      "toy_drummer"),
         ]
-        DispatchQueue.global(qos: .userInitiated).async {
-            for (type, name) in mapping {
-                // Under the lock: skip if already cached or currently loading.
-                cacheLock.lock()
-                let skip = entityCache[type.rawValue] != nil
-                              || loadingInProgress.contains(type.rawValue)
-                if !skip { loadingInProgress.insert(type.rawValue) }
-                cacheLock.unlock()
-                guard !skip else { continue }
+        for (type, name) in mapping {
+            // Under the lock: skip if already cached or currently loading.
+            cacheLock.lock()
+            let skip = entityCache[type.rawValue] != nil
+                          || loadingInProgress.contains(type.rawValue)
+            if !skip { loadingInProgress.insert(type.rawValue) }
+            cacheLock.unlock()
+            guard !skip else { continue }
 
-                // Entity.load(named:) synchronously loads the USDZ from the app bundle.
-                // Calling on a background thread avoids blocking the main run loop.
-                guard let loaded = try? Entity.load(named: name) else {
-                    cacheLock.lock()
-                    loadingInProgress.remove(type.rawValue)
-                    cacheLock.unlock()
-                    continue
-                }
+            let typeKey = type.rawValue
+            Entity.loadAsync(named: name)
+                .sink(
+                    receiveCompletion: { completion in
+                        cacheLock.lock()
+                        loadingInProgress.remove(typeKey)
+                        cacheLock.unlock()
 
-                cacheLock.lock()
-                entityCache[type.rawValue] = loaded
-                loadingInProgress.remove(type.rawValue)
-                cacheLock.unlock()
-            }
+                        if case let .failure(error) = completion {
+                            print("Bug3DNode preload failed for \(name): \(error)")
+                        }
+                    },
+                    receiveValue: { loaded in
+                        cacheLock.lock()
+                        entityCache[typeKey] = loaded
+                        cacheLock.unlock()
+                    }
+                )
+                .store(in: &preloadCancellables)
         }
     }
 
@@ -204,7 +211,8 @@ final class Bug3DNode {
 
     /// Attempts to load the USDZ model for this bug type from the preload cache.
     /// Returns true if successful, false when the cache is empty (preload still
-    /// in-progress or asset not bundled). The caller then builds procedural geometry.
+    /// in-progress, failed, or asset not bundled). The caller then builds
+    /// procedural geometry.
     private func loadUSDZModel() -> Bool {
         Bug3DNode.cacheLock.lock()
         let cached = Bug3DNode.entityCache[bugType.rawValue]

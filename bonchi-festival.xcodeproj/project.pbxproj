@@ -69,6 +69,9 @@
 		A58F1D582F8FB7B70078A521 /* toy_drummer.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; name = toy_drummer.usdz; path = ../../../Downloads/toy_drummer.usdz; sourceTree = "<group>"; };
 		A58F1D592F8FB7B70078A521 /* gramophone.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; name = gramophone.usdz; path = ../../../Downloads/gramophone.usdz; sourceTree = "<group>"; };
 		A58F1D5A2F8FB7B70078A521 /* toy_biplane.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; name = toy_biplane.usdz; path = ../../../Downloads/toy_biplane.usdz; sourceTree = "<group>"; };
+		A5D0E7DA2F97A21A001B9D3E /* toy_biplane.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = toy_biplane.usdz; sourceTree = "<group>"; };
+		A5D0E7DB2F97A21D001B9D3E /* toy_drummer.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = toy_drummer.usdz; sourceTree = "<group>"; };
+		A5D0E7DC2F97A220001B9D3E /* gramophone.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = gramophone.usdz; sourceTree = "<group>"; };
 		BB100001DEADBEEF00100001 /* GameProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameProtocol.swift; sourceTree = "<group>"; };
 		BB100003DEADBEEF00100001 /* MultipeerSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultipeerSession.swift; sourceTree = "<group>"; };
 		BB100005DEADBEEF00100001 /* GameManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameManager.swift; sourceTree = "<group>"; };
@@ -192,6 +195,9 @@
 			children = (
 				BB100003DEADBEEF00100001 /* MultipeerSession.swift */,
 				BB100005DEADBEEF00100001 /* GameManager.swift */,
+				A5D0E7DC2F97A220001B9D3E /* gramophone.usdz */,
+				A5D0E7DA2F97A21A001B9D3E /* toy_biplane.usdz */,
+				A5D0E7DB2F97A21D001B9D3E /* toy_drummer.usdz */,
 				BB100007DEADBEEF00100001 /* SlingshotView.swift */,
 				BB100015DEADBEEF00100001 /* ARGameView.swift */,
 				BB100018DEADBEEF00100001 /* ARBugScene.swift */,

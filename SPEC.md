@@ -33,7 +33,8 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 | ゲーム終了 | `FinishedView` | `gameManager.state == .finished` |
 
 - `.ready` と `.playing` は ContentView の switch で同じ `PlayingView` ケースにまとめており、`ARGameView` のインスタンスは状態遷移をまたいで維持されます。
-- `CalibrationView` でボタンを押すと `gameManager.setWorldOrigin(transform:)` が呼ばれ、状態が `.calibrating` → `.ready` に遷移します（直接 `.playing` にはなりません）。
+- `CalibrationView` でボタンを押すと、まずキャリブレーション用 `ARSCNView.session` を停止してから `gameManager.setWorldOrigin(transform:)` が呼ばれ、状態が `.calibrating` → `.ready` に遷移します（直接 `.playing` にはなりません）。
+- これは `CalibrationView` と `ARGameView` の AR セッションが遷移アニメーション中に同時稼働してクラッシュするのを防ぐための安全策です。戻るボタンでも同じ停止処理を行います。
 - `.ready` 状態では `ARPlayingView` 内に `ReadyOverlay` が表示され、「スリングショットを引いて網を射出するとゲームスタート！」と案内します。
 - 最初のスリングショット発射時に `gameManager.confirmReady()` が呼ばれ `.playing` に遷移、タイマーとバグスポーンが開始します。
 - `FinishedView` では最終スコアを大きく表示し、「再デバッグ」ボタンで待機画面に戻れます。
@@ -163,11 +164,11 @@ bonchi-festival/
 │   │                             fireNet(angle:power:) で 2段階当たり判定（ロックオン優先 → 弾道判定）
 │   │                             BugHunterSceneDelegate プロトコルを定義（didUpdateScore/sceneDidFinish）
 │   ├── Bug3DNode.swift        … RealityKit Entity ラッパー。USDZ モデル優先（toy_biplane/gramophone/toy_drummer）。
-│   │                             Entity.load(named:) + availableAnimations + playAnimation ループ
+│   │                             Entity.loadAsync(named:) で事前ロードし、clone 後に availableAnimations + playAnimation ループ
 │   │                             USDZ 不在時は手続き的 PBR ジオメトリにフォールバック
 │   │                             butterfly: 4枚翅・触角 / beetle: 光沢甲殻・6脚 / stag: 大顎・6脚
 │   │                             各バグ固有アニメ（羽ばたき/回転/頷き）＋共通ホバー＋二次水平ドリフト
-│   │                             preloadAssets(): ゲーム開始前に全 USDZ を非同期プリロード（NSLock キャッシュ）
+│   │                             preloadAssets(): ゲーム開始前に全 USDZ を RealityKit 非同期ローダーで事前ロード（NSLock キャッシュ）
 │   ├── SlingshotNode.swift    … RealityKit Entity ラッパー。3D Y 字スリングショットフォーク + ゴム紐 + 網ポーチ
 │   │                             arView.pointOfView の子として追加することでカメラ空間に固定表示
 │   │                             updateDrag(offset:maxDrag:): ドラッグ量に応じてゴム紐・ポーチを変形
@@ -193,7 +194,7 @@ bonchi-festival/
     │                                 ARView(cameraMode:.nonAR) (背面、常時アクティブ) + SKView 透過オーバーレイ (前面)
     │                                 + ConnectedPlayersView (右下固定)
     │                                 ProjectorBug3DCoordinator を内部クラスとして定義・管理 (RealityKit Entity + AnchorEntity)
-    │                                 viewDidLoad で Bug3DNode.preloadAssets() を呼び出し USDZ を非同期プリロード
+    │                                 viewDidLoad で Bug3DNode.preloadAssets() を呼び出し USDZ を非同期事前ロード
     │                                 初回レイアウト時に startGame() を直接呼び出す（3D 即時表示）
     │                                 bugSpawned / bugRemoved 受信時に coordinator へ委譲
     ├── WaitingScene.swift         … 待機画面 SKScene（現在はほぼ未使用）
