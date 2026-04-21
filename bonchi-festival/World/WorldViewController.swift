@@ -473,11 +473,9 @@ final class ProjectorBug3DCoordinator {
     }
 
     private func randomAutonomousBugType() -> BugType {
-        switch Double.random(in: 0..<1) {
-        case ..<0.60: return .butterfly
-        case ..<0.90: return .beetle
-        default:      return .stag
-        }
+        // stag (toy_drummer.usdz) is excluded to reduce rendering load.
+        // Only the two lighter USDZ models are spawned.
+        return Double.random(in: 0..<1) < 0.60 ? .butterfly : .beetle
     }
 
     private func notifyBugCountChanged() {
