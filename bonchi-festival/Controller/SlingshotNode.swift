@@ -2,148 +2,160 @@
 //  SlingshotNode.swift
 //  bonchi-festival
 //
-//  iOS Controller: SCNNode that renders a minimal 3-D Y-shaped slingshot in the AR scene.
-//  The node must be added as a child of `arView.pointOfView` so it stays fixed
+//  iOS Controller: RealityKit Entity that renders a minimal 3-D Y-shaped slingshot.
+//  The entity must be added as a child of an AnchorEntity(.camera) so it stays fixed
 //  in the camera's view frustum regardless of how the device moves.
 //
-//  Design: dark anodized-metal body (near-black, high metalness) with neon cyan
-//  elastic bands and glowing tip/pouch accents.  No decorative rings or collars —
-//  the silhouette is the statement.
+//  Implementation intent:
+//    Rewritten to use RealityKit (no SceneKit) as required.
+//    Fork/tine geometry uses generateBox/generateSphere primitives.
+//    Rubber bands are unit-height box entities scaled and oriented each frame to span
+//    the tine tips → pull-point, replacing the former SCNCylinder height mutation.
 //
-//  Rubber-band geometry (two SCNCylinder nodes) is updated every frame to reflect
-//  the player's current drag state via `updateDrag(offset:maxDrag:)`.
+//  Security considerations:
+//    No file I/O; all geometry is generated procedurally at runtime.
 //
-//  All positions are in the node's local coordinate space (camera space):
-//    +X right, +Y up, -Z into scene (camera looks in -Z direction).
+//  Constraints:
+//    SceneKit (SCNNode, SCNScene, SCNAction, etc.) must NOT be used.
+//    The entity is attached to AnchorEntity(.camera) by the caller (ARGameView.Coordinator).
+//
+//  All positions are in the entity's local coordinate space (camera space):
+//    +X right, +Y up, -Z into scene (camera looks in -Z direction in ARKit/RealityKit).
 //
 
-import SceneKit
+import RealityKit
 import UIKit
 
 // MARK: - SlingshotNode
 
-final class SlingshotNode: SCNNode {
+/// RealityKit-based slingshot entity fixed in the camera's view frustum.
+/// The `entity` property is the root Entity; callers attach it to AnchorEntity(.camera).
+final class SlingshotNode {
 
     // MARK: Geometry constants (camera-local space, metres)
 
     /// Position of the fork's centre in camera space.
-    private static let forkCenter = SCNVector3(0, -0.09, -0.26)
+    private static let forkCenter = SIMD3<Float>(0, -0.09, -0.26)
 
     // Positions in forkRoot's local frame:
-    /// Bottom of the grip.
-    private static let stemBottom = SCNVector3(0, -0.058, 0)
-    /// Branch point where stem meets the two tines.
-    private static let branch     = SCNVector3(0,  0.006, 0)
-    /// Left tine tip (slight −Z offset adds depth cue).
-    private static let leftTip    = SCNVector3(-0.052,  0.068, -0.005)
-    /// Right tine tip.
-    private static let rightTip   = SCNVector3( 0.052,  0.068, -0.005)
+    private static let stemBottom  = SIMD3<Float>(0,     -0.058,  0)
+    private static let branch      = SIMD3<Float>(0,      0.006,  0)
+    private static let leftTip     = SIMD3<Float>(-0.052, 0.068, -0.005)
+    private static let rightTip    = SIMD3<Float>( 0.052, 0.068, -0.005)
+    private static let neutralPull = SIMD3<Float>(0,      0.042,  0.0)
 
-    /// Resting pull-point position.
-    private static let neutralPull = SCNVector3(0, 0.042, 0.0)
-
-    /// Maximum pull depth toward the camera (+Z) at full drag.
     private static let maxPullDepth:   Float = 0.080
-    /// Maximum lateral shift at full drag.
     private static let maxPullLateral: Float = 0.022
-    /// Small downward shift at full drag (adds perspective to the pull).
     private static let maxPullDown:    Float = 0.012
 
-    // MARK: Child nodes
+    // MARK: Root entity
 
-    private let forkRoot:      SCNNode
-    private let leftBandNode:  SCNNode
-    private let rightBandNode: SCNNode
-    private let pouchNode:     SCNNode
+    /// Root entity for this slingshot; attach to AnchorEntity(.camera).
+    let entity: Entity
 
-    /// Current pull-point position in forkRoot's local frame.
-    private var pullPoint: SCNVector3
+    // MARK: Sub-entities for dynamic band alignment
+
+    /// Band entity spanning left tine → pull point.
+    /// A unit-height box scaled to match the band length each frame.
+    private let leftBandEntity:  ModelEntity
+    /// Band entity spanning right tine → pull point.
+    private let rightBandEntity: ModelEntity
+    /// Glowing pouch sphere visible only during drag.
+    private let pouchEntity:     ModelEntity
+
+    /// forkRoot is offset from entity root by forkCenter (camera-space).
+    private let forkRoot: Entity
+
+    /// Current pull-point in forkRoot's local frame.
+    private var pullPoint = SlingshotNode.neutralPull
 
     // MARK: - Init
 
-    override init() {
-        forkRoot      = SCNNode()
-        leftBandNode  = SCNNode()
-        rightBandNode = SCNNode()
-        pouchNode     = SCNNode()
-        pullPoint     = SlingshotNode.neutralPull
-        super.init()
+    init() {
+        entity         = Entity()
+        forkRoot       = Entity()
+        leftBandEntity = SlingshotNode.makeBandEntity()
+        rightBandEntity = SlingshotNode.makeBandEntity()
+
+        // Pouch: neon glowing sphere visible only while dragging
+        let neonMat = SlingshotNode.makeNeonMat()
+        pouchEntity = ModelEntity(mesh: .generateSphere(radius: 0.012), materials: [neonMat])
 
         forkRoot.position = SlingshotNode.forkCenter
-        addChildNode(forkRoot)
+        entity.addChild(forkRoot)
 
         setupFork()
         setupBands()
-        setupPouch()
+        pouchEntity.isEnabled = false     // hidden until drag starts
+        pouchEntity.position  = SlingshotNode.neutralPull
+        forkRoot.addChild(pouchEntity)
+
         updateBands()
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) not implemented for SlingshotNode") }
-
     // MARK: - Public API
 
-    /// Update rubber-band and pouch position to match the current drag.
+    /// Update rubber-band and pouch position to match the current drag gesture.
     /// - Parameters:
-    ///   - offset: SwiftUI dragOffset (positive width = right, positive height = pulled down).
+    ///   - offset:  SwiftUI dragOffset (+width = right, +height = pulled down).
     ///   - maxDrag: The view's maxDragDistance (points) used for normalisation.
     func updateDrag(offset: CGSize, maxDrag: CGFloat) {
-        let nx = Float(offset.width  / maxDrag)   // −1…1 lateral
-        let ny = Float(offset.height / maxDrag)   // 0…1 pull-back amount
+        let nx = Float(offset.width  / maxDrag)
+        let ny = Float(offset.height / maxDrag)
 
-        pullPoint = SCNVector3(
+        pullPoint = SIMD3<Float>(
              nx * SlingshotNode.maxPullLateral,
              SlingshotNode.neutralPull.y - ny * SlingshotNode.maxPullDown,
              ny * SlingshotNode.maxPullDepth          // +Z = toward camera
         )
         updateBands()
-        pouchNode.isHidden = false
+        pouchEntity.isEnabled = true
     }
 
     /// Snap rubber bands and pouch back to the neutral (un-pulled) position.
     func resetDrag() {
         pullPoint = SlingshotNode.neutralPull
         updateBands()
-        pouchNode.isHidden = true
+        pouchEntity.isEnabled = false
     }
 
     // MARK: - Private: fork geometry
 
     private func setupFork() {
-        // Single dark anodized-metal material — near-black, high metalness, slight sheen.
-        let bodyMat = pbrMat(
-            UIColor(red: 0.09, green: 0.09, blue: 0.11, alpha: 1),
-            roughness: 0.28, metalness: 0.85
-        )
-        // Neon cyan glow cap on each tine tip (accent + status indicator).
-        let tipMat = pbrMat(
-            UIColor(red: 0.10, green: 1.00, blue: 0.82, alpha: 1),
-            roughness: 0.25, metalness: 0.10,
-            emission: UIColor(red: 0.04, green: 0.48, blue: 0.36, alpha: 1)
+        // Dark anodized-metal body: near-black, high metalness.
+        let bodyMat = pbr(UIColor(red: 0.09, green: 0.09, blue: 0.11, alpha: 1),
+                          roughness: 0.28, metalness: 0.85)
+        // Neon cyan glow caps on tine tips.
+        let tipMat = pbr(UIColor(red: 0.10, green: 1.00, blue: 0.82, alpha: 1),
+                         roughness: 0.25, metalness: 0.10,
+                         emission: UIColor(red: 0.04, green: 0.48, blue: 0.36, alpha: 1))
+
+        // Stem: unit-height box entity, scaled and rotated to span stemBottom → branch
+        forkRoot.addChild(
+            staticBar(from: SlingshotNode.stemBottom,
+                      to: SlingshotNode.branch,
+                      radius: 0.008, material: bodyMat)
         )
 
-        // ── Stem ──────────────────────────────────────────────────────────────
-        forkRoot.addChildNode(
-            cylinderBetween(SlingshotNode.stemBottom, SlingshotNode.branch,
-                            radius: 0.008, material: bodyMat)
+        // Left tine: branch → leftTip
+        forkRoot.addChild(
+            staticBar(from: SlingshotNode.branch,
+                      to: SlingshotNode.leftTip,
+                      radius: 0.007, material: bodyMat)
         )
 
-        // ── Tines ─────────────────────────────────────────────────────────────
-        forkRoot.addChildNode(
-            cylinderBetween(SlingshotNode.branch, SlingshotNode.leftTip,
-                            radius: 0.007, material: bodyMat)
-        )
-        forkRoot.addChildNode(
-            cylinderBetween(SlingshotNode.branch, SlingshotNode.rightTip,
-                            radius: 0.007, material: bodyMat)
+        // Right tine: branch → rightTip
+        forkRoot.addChild(
+            staticBar(from: SlingshotNode.branch,
+                      to: SlingshotNode.rightTip,
+                      radius: 0.007, material: bodyMat)
         )
 
-        // ── Neon tip caps ──────────────────────────────────────────────────────
+        // Neon sphere caps on each tine tip
         for tip in [SlingshotNode.leftTip, SlingshotNode.rightTip] {
-            let dot = SCNNode(geometry: SCNSphere(radius: 0.010))
-            dot.geometry!.materials = [tipMat]
-            dot.castsShadow = false
-            dot.position    = tip
-            forkRoot.addChildNode(dot)
+            let dot = ModelEntity(mesh: .generateSphere(radius: 0.010), materials: [tipMat])
+            dot.position = tip
+            forkRoot.addChild(dot)
         }
     }
 
@@ -151,115 +163,115 @@ final class SlingshotNode: SCNNode {
 
     private func setupBands() {
         // Slim neon cyan elastic band with soft emissive glow.
-        let bandMat = pbrMat(
-            UIColor(red: 0.08, green: 0.92, blue: 0.70, alpha: 1),
-            roughness: 0.50, metalness: 0.0,
-            emission: UIColor(red: 0.03, green: 0.38, blue: 0.26, alpha: 1)
-        )
-
-        let geoL = SCNCylinder(radius: 0.0028, height: 0.01)
-        geoL.materials = [bandMat]
-        leftBandNode.geometry = geoL
-
-        let geoR = SCNCylinder(radius: 0.0028, height: 0.01)
-        geoR.materials = [bandMat]
-        rightBandNode.geometry = geoR
-
-        leftBandNode.castsShadow  = false
-        rightBandNode.castsShadow = false
-
-        forkRoot.addChildNode(leftBandNode)
-        forkRoot.addChildNode(rightBandNode)
+        forkRoot.addChild(leftBandEntity)
+        forkRoot.addChild(rightBandEntity)
     }
 
-    // MARK: - Private: pouch
-
-    private func setupPouch() {
-        // Single glowing neon sphere — minimal and clean.
-        let neonMat = pbrMat(
-            UIColor(red: 0.08, green: 0.90, blue: 0.66, alpha: 1),
-            roughness: 0.30, metalness: 0.08,
-            emission: UIColor(red: 0.03, green: 0.36, blue: 0.24, alpha: 1)
-        )
-
-        let sphere = SCNNode(geometry: SCNSphere(radius: 0.012))
-        sphere.geometry!.materials = [neonMat]
-        sphere.castsShadow = false
-        pouchNode.addChildNode(sphere)
-
-        pouchNode.castsShadow = false
-        pouchNode.isHidden    = true    // shown only while dragging
-        pouchNode.position    = SlingshotNode.neutralPull
-        forkRoot.addChildNode(pouchNode)
+    /// Creates a unit-height (height=1) rounded-box band entity to be scaled at runtime.
+    private static func makeBandEntity() -> ModelEntity {
+        let mat = makeNeonMat()
+        // Height=1.0 so scale.y can be set directly to the desired length.
+        let mesh = MeshResource.generateBox(size: SIMD3<Float>(0.0056, 1.0, 0.0056),
+                                            cornerRadius: 0.0028)
+        let e = ModelEntity(mesh: mesh, materials: [mat])
+        e.scale = SIMD3<Float>(1, 0.001, 1)   // near-zero until first update
+        return e
     }
 
-    // MARK: - Private: band update
+    /// Cyan neon band material shared by bands and pouch.
+    private static func makeNeonMat() -> PhysicallyBasedMaterial {
+        var mat = PhysicallyBasedMaterial()
+        mat.baseColor     = .init(tint: UIColor(red: 0.08, green: 0.92, blue: 0.70, alpha: 1))
+        mat.roughness     = .init(floatLiteral: 0.50)
+        mat.metallic      = .init(floatLiteral: 0.0)
+        mat.emissiveColor = .init(color: UIColor(red: 0.03, green: 0.38, blue: 0.26, alpha: 1))
+        mat.emissiveIntensity = 0.4
+        return mat
+    }
+
+    // MARK: - Band update (called every frame while dragging)
 
     private func updateBands() {
-        alignCylinder(leftBandNode,  from: SlingshotNode.leftTip,  to: pullPoint)
-        alignCylinder(rightBandNode, from: SlingshotNode.rightTip, to: pullPoint)
-        pouchNode.position = pullPoint
+        alignBand(leftBandEntity,  from: SlingshotNode.leftTip,  to: pullPoint)
+        alignBand(rightBandEntity, from: SlingshotNode.rightTip, to: pullPoint)
+        pouchEntity.position = pullPoint
     }
 
-    // MARK: - Geometry helpers
+    /// Scales and orients a unit-height band entity to span from `a` to `b`.
+    ///
+    /// The entity's mesh is a box of height 1.0 along the Y-axis.
+    /// Setting scale.y = length and orienting the Y-axis toward (b-a) produces
+    /// the correct visual span without requiring mesh regeneration each frame.
+    private func alignBand(_ e: ModelEntity, from a: SIMD3<Float>, to b: SIMD3<Float>) {
+        let diff   = b - a
+        let length = simd_length(diff)
+        guard length > 1e-6 else { return }
 
-    /// Build a cylinder SCNNode oriented and scaled to span two local points.
-    private func cylinderBetween(_ a: SCNVector3, _ b: SCNVector3,
-                                  radius: CGFloat, material: SCNMaterial) -> SCNNode {
-        let node = SCNNode()
-        node.geometry = SCNCylinder(radius: radius, height: 0.01)
-        node.geometry!.materials = [material]
-        alignCylinder(node, from: a, to: b)
-        return node
-    }
+        e.position = (a + b) / 2
+        e.scale    = SIMD3<Float>(1, length, 1)
 
-    /// Reposition and reorient `node` (SCNCylinder) so it spans `from → to` in local space.
-    private func alignCylinder(_ node: SCNNode, from a: SCNVector3, to b: SCNVector3) {
-        let dx = b.x - a.x
-        let dy = b.y - a.y
-        let dz = b.z - a.z
-        let len = sqrt(dx*dx + dy*dy + dz*dz)
-        guard len > 1e-6 else { return }
+        // Compute rotation from the Y-axis to the direction vector
+        let dir   = diff / length
+        let yAxis = SIMD3<Float>(0, 1, 0)
+        let dot   = simd_dot(yAxis, dir)
 
-        // Height
-        if let cyl = node.geometry as? SCNCylinder {
-            cyl.height = CGFloat(len)
-        }
-
-        // Midpoint
-        node.position = SCNVector3((a.x + b.x) * 0.5,
-                                   (a.y + b.y) * 0.5,
-                                   (a.z + b.z) * 0.5)
-
-        // Rotation: align cylinder's Y-axis to the direction vector.
-        let dir = SCNVector3(dx/len, dy/len, dz/len)
-        let yAxis = SCNVector3(0, 1, 0)
-        let cross = SCNVector3(
-            yAxis.y * dir.z - yAxis.z * dir.y,
-            yAxis.z * dir.x - yAxis.x * dir.z,
-            yAxis.x * dir.y - yAxis.y * dir.x
-        )
-        let dot      = yAxis.x * dir.x + yAxis.y * dir.y + yAxis.z * dir.z
-        let angle    = acos(max(-1, min(1, dot)))
-        let crossLen = sqrt(cross.x*cross.x + cross.y*cross.y + cross.z*cross.z)
-
-        if crossLen > 1e-6 {
-            node.rotation = SCNVector4(cross.x/crossLen, cross.y/crossLen, cross.z/crossLen, angle)
-        } else if dot < 0 {
-            // Anti-parallel: 180° flip around any perpendicular axis.
-            node.rotation = SCNVector4(1, 0, 0, Float.pi)
+        if dot > 0.9999 {
+            e.orientation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+        } else if dot < -0.9999 {
+            // Anti-parallel: rotate 180° around any perpendicular axis
+            e.orientation = simd_quatf(angle: .pi, axis: SIMD3<Float>(1, 0, 0))
+        } else {
+            let cross = simd_cross(yAxis, dir)
+            e.orientation = simd_normalize(
+                simd_quatf(ix: cross.x, iy: cross.y, iz: cross.z, r: 1 + dot)
+            )
         }
     }
 
-    /// Physically-based material helper.
-    private func pbrMat(_ color: UIColor, roughness: Float, metalness: Float,
-                        emission: UIColor = .black) -> SCNMaterial {
-        let m = SCNMaterial()
-        m.diffuse.contents   = color
-        m.roughness.contents = NSNumber(value: roughness)
-        m.metalness.contents = NSNumber(value: metalness)
-        m.emission.contents  = emission
-        m.lightingModel      = .physicallyBased
-        return m
+    // MARK: - Static bar helper
+
+    /// Creates a ModelEntity (rounded box) oriented to span from `a` to `b`.
+    private func staticBar(from a: SIMD3<Float>, to b: SIMD3<Float>,
+                           radius: Float, material: RealityKit.Material) -> ModelEntity {
+        let diff   = b - a
+        let length = simd_length(diff)
+        let d      = diff / max(length, 1e-6)
+
+        // Build a unit box, then scale Y to the desired length
+        let mesh = MeshResource.generateBox(size: SIMD3<Float>(radius * 2, 1.0, radius * 2),
+                                            cornerRadius: radius * 0.9)
+        let e = ModelEntity(mesh: mesh, materials: [material])
+        e.scale    = SIMD3<Float>(1, length, 1)
+        e.position = (a + b) / 2
+
+        // Rotate Y-axis toward direction vector
+        let yAxis = SIMD3<Float>(0, 1, 0)
+        let dot   = simd_dot(yAxis, d)
+        if dot > 0.9999 {
+            e.orientation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+        } else if dot < -0.9999 {
+            e.orientation = simd_quatf(angle: .pi, axis: SIMD3<Float>(1, 0, 0))
+        } else {
+            let cross = simd_cross(yAxis, d)
+            e.orientation = simd_normalize(
+                simd_quatf(ix: cross.x, iy: cross.y, iz: cross.z, r: 1 + dot)
+            )
+        }
+        return e
+    }
+
+    // MARK: - PBR material factory
+
+    private func pbr(_ color: UIColor, roughness: Float, metalness: Float,
+                     emission: UIColor = .black) -> PhysicallyBasedMaterial {
+        var mat = PhysicallyBasedMaterial()
+        mat.baseColor = .init(tint: color)
+        mat.roughness = .init(floatLiteral: roughness)
+        mat.metallic  = .init(floatLiteral: metalness)
+        if emission != .black {
+            mat.emissiveColor     = .init(color: emission)
+            mat.emissiveIntensity = 0.4
+        }
+        return mat
     }
 }
