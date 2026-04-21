@@ -426,7 +426,7 @@ final class ProjectorBug3DCoordinator {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak bugAnchor] in
                 guard let bugAnchor else { return }
                 bugAnchor.move(
-                    to: Transform(scale: .one, rotation: .identity,
+                    to: Transform(scale: SIMD3<Float>(repeating: 1), rotation: simd_quatf(),
                                   translation: targetPos),
                     relativeTo: nil,
                     duration: segDur,
@@ -449,7 +449,7 @@ final class ProjectorBug3DCoordinator {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + cumulativeDelay) { [weak bugAnchor] in
             bugAnchor?.move(
-                to: Transform(scale: .one, rotation: .identity, translation: exitPoint),
+                to: Transform(scale: SIMD3<Float>(repeating: 1), rotation: simd_quatf(), translation: exitPoint),
                 relativeTo: nil,
                 duration: segDur,
                 timingFunction: .easeIn

@@ -28,11 +28,19 @@ import UIKit
 /// The `entity` property is the root Entity; callers add it to a world AnchorEntity.
 final class Net3DNode {
 
+    private static let meshBaseColor = UIColor(red: 0.30, green: 0.90, blue: 0.45, alpha: 0.90)
+
     /// Root RealityKit entity.  Callers: `netAnchor.addChild(net3D.entity)`
     let entity: Entity
 
     /// Flight simulation timer — invalidated after the net lands or on deinit.
     private var flightTimer: Timer?
+
+    /// Material updates are applied directly to each visible segment because OpacityComponent
+    /// is not available on all RealityKit deployment targets used by this project.
+    private var rimEntities: [ModelEntity] = []
+    private var meshEntities: [ModelEntity] = []
+    private var rimBaseColor: UIColor = .white
 
     // MARK: Player accent colours (must match SlingshotNode / projector side)
     private static let accentColors: [UIColor] = [
@@ -56,14 +64,15 @@ final class Net3DNode {
     // MARK: - Geometry
 
     private func setupMesh(playerIndex: Int) {
-        let accent  = Net3DNode.accentColors[playerIndex % Net3DNode.accentColors.count]
+        let accent = Net3DNode.accentColors[playerIndex % Net3DNode.accentColors.count]
+        rimBaseColor = accent
         let rimMat  = pbr(accent, roughness: 0.55, metalness: 0.20, emission: accent)
-        let meshMat = pbr(UIColor(red: 0.30, green: 0.90, blue: 0.45, alpha: 0.90),
-                          roughness: 0.80, metalness: 0.0)
+        let meshMat = pbr(Self.meshBaseColor, roughness: 0.80, metalness: 0.0)
 
         // Outer rim: approximate torus with many thin box segments arranged in a ring.
         // SCNTorus is unavailable in RealityKit; 24 segments give a smooth-enough circle.
-        addRing(radius: 0.042, tubeRadius: 0.0045, segments: 24, material: rimMat)
+        rimEntities.append(contentsOf: addRing(radius: 0.042, tubeRadius: 0.0045,
+                                              segments: 24, material: rimMat))
 
         // 8 radial spokes (thin flat boxes)
         for i in 0..<8 {
@@ -74,19 +83,23 @@ final class Net3DNode {
             )
             spoke.orientation = simd_quatf(angle: angle, axis: SIMD3<Float>(0, 0, 1))
             entity.addChild(spoke)
+            meshEntities.append(spoke)
         }
 
         // Two inner concentric rings
-        addRing(radius: 0.020, tubeRadius: 0.002, segments: 16, material: rimMat)
-        addRing(radius: 0.032, tubeRadius: 0.002, segments: 20, material: rimMat)
+        rimEntities.append(contentsOf: addRing(radius: 0.020, tubeRadius: 0.002,
+                                              segments: 16, material: rimMat))
+        rimEntities.append(contentsOf: addRing(radius: 0.032, tubeRadius: 0.002,
+                                              segments: 20, material: rimMat))
     }
 
     /// Builds a ring (torus approximation) from `segments` thin box segments.
     /// Each segment is a short box tangent to the ring circle at its position.
     private func addRing(radius R: Float, tubeRadius r: Float,
-                         segments: Int, material: RealityKit.Material) {
+                         segments: Int, material: RealityKit.Material) -> [ModelEntity] {
         let segmentArc = Float(2 * Double.pi) / Float(segments)
         let segLength  = 2 * R * sin(segmentArc / 2) * 1.05  // slight overlap to close gaps
+        var ringSegments: [ModelEntity] = []
 
         for i in 0..<segments {
             let angle = Float(i) * segmentArc
@@ -99,7 +112,10 @@ final class Net3DNode {
             seg.position    = SIMD3<Float>(R * cos(angle), R * sin(angle), 0)
             seg.orientation = simd_quatf(angle: angle + .pi / 2, axis: SIMD3<Float>(0, 0, 1))
             entity.addChild(seg)
+            ringSegments.append(seg)
         }
+
+        return ringSegments
     }
 
     // MARK: - Launch animation
@@ -142,7 +158,7 @@ final class Net3DNode {
 
         // Start compact and invisible
         entity.scale = SIMD3<Float>(repeating: 0.22)
-        entity.components.set(OpacityComponent(opacity: 0))
+        setOpacity(0)
 
         // Precompute spin parameters
         let turns     = 0.8 + Double(power) * 2.0   // 0.8–2.8 full turns
@@ -201,7 +217,26 @@ final class Net3DNode {
             } else {
                 opacity = 1.0 - (progress - 0.52) / 0.48
             }
-            self.entity.components.set(OpacityComponent(opacity: max(0, min(1, opacity))))
+            let clampedOpacity = Swift.max(Float.zero, Swift.min(Float(1), opacity))
+            self.setOpacity(clampedOpacity)
+        }
+    }
+
+    private func setOpacity(_ opacity: Float) {
+        let alpha = CGFloat(opacity)
+        let rimColor = rimBaseColor.withAlphaComponent(alpha)
+        let meshColor = Self.meshBaseColor.withAlphaComponent(alpha * Self.meshBaseColor.cgColor.alpha)
+
+        for segment in rimEntities {
+            segment.model?.materials = [
+                pbr(rimColor, roughness: 0.55, metalness: 0.20, emission: rimColor)
+            ]
+        }
+
+        for segment in meshEntities {
+            segment.model?.materials = [
+                pbr(meshColor, roughness: 0.80, metalness: 0.0)
+            ]
         }
     }
 

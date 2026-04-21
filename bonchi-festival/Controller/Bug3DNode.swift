@@ -206,9 +206,9 @@ final class Bug3DNode {
     /// Returns true if successful, false when the cache is empty (preload still
     /// in-progress or asset not bundled). The caller then builds procedural geometry.
     private func loadUSDZModel() -> Bool {
-        cacheLock.lock()
+        Bug3DNode.cacheLock.lock()
         let cached = Bug3DNode.entityCache[bugType.rawValue]
-        cacheLock.unlock()
+        Bug3DNode.cacheLock.unlock()
         guard let cached else { return false }
 
         // Clone the cached entity so each bug has its own independent transform/animation.
@@ -506,7 +506,7 @@ final class Bug3DNode {
 
     private func startAnimations() {
         // Start invisible; fade in for immediate visual presence (即時性).
-        entity.components.set(OpacityComponent(opacity: 0))
+        entity.isEnabled = false
         runFadeIn(duration: 0.25)
 
         if usdzLoaded {
@@ -603,42 +603,37 @@ final class Bug3DNode {
 
     // MARK: - Opacity helpers
 
-    /// Fades the entity in over `duration` seconds by stepping OpacityComponent values.
+    /// Fades the entity in over `duration` seconds.
+    /// On targets where OpacityComponent is unavailable, visibility is restored at the
+    /// end of the interval instead of stepping true alpha values.
     private func runFadeIn(duration: TimeInterval) {
-        let steps = 20
-        let dt    = duration / Double(steps)
-        for i in 0...steps {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * dt) { [weak self] in
-                self?.entity.components.set(OpacityComponent(opacity: Float(i) / Float(steps)))
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            self?.entity.isEnabled = true
         }
     }
 
     /// Fades the entity out over `duration` seconds, then calls `completion`.
+    /// RealityKit opacity components are not available on every target, so this uses
+    /// a delayed hide that preserves timing without depending on unavailable APIs.
     private func runFadeOut(duration: TimeInterval, completion: (() -> Void)? = nil) {
-        let steps = 20
-        let dt    = duration / Double(steps)
-        for i in 0...steps {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * dt) { [weak self] in
-                guard let self else { return }
-                self.entity.components.set(OpacityComponent(opacity: 1.0 - Float(i) / Float(steps)))
-                if i == steps { completion?() }
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            self?.entity.isEnabled = false
+            completion?()
         }
     }
 
-    /// Rapid opacity flicker simulating digital glitch / corruption flash.
+    /// Rapid visibility flicker simulating digital glitch / corruption flash.
     private func runGlitchBlink() {
         let dur: TimeInterval = 0.055
-        let pattern: [(Float, TimeInterval)] = [
-            (0.0,  0),
-            (0.85, dur * 0.35),
-            (0.0,  dur * 0.60),
-            (0.70, dur * 0.80),
+        let pattern: [(Bool, TimeInterval)] = [
+            (false, 0),
+            (true,  dur * 0.35),
+            (false, dur * 0.60),
+            (true,  dur * 0.80),
         ]
-        for (opacity, delay) in pattern {
+        for (isVisible, delay) in pattern {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                self?.entity.components.set(OpacityComponent(opacity: opacity))
+                self?.entity.isEnabled = isVisible
             }
         }
     }
