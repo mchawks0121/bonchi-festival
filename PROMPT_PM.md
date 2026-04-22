@@ -1,190 +1,138 @@
-# ぼんち祭り バグハンター — PM ドキュメント生成プロンプト
+# PM ドキュメント生成プロンプト（汎用テンプレート）
 
 > **用途**: このファイルを GitHub Copilot（チャット／エージェントモード）に渡すことで、  
-> キックオフ資料兼プロジェクト管理ドキュメント（`PROJECT_PLAN.md` 相当）を再現・拡張生成できます。  
-> **バージョン**: Xcode 26 / iOS 26 / Swift 6.0  
+> キックオフ資料兼プロジェクト管理ドキュメント（`PROJECT_PLAN.md` 相当）を生成できます。  
+> **対象**: Xcode 26 / iOS 26 / Swift 6.0 を使用する任意の iOS プロジェクト  
 > **最終更新**: 2025年4月
 
 ---
 
 ## このファイルの使い方
 
-1. GitHub Copilot のチャット欄でこのファイルを「Add Files」でコンテキストに追加する。
-2. 以下の「▶ AI へのプロンプト」ブロックをそのままコピーして投げる。
-3. 出力された Markdown を `PROJECT_PLAN.md` に貼り付けて調整する。
-4. **キックオフ当日**はこのドキュメントをスクリーンに映して進行する。
+1. GitHub Copilot のチャット欄でこのファイルと **対象プロジェクトのリポジトリ** を「Add Files」でコンテキストに追加する。
+2. 「▶ STEP 1」の `[...]` プレースホルダーを自プロジェクトの情報で埋める。
+3. 「▶ STEP 2」のプロンプトブロックをそのままコピーして Copilot に投げる。
+4. 出力された Markdown を `PROJECT_PLAN.md` に貼り付けて調整する。
+5. **キックオフ当日**はこのドキュメントをスクリーンに映して進行する。
+
+> **ポイント**: ディレクトリ構造・ファイル一覧・タスク分解・技術スタックなど、  
+> **プロジェクト固有の情報は AI がコードベースを読み取って自律的に生成します**。  
+> STEP 1 で埋める情報はプロジェクトの基本情報（名前・日程・チーム人数）のみです。
 
 ---
 
-## ▶ AI へのプロンプト（ここからコピーして使う）
+## ▶ STEP 1: プロジェクト基本情報を記入する
+
+以下の `[...]` を自プロジェクトに合わせて書き換える。
+
+```
+プロジェクト名   : [プロジェクト名]
+本番・リリース日 : [YYYY年MM月DD日]
+開発開始日       : [YYYY年MM月DD日]
+目的・一言概要   : [このプロジェクトが何を実現するか、一文で]
+チーム人数       : [合計 X 名（エンジニア Y 名 / デザイナー Z 名 等）]
+使用言語         : Swift 6.0
+開発環境         : Xcode 26 / iOS 26
+```
+
+---
+
+## ▶ STEP 2: Copilot へのプロンプト（STEP 1 を記入後にコピーして使う）
 
 ```
 あなたはプロジェクトマネジメントのプロフェッショナルであり、
 iOS / Swift 開発にも精通したテクニカル PM です。
 
-以下の「プロジェクト概要」「技術スタック」「チーム構成」「スケジュール」を読み込み、
+コンテキストに追加されたリポジトリのコードと、以下の「プロジェクト基本情報」を読み込み、
 チームキックオフ資料として使えるほど網羅的・詳細な「プロジェクト計画書」を
 Markdown で生成してください。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## プロジェクト概要
+## プロジェクト基本情報（ここを自プロジェクトの情報に書き換えて使う）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-プロジェクト名   : ぼんち祭り バグハンター
-イベント本番日   : 8月1日（ぼんち祭り会場）
-開発期間         : 約14週間（4月下旬〜8月1日）
-目的             : 祭り会場でスマートフォンを使い、AR 空間に出現するバグを
-                   スリングショットで捕獲する参加型体験ゲームを提供する。
-                   大型スクリーン（プロジェクター）にリアルタイムスコアを表示し、
-                   最大3人が同時にプレイできるマルチプレイヤー形式。
+プロジェクト名   : [プロジェクト名]
+本番・リリース日 : [YYYY年MM月DD日]
+開発開始日       : [YYYY年MM月DD日]
+目的・一言概要   : [このプロジェクトが何を実現するか、一文で]
+チーム人数       : [合計 X 名]
+使用言語         : Swift 6.0
+開発環境         : Xcode 26 / iOS 26
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## 技術スタック（Xcode 26 / iOS 26 固定）
+## コードベース解析の指示
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-| カテゴリ | 技術 | 用途・備考 |
-|---------|------|-----------|
-| 開発環境 | Xcode 26.x | Deployment Target: iOS 26.0 |
-| 言語 | Swift 6.0 | SWIFT_STRICT_CONCURRENCY = complete |
-| AR | ARKit 6 | ARWorldTrackingConfiguration + sceneReconstruction |
-| 3D描画 | RealityKit 3 | Entity/AnchorEntity。SceneKit は使用禁止 |
-| 2D描画 | SpriteKit | プロジェクター大画面・透過HUDオーバーレイ |
-| UI | SwiftUI 6 | Liquid Glass（.glassBackground() / .glassEffect()）|
-| 通信 | MultipeerConnectivity | iOS↔プロジェクター P2P。encryptionPreference: .required |
-| 並行処理 | Swift Concurrency | actor / @MainActor / Sendable。nonisolated(unsafe) 禁止 |
-| テスト | Swift Testing | XCTest から移行済み |
-| 3Dアセット | USDZ | toy_biplane / gramophone / toy_drummer（Apple AR Quick Look）|
-| デバイス | iPhone（iOS 26+） | コントローラー／スタンドアロン端末（最大3台）|
-| デバイス | iPad / Mac | プロジェクター接続サーバー端末 |
+以下の情報はこのプロジェクトのコードベースを読み取って自律的に生成してください。
+固定値を仮定せず、実際のファイル・ディレクトリ・依存関係から導出すること。
 
-Xcode 26 / iOS 26 固有の制約:
-- UIKit AppDelegate ベース（SwiftUI App プロトコルは不使用）
-- RealityView（iOS 18+）は不使用。ARView + AnchorEntity パターン継続
-- Liquid Glass は #available(iOS 26, *) ガード不要（Deployment Target が iOS 26.0）
+### 自律生成が必要な項目
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## ディレクトリ構造
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. **ディレクトリ構造とファイル一覧**
+   - リポジトリのディレクトリツリーをそのまま反映した構造図を作成する
+   - 各ファイルの役割を一行で説明する
+   - 論理的にグループ分けしてチーム担当を割り当てる
 
-bonchi-festival/
-├── AppDelegate.swift
-├── ContentView.swift
-├── Controller/          ← チームA・C が担当（AR・UI・サウンド）
-│   ├── GameManager.swift
-│   ├── ARGameView.swift
-│   ├── ARBugScene.swift
-│   ├── Bug3DNode.swift
-│   ├── SlingshotNode.swift
-│   ├── SlingshotView.swift
-│   ├── Net3DNode.swift
-│   ├── MultipeerSession.swift
-│   └── SoundManager.swift
-├── Shared/              ← チームC が担当（全チームのブロッカー）
-│   └── GameProtocol.swift
-└── World/               ← チームB が担当（プロジェクター側）
-    ├── ProjectorGameManager.swift
-    ├── BugHunterScene.swift
-    ├── NetProjectile.swift
-    ├── WorldViewController.swift
-    └── ProjectorBug3DCoordinator.swift
+2. **技術スタック**
+   - `*.xcodeproj` / `Package.swift` / `Podfile` / `*.swift` 等を解析して使用フレームワーク・ライブラリを列挙する
+   - Xcode 26 / iOS 26 固有の API（Liquid Glass、RealityKit 3、Swift 6 actor 等）が使われている場合はその対応事項も記載する
+
+3. **チーム分けとタスク細分化**
+   - 実際のディレクトリ・ファイル構成から責務を判断し、チームA/B/C（および横断QA）に担当を割り当てる
+   - タスクは「P-00: プロジェクト環境構築」から始まり、各ファイルを実装単位として P-XX の形式で番号を付ける
+   - ファイル間の import や依存関係を読み取り、タスクの前提（ブロッカー）関係を正しく設定する
+   - 並行着手できるフェーズを明示する
+
+4. **Swift 6 移行チェックリスト**
+   - 実際のコードを読んで `NSLock` / `DispatchQueue` / `nonisolated(unsafe)` を使っているファイルを列挙し、`actor` / `@MainActor` への移行優先度を判定する
+
+5. **リスク管理**
+   - このプロジェクトの技術スタック・デバイス要件・外部依存から固有のリスクを導出する
+   - 確率（高/中/低）・影響度（高/中/低）・対策を表形式で記載する
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## チーム構成
+## Xcode 26 / iOS 26 共通の制約（全プロジェクト共通）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-チームA（ARコア）
-  人数: 1〜2名
-  担当: Controller/ の AR・3D・スリングショット
-  成果物:
-    AppDelegate.swift / GameManager.swift / ARGameView.swift
-    Bug3DNode.swift / ARBugScene.swift
-    SlingshotNode.swift / Net3DNode.swift / SlingshotView.swift
+以下は Xcode 26 / iOS 26 プロジェクト共通の制約として必ず記載する:
 
-チームB（プロジェクター）
-  人数: 1〜2名
-  担当: World/ の大画面表示・サーバー役
-  成果物:
-    ProjectorGameManager.swift / BugHunterScene.swift
-    NetProjectile.swift / WorldViewController.swift
-    ProjectorBug3DCoordinator.swift
-
-チームC（基盤・UX）
-  人数: 1〜2名
-  担当: Shared/ + 通信・SwiftUI・サウンド
-  成果物:
-    GameProtocol.swift（★全チームのブロッカー）
-    MultipeerSession.swift / ContentView.swift / SoundManager.swift
-
-横断QA
-  人数: 1名（全チームから兼任可）
-  担当: M3〜M4 の統合テスト・Swift Testing スイート・不具合管理
+- Swift 6.0（`SWIFT_STRICT_CONCURRENCY = complete`）
+- `nonisolated(unsafe)` 使用禁止。`actor` または `@MainActor` で解決する
+- `default:` を持つ exhaustive でない `switch` を書かない
+- 強制アンラップ（`!`）を本番コードに残さない
+- `MCSession.encryptionPreference` は `.required` を使用
+- Liquid Glass API（`.glassBackground()` / `.glassEffect()`）は iOS 26 のみで動作
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## マイルストーン（本番：8月1日）
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-M0 環境整備           5月2日   全員: Xcode 26 + iOS 26 ビルド確認・Swift 6 警告棚卸し
-M1 プロトタイプ完成   5月16日  スリングショット基本動作・プロジェクター表示・Multipeer疎通
-M2 全機能実装完了     6月20日  3種バグ・USDZ・キャリブレーション・Liquid Glass UI・SE
-M3 統合テスト・調整   7月11日  実機3台通しテスト・スコア集計・当たり判定チューニング
-M4 リリース候補（RC） 7月25日  全バグFix・M4以降機能追加禁止・ドキュメント更新完了
-🎉本番（ぼんち祭り）  8月1日
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## タスク一覧（P-00〜P-17）
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-P-00 Xcode 26 新規プロジェクト作成              全チーム  前提:なし
-P-01 Shared/GameProtocol.swift                  チームC   前提:P-00 ★ブロッカー
-P-02 AppDelegate.swift                          チームA   前提:P-00
-P-03 Controller/GameManager.swift               チームA   前提:P-01,P-02
-P-04 Controller/MultipeerSession.swift          チームC   前提:P-01
-P-05 World/ProjectorGameManager.swift           チームB   前提:P-01
-P-06 Controller/Bug3DNode.swift                 チームA   前提:P-01
-P-07 Controller/ARBugScene.swift                チームA   前提:P-01
-P-08 Controller/ARGameView.swift                チームA   前提:P-03,P-06,P-07
-P-09 Controller/SlingshotNode.swift             チームA   前提:P-01
-P-10 Controller/Net3DNode.swift                 チームA   前提:P-01
-P-11 Controller/SlingshotView.swift             チームA   前提:P-09,P-10
-P-12 Controller/SoundManager.swift              チームC   前提:P-03
-P-13 ContentView.swift（全画面SwiftUI）         チームC   前提:P-03,P-04,P-12
-P-14 World/BugHunterScene.swift + NetProjectile チームB   前提:P-05
-P-15 World/WorldViewController.swift            チームB   前提:P-05,P-06,P-14
-P-16 Swift Testing スイート構築                 横断QA    前提:P-01〜P-15
-P-17 パフォーマンス最適化・メモリリーク修正      全チーム  前提:P-16
-
-並行作業: Phase3（P-04,P-05）と Phase4（P-06〜P-11）はP-01完了後に同時着手可
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## AI 駆動開発ルール
+## AI 駆動開発ルール（全プロジェクト共通）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 プロンプト必須3点セット:
   Why（目的）/ What（機能概要）/ How（実装方針・禁止事項）
 
 毎回のプロンプトに含める制約:
-  - 3Dは RealityKit のみ。ARSCNView・SceneKit 禁止
+  - フレームワーク指定（例: 3D は RealityKit のみ。SceneKit 禁止）
+  - スレッドモデル（例: RealityKit は @MainActor、SpriteKit は main thread）
   - nonisolated(unsafe) 使用禁止
-  - BugType の switch は exhaustive（default: 禁止）
-  - 1PR = 1ファイル単位
+  - switch は網羅的に書く（default: 禁止）
+  - 1PR = 1ファイル（または1機能）単位
   - コメントに実装意図・セキュリティ考慮・注意点を必ず含める
 
 マージ前チェックリスト:
-  □ BugType switch が exhaustive か
+  □ switch が exhaustive か（default: がないか）
   □ nonisolated(unsafe) がないか
   □ @MainActor / actor / Sendable が適切か
-  □ MCSession.encryptionPreference が .required か
+  □ MCSession.encryptionPreference が .required か（通信を使う場合）
   □ 強制アンラップ（!）がないか
   □ SPEC.md / PROMPT.md を同じPRで更新したか
   □ Swift 6 strict concurrency ビルドエラーがゼロか
 
-ドキュメント三点セット（コード変更時は同PRで更新必須）:
-  SPEC.md        → ゲーム仕様・ルール・アーキテクチャ
-  PROMPT.md      → 各ファイルの実装説明
-  PROMPT_26.md   → チーム別 Copilot プロンプト集
+ドキュメント管理ルール（コード変更時は同PRで更新必須）:
+  SPEC.md     → プロジェクトの仕様・ルール・アーキテクチャの最新状態
+  PROMPT.md   → 各ファイルの実装説明（AI 再現プロンプト用）
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-## PRルール
+## PRルール（全チーム共通）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 1PR = 1機能  / self-review 禁止 / M4以降機能追加禁止
@@ -196,13 +144,14 @@ P-17 パフォーマンス最適化・メモリリーク修正      全チーム
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 以下の見出し順で、各セクションを詳細に出力してください。
+「コードベース解析の指示」に記載した項目は、コードを読んでから生成すること。
 
 1. プロジェクト概要とゴール
    - プロジェクト名・背景・目的・成功基準（KPI）
    - 非目標（スコープ外）を明記する
 
 2. 使用技術スタック
-   - フレームワーク・言語・ツール・デバイス一覧（表形式）
+   - コードベースから読み取ったフレームワーク・言語・ツール・デバイス一覧（表形式）
    - Xcode 26 / iOS 26 固有の対応事項（表形式）
 
 3. AI を使った開発について
@@ -214,44 +163,45 @@ P-17 パフォーマンス最適化・メモリリーク修正      全チーム
    - 兼任ルール
 
 5. チーム分け（案）
-   - チームA/B/C/QA の担当領域（表形式）
+   - このプロジェクトのディレクトリ構成をもとに導出したチームA/B/C/QA の担当領域（表形式）
 
 6. マイルストーンとスケジュール
-   - M0〜M4 + 本番（表形式）
+   - M0〜M4 + 本番日（開発開始日〜リリース日から算出した表形式）
    - チーム別タスク列を含むガントチャート相当の表
    - 各マイルストーンの完了基準（DoD: Definition of Done）
    - 備考・注意事項
 
 7. Swift 6 移行チェックリスト
-   - 優先度別ファイルと対応内容（表形式）
+   - コードベースから検出した対象ファイルと対応内容（優先度別・表形式）
 
-8. Liquid Glass UI 対応方針
+8. Liquid Glass UI 対応方針（プロジェクトが SwiftUI を使用している場合のみ）
    - 対象画面と対応内容（表形式）
    - テーマ・カラートークンの扱い
 
 9. チーム別詳細（目的・人数・成果物・タスク）
    - チームA / B / C / QA それぞれについて
-     - 目的・人数・担当ディレクトリ
+     - 目的・人数・担当ディレクトリ（コードベースから導出）
      - 成果物ファイル一覧（表形式、ファイル名＋一行概要）
      - マイルストーン別タスク（表形式）
 
-10. タスク細分化（P-00〜P-17）
-    - Phase 0〜8 のフェーズ別表（タスクID / ファイル / 担当 / 前提）
-    - 並行作業ルールの明示
-    - ブロッカーの強調
+10. タスク細分化（フェーズ別）
+    - コードベースの各ファイルを実装単位として P-XX 形式で番号付け
+    - Phase 0〜最終フェーズのフェーズ別表（タスクID / ファイル / 担当 / 前提）
+    - ファイル間依存から導いた並行作業ルールの明示
+    - ブロッカー（後続タスク全体に影響するタスク）の強調
 
 11. AI 駆動開発 詳細指針
     - プロンプト必須3点セット（Why / What / How）の解説
     - 毎回記載すべき制約一覧（表形式）
     - AI コード生成後の必須チェック項目（チェックボックス形式）
-    - ドキュメント三点セット管理ルール（コードブロック形式）
+    - ドキュメント管理ルール（コードブロック形式）
 
 12. PR ルール（全チーム共通）
     - ルール一覧（表形式）
     - ブランチ命名規則・コミットメッセージ規則
 
 13. リスク管理
-    - 特定済みリスク一覧（リスク / 確率 / 影響度 / 対策）（表形式）
+    - このプロジェクト固有のリスク一覧（リスク / 確率 / 影響度 / 対策）（表形式）
     - リスク発生時のエスカレーション先
 
 14. コミュニケーション計画
@@ -284,11 +234,13 @@ P-17 パフォーマンス最適化・メモリリーク修正      全チーム
 プロンプトで生成したドキュメントを `PROJECT_PLAN.md` に反映する前に、  
 以下を人間が確認・調整する。
 
+- [ ] プロジェクト基本情報（名前・日付）を `[...]` プレースホルダーから正しい値に変更した
 - [ ] メンバー名・人数を実際のチーム構成に合わせて修正した
 - [ ] マイルストーン日付が実際のスケジュールと一致している
+- [ ] AI が生成したディレクトリ構造が実際のプロジェクト構造と一致している
 - [ ] 新しく追加されたファイル名が成果物一覧に含まれている
-- [ ] Swift 6 移行チェックリストに未対応ファイルを追加した
-- [ ] リスク管理に実際のリスクを追記した
+- [ ] Swift 6 移行チェックリストに未対応ファイルが漏れなく含まれている
+- [ ] リスク管理がこのプロジェクト固有のリスクを反映している
 - [ ] コミュニケーション計画のツール名（Slack 等）を実際に使うものに修正した
 - [ ] キックオフアジェンダの日時・場所を記載した
 - [ ] `SPEC.md` / `PROMPT.md` と矛盾していないか確認した
@@ -302,10 +254,9 @@ P-17 パフォーマンス最適化・メモリリーク修正      全チーム
 プロンプトの末尾に以下を追加する：
 
 ```
-リスク管理セクションでは、iOS ARKit ゲームの実機テスト困難・
-MultipeerConnectivity の距離制限・Xcode 26 ベータ版の不安定さ・
-祭り会場の Wi-Fi 環境・USDZ アセット入手遅延 などを
-特定済みリスクとして必ず含めてください。
+リスク管理セクションでは、このプロジェクト固有のリスク（実機テスト困難・
+外部 API の不安定さ・祭り会場のネットワーク環境・アセット入手遅延 等）を
+コードベースと技術スタックから推定して特定済みリスクとして必ず含めてください。
 ```
 
 ### キックオフアジェンダを詳細にするには
