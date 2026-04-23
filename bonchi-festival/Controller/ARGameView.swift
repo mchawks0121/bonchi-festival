@@ -54,6 +54,9 @@ struct ARGameView: UIViewRepresentable {
         // Enable environment-based lighting so PBR materials react to real-world light.
         arView.environment.lighting.intensityExponent = 1.0
         arView.renderOptions = []  // no special render-option overrides needed
+        // Disable all debug overlays (feature points, anchor geometry, etc.) to
+        // prevent any debug visualizations from appearing in the AR view.
+        arView.debugOptions = []
         container.addSubview(arView)
         context.coordinator.arView = arView
         arView.session.delegate = context.coordinator

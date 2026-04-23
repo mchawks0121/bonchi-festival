@@ -197,12 +197,13 @@ bonchi-festival/
 │   │                             distortionLayer（グリッチバー × 12本）: バグ数に応じて強度が上昇
 │   │                             fireNet(angle:power:) で 2段階当たり判定（ロックオン優先 → 弾道判定）
 │   │                             BugHunterSceneDelegate プロトコルを定義（didUpdateScore/sceneDidFinish）
-│   ├── Bug3DNode.swift        … RealityKit Entity ラッパー。USDZ モデル優先（toy_biplane/gramophone/toy_drummer）。
+│   ├── Bug3DNode.swift        … RealityKit Entity ラッパー。USDZ モデル優先（gramophone/toy_drummer）。
+│   │                             butterfly (Null) は toy_biplane.usdz のプロペラが青い円に見えるため USDZ を除外し手続きジオメトリを使用
 │   │                             Entity.loadAsync(named:) で事前ロードし、clone 後に availableAnimations + playAnimation ループ
 │   │                             USDZ 不在時は手続き的 PBR ジオメトリにフォールバック
 │   │                             butterfly: 4枚翅・触角 / beetle: 光沢甲殻・6脚 / stag: 大顎・6脚
 │   │                             各バグ固有アニメ（羽ばたき/回転/頷き）＋共通ホバー＋二次水平ドリフト
-│   │                             preloadAssets(): ゲーム開始前に全 USDZ を RealityKit 非同期ローダーで事前ロード（NSLock キャッシュ）
+│   │                             preloadAssets(): ゲーム開始前に USDZ を RealityKit 非同期ローダーで事前ロード（NSLock キャッシュ）
 │   ├── ForestEnvironment.swift … 手続き的 3D 木エンティティを AR / プロジェクター両シーンに植林するユーティリティ（enum）
 │   │                             plantARTrees(in:origin:): worldOriginTransform 基準に AR ワールド空間へ 12 本の木を配置
 │   │                             plantProjectorTrees(in:): バグ平面（Z=0）の背後（Z<0）と側面に 16 本の木を配置
@@ -302,7 +303,7 @@ iOS Controller (×最大3台)               Projector Server
 ```
 ARView (3D バグ)
     └── Bug3DNode.entity (Entity)
-          ├── USDZ モデル優先（toy_biplane / gramophone / toy_drummer）
+          ├── USDZ モデル優先（gramophone / toy_drummer）※ butterfly は手続きジオメトリを使用
           │     ※ USDZ が見つからない場合は手続き的 PBR ジオメトリにフォールバック
           └── 各種アニメーション（羽ばたき・回転・ホバー等）＋二次ドリフト（水平スクエア軌道）
 
@@ -335,11 +336,11 @@ SKView (透過オーバーレイ) → ARBugScene
 
 Apple AR Quick Look ギャラリー（<https://developer.apple.com/jp/augmented-reality/quick-look/>）から取得したモデルを使用。
 
-| BugType | USDZ ファイル | スケール定数 |
-|---------|-------------|------------|
-| butterfly (Null) | `toy_biplane.usdz` | 0.005 |
-| beetle (Virus) | `gramophone.usdz` | 0.004 |
-| stag (Glitch) | `toy_drummer.usdz` | 0.004 |
+| BugType | USDZ ファイル | スケール定数 | 備考 |
+|---------|-------------|------------|------|
+| butterfly (Null) | ― | ― | **USDZ 非使用**（プロペラが青い円に見えるため手続きジオメトリを使用） |
+| beetle (Virus) | `gramophone.usdz` | 0.004 | |
+| stag (Glitch) | `toy_drummer.usdz` | 0.004 | |
 
 USDZ ファイルが存在しない場合は手続き的ジオメトリ（PBR マテリアル）で代替されるため、ファイルがなくてもゲームは動作します。
 
