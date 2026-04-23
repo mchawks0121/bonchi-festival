@@ -77,9 +77,11 @@ final class SlingshotNode {
         leftBandEntity = SlingshotNode.makeBandEntity()
         rightBandEntity = SlingshotNode.makeBandEntity()
 
-        // Pouch: neon glowing sphere visible only while dragging
+        // Pouch: small box marker visible only while dragging (sphere replaced to avoid circle appearance)
         let neonMat = SlingshotNode.makeNeonMat()
-        pouchEntity = ModelEntity(mesh: .generateSphere(radius: 0.012), materials: [neonMat])
+        pouchEntity = ModelEntity(mesh: .generateBox(size: SIMD3<Float>(0.018, 0.018, 0.018),
+                                                     cornerRadius: 0.003),
+                                  materials: [neonMat])
 
         forkRoot.position = SlingshotNode.forkCenter
         entity.addChild(forkRoot)
@@ -151,13 +153,7 @@ final class SlingshotNode {
                       to: SlingshotNode.rightTip,
                       radius: 0.007, material: bodyMat)
         )
-
-        // Neon sphere caps on each tine tip
-        for tip in [SlingshotNode.leftTip, SlingshotNode.rightTip] {
-            let dot = ModelEntity(mesh: .generateSphere(radius: 0.010), materials: [tipMat])
-            dot.position = tip
-            forkRoot.addChild(dot)
-        }
+        // NOTE: Sphere caps removed — no circle/sphere objects are displayed.
     }
 
     // MARK: - Private: rubber bands
