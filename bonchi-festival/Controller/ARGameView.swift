@@ -210,6 +210,13 @@ extension ARGameView {
                 self?.handleSceneUpdate()
             }
 
+            // Plant forest tree entities around the spawn origin to create
+            // the "bug hunting in a forest" atmosphere (即時性).
+            if let view = arView {
+                ForestEnvironment.plantARTrees(in: view,
+                                              origin: gameManager?.worldOriginTransform)
+            }
+
             scheduleNextSpawn(delay: 0.9)
         }
 

@@ -82,6 +82,7 @@ bonchi-festival/
 │   ├── ARGameView.swift         ← UIViewRepresentable (ARView + SKView 重ね合わせ)
 │   ├── ARBugScene.swift         ← SpriteKit 透過シーン（照準・捕獲 UI）
 │   ├── Bug3DNode.swift          ← RealityKit Entity ラッパー（3D バグ表示、USDZ + availableAnimations ループ）
+│   ├── ForestEnvironment.swift  ← 手続き的 3D 木エンティティを AR / プロジェクター両シーンに植林する enum ユーティリティ
 │   ├── SlingshotNode.swift      ← RealityKit Entity ラッパー（3D Y 字スリングショット）
 │   ├── Net3DNode.swift          ← RealityKit Entity ラッパー（3D 飛翔網メッシュ、透明度は各 ModelEntity のマテリアル α で制御）
 │   ├── SlingshotView.swift      ← SwiftUI ジェスチャオーバーレイ
@@ -700,6 +701,53 @@ removeAllActions()
 //    isEnabled: false → true → false → true
 // 5. Dissolve: 0.22s 後に isEnabled = false → removeFromParent
 ```
+
+---
+
+## Controller/ForestEnvironment.swift
+
+「森の中でバグ取り」の雰囲気を作る静的 3D 木エンティティ植林ユーティリティ（`enum` — インスタンス不要）。
+
+### 公開 API
+
+```swift
+/// AR（パススルー）シーンに 12 本の木を植林する。
+static func plantARTrees(in arView: ARView, origin: simd_float4x4?)
+
+/// プロジェクター（非 AR）シーンに 16 本の木を植林する。
+static func plantProjectorTrees(in arView: ARView)
+```
+
+### 木の構造
+
+各木は `Entity` ルート＋ `ModelEntity` の子（幹・葉冠）で構成。`PhysicallyBasedMaterial` を使用（roughness 0.88、metalness 0.0）。
+
+```
+root Entity
+├── trunk  ModelEntity  (generateBox, cornerRadius, 茶色)
+└── foliage … variant に応じた 1〜3 個の ModelEntity
+```
+
+### シルエット variants
+
+| variant | 形状 | 使用プリミティブ |
+|---------|------|-----------------|
+| 0 — round | 単一大球 | generateSphere × 1 |
+| 1 — conical | 幅が上に狭まる 3 段ボックス | generateBox × 3 |
+| 2 — layered | 高さ・サイズの異なる 3 球重ね | generateSphere × 3 |
+
+### 配置（AR）
+
+- 呼び出し元: `ARGameView.Coordinator.startSpawning()` — ゲーム開始時に 1 回だけ実行
+- `worldOriginTransform` 基準で変換（nil なら identity）
+- Y オフセット: −1.2 m（眼線キャリブレーション → 床面）
+- 12 本を前半円・側面・背面・遠方に配置（半径 2〜5 m）
+
+### 配置（プロジェクター）
+
+- 呼び出し元: `ProjectorBug3DCoordinator.attach(to:bugScene:)` — ゲーム開始時に 1 回だけ実行
+- バグ平面（Z=0）の後方（Z=−1.5〜−4.2）と画面左右側面列に 16 本
+- 木の高さ: 1.1〜2.2 ユニット（シーン単位 ≒ 1 m）
 
 ---
 
