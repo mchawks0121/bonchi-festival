@@ -43,8 +43,10 @@ final class Net3DNode {
     private var rimBaseColor: UIColor = .white
 
     // MARK: Player accent colours (must match SlingshotNode / projector side)
+    // Player 1 changed from cyan to yellow-green to avoid a "blue circle" appearance
+    // when the net ring flies through the AR scene.
     private static let accentColors: [UIColor] = [
-        UIColor(red: 0.0, green: 1.0, blue: 1.0, alpha: 1),   // Player 1 — cyan
+        UIColor(red: 0.3, green: 1.0, blue: 0.3, alpha: 1),   // Player 1 — yellow-green (avoids blue circle)
         UIColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 1),  // Player 2 — orange
         UIColor(red: 1.0, green: 0.2,  blue: 0.8, alpha: 1),  // Player 3 — magenta
     ]

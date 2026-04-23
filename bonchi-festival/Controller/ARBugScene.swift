@@ -348,9 +348,9 @@ final class ARBugScene: SKScene {
                 SKAction.run { [weak self] in self?.lockOnRing.setScale(0) }
             ]))
 
-            // Restore crosshair to cyan idle pulse
-            let cyan  = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 0.85)
-            crosshairRing.strokeColor = cyan
+            // Restore crosshair to yellow-green idle pulse (not blue/cyan)
+            let ringColor = SKColor(red: 0.85, green: 1.0, blue: 0.50, alpha: 0.85)
+            crosshairRing.strokeColor = ringColor
             let pulse = SKAction.sequence([
                 SKAction.scale(to: 1.07, duration: 0.85),
                 SKAction.scale(to: 1.00, duration: 0.85)
@@ -454,9 +454,9 @@ final class ARBugScene: SKScene {
         // ── 4. Space-restoration healing ripple ───────────────────────────────
         playHealRipple(at: bugCenter)
 
-        // ── 5. Brief cyan-white screen flash ──────────────────────────────────
+        // ── 5. Brief yellow-green screen flash (changed from cyan-white) ─────
         let flash = SKShapeNode(rect: CGRect(origin: .zero, size: size))
-        flash.fillColor   = SKColor(red: 0.3, green: 1.0, blue: 0.9, alpha: 0.32)
+        flash.fillColor   = SKColor(red: 0.5, green: 1.0, blue: 0.3, alpha: 0.22)
         flash.strokeColor = .clear
         flash.zPosition   = 71
         addChild(flash)
@@ -471,7 +471,7 @@ final class ARBugScene: SKScene {
         pop.fontName  = "HiraginoSans-W7"
         pop.fontSize  = pts == 5 ? 64 : 54
         pop.fontColor = pts == 5
-            ? SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 1)
+            ? SKColor(red: 1.0, green: 0.95, blue: 0.2, alpha: 1)
             : SKColor(red: 1,   green: 0.85, blue: 0,  alpha: 1)
         pop.position  = CGPoint(x: bugCenter.x, y: bugCenter.y + 30)
         pop.zPosition = 65
@@ -613,10 +613,11 @@ final class ARBugScene: SKScene {
         ]))
     }
 
-    /// Expanding cyan ripple that signals the space has been restored.
+    /// Expanding ripple that signals the space has been restored.
+    /// Changed from cyan to yellow-green to avoid "blue circle" appearance.
     private func playHealRipple(at position: CGPoint) {
         let healRing = SKShapeNode(circleOfRadius: 20)
-        healRing.strokeColor = SKColor(red: 0.4, green: 1.0, blue: 0.8, alpha: 0.9)
+        healRing.strokeColor = SKColor(red: 0.6, green: 1.0, blue: 0.3, alpha: 0.9)
         healRing.fillColor   = .clear
         healRing.lineWidth   = 3
         healRing.position    = position
@@ -684,7 +685,8 @@ final class ARBugScene: SKScene {
         let hitColor  = success
             ? SKColor(red: 0.2, green: 1.0, blue: 0.5, alpha: 1)
             : SKColor(red: 1.0, green: 0.3, blue: 0.3, alpha: 1)
-        let baseColor = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 0.85)
+        // Base color matches the setupCrosshair yellow-green (no blue)
+        let baseColor = SKColor(red: 0.85, green: 1.0, blue: 0.50, alpha: 0.85)
         crosshairRing.removeAction(forKey: "pulse")
         crosshairRing.run(
             SKAction.sequence([
@@ -700,9 +702,11 @@ final class ARBugScene: SKScene {
     // MARK: - Private: crosshair setup
 
     private func setupCrosshair() {
-        let cx   = size.width  / 2
-        let cy   = size.height / 2
-        let cyan = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 0.85)
+        let cx    = size.width  / 2
+        let cy    = size.height / 2
+        // Use white/light-green for the crosshair to avoid appearing as a "blue circle"
+        // in the AR camera view. Cyan was previously used but perceived as blue.
+        let ringColor = SKColor(red: 0.85, green: 1.0, blue: 0.50, alpha: 0.85)
 
         // Lock-on ring (hidden until a bug enters catch radius)
         lockOnRing = SKShapeNode(circleOfRadius: 58)
@@ -716,7 +720,7 @@ final class ARBugScene: SKScene {
 
         // Outer crosshair ring (idle pulse)
         crosshairRing = SKShapeNode(circleOfRadius: 54)
-        crosshairRing.strokeColor = cyan
+        crosshairRing.strokeColor = ringColor
         crosshairRing.fillColor   = .clear
         crosshairRing.lineWidth   = 2.5
         crosshairRing.position    = CGPoint(x: cx, y: cy)
@@ -725,7 +729,7 @@ final class ARBugScene: SKScene {
 
         // Centre dot
         let dot = SKShapeNode(circleOfRadius: 5)
-        dot.fillColor   = cyan
+        dot.fillColor   = ringColor
         dot.strokeColor = .clear
         dot.position    = CGPoint(x: cx, y: cy)
         dot.zPosition   = 51
@@ -740,7 +744,7 @@ final class ARBugScene: SKScene {
             path.move(to: CGPoint(x: cx + ox * tickGap, y: cy + oy * tickGap))
             path.addLine(to: CGPoint(x: cx + ox * (tickGap + tickLen), y: cy + oy * (tickGap + tickLen)))
             let tick = SKShapeNode(path: path)
-            tick.strokeColor = cyan
+            tick.strokeColor = ringColor
             tick.lineWidth   = 2.5
             tick.zPosition   = 50
             addChild(tick)

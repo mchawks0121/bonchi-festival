@@ -278,9 +278,10 @@ final class Bug3DNode {
     // MARK: Butterfly — orange/tinted body, 4 wing slabs, antennae
 
     private func setupButterfly() {
+        // Body material: dark brown, no emission so the body does not emit a
+        // blue glow that appears as a blue circle in the AR scene.
         let bodyMat = pbr(UIColor(red: 0.10, green: 0.05, blue: 0.01, alpha: 1),
-                          roughness: 0.65, metalness: 0.02,
-                          emission: UIColor(red: 0.0, green: 0.14, blue: 0.35, alpha: 1))
+                          roughness: 0.65, metalness: 0.02)
 
         // Abdomen: capsule approximated as cylinder-like rounded box + head sphere
         let body = makeCapsule(capRadius: 0.009, height: 0.048, material: bodyMat)
