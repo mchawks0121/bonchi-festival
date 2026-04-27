@@ -1342,3 +1342,16 @@ SoundManager.shared.playGameEnd()
 // makeGridTexture(): UIGraphicsImageRenderer(512×512), 64pt セル格子線
 //   lineColor: UIColor(red:0.0, green:0.6, blue:1.0, alpha:0.4)
 ```
+
+---
+
+## AI 開発ドキュメント一覧
+
+| ファイル | 用途 |
+|----------|------|
+| `SPEC.md` | ゲーム仕様・ルール・アーキテクチャの最新状態 |
+| `PROMPT.md` | 各ファイルの実装説明（AI 再現プロンプト用、このファイル） |
+| `PROMPT_PM.md` | PM ドキュメント（`PROJECT_PLAN.md`）生成プロンプト |
+| `PROMPT_26.md` | Xcode 26 / iOS 26 新規プロジェクト作成プロンプト集 |
+| `PROMPT_COPILOT_KNOWLEDGE.md` | GitHub Copilot 活用ナレッジドキュメント生成プロンプト |
+| `.github/copilot-instructions.md` | Copilot への恒久的コーディング規約 |
