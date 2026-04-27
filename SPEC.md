@@ -607,3 +607,16 @@ physicsBody?.collisionBitMask   = 0
 - **スレッド安全性 — UIKit**: RealityKit の SceneEvents.Update はメインスレッドで発火するため UIKit への直接アクセスが安全。
 - **スレッド安全性 — Multipeer**: Connectivity コールバックは常に `DispatchQueue.main.async` でメインスレッドに戻す。
 - **スレッド安全性 — アンカー辞書**: `ARGameView.Coordinator` の `bugAnchorMap`, `anchorBug3DNodeMap`, `anchorProxyNodeMap`, `nodeAnchorMap`, `anchorEntityMap` はメインスレッドと ARSessionDelegate キューから同時アクセスされるため、`mapLock`（`NSLock`）で全アクセスを保護する。SceneEvents.Update ではロック下でスナップショットを取得し、ロック解放後に投影計算を行う（ロック保持時間を最小化）。
+
+---
+
+## AI 開発ドキュメント一覧
+
+| ファイル | 用途 |
+|----------|------|
+| `SPEC.md` | ゲーム仕様・ルール・アーキテクチャの最新状態（このファイル） |
+| `PROMPT.md` | 各ファイルの実装説明（AI 再現プロンプト用） |
+| `PROMPT_PM.md` | PM ドキュメント（`PROJECT_PLAN.md`）生成プロンプト |
+| `PROMPT_26.md` | Xcode 26 / iOS 26 新規プロジェクト作成プロンプト集 |
+| `PROMPT_COPILOT_KNOWLEDGE.md` | GitHub Copilot 活用ナレッジドキュメント生成プロンプト |
+| `.github/copilot-instructions.md` | Copilot への恒久的コーディング規約 |
