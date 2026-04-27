@@ -13,10 +13,11 @@
 //  3-D models are loaded from USDZ files obtained from Apple's AR Quick Look gallery:
 //    https://developer.apple.com/jp/augmented-reality/quick-look/
 //
-//  Model mapping (download these USDZ files and add them to the Xcode project):
-//    • butterfly — toy_biplane.usdz  (flying toy; represents the fast Null bug)
-//    • beetle    — gramophone.usdz   (dome shell shape; represents the Virus bug)
-//    • stag      — toy_drummer.usdz  (animated character; represents the Glitch bug)
+//  Model mapping:
+//    • butterfly — procedural PBR geometry  (toy_biplane.usdz excluded: propeller renders
+//                                            as a distracting blue circle in AR space)
+//    • beetle    — gramophone.usdz           (dome shell shape; represents the Virus bug)
+//    • stag      — toy_drummer.usdz          (animated character; represents the Glitch bug)
 //
 //  If the USDZ file for a given bug type is not found in the app bundle, the class
 //  falls back to procedural PBR geometry (using RealityKit primitives) so the game
@@ -73,10 +74,12 @@ final class Bug3DNode {
     /// Per-type scale factors for USDZ models.
     /// Exhaustive switch ensures a new BugType causes a compile error rather than
     /// silently rendering at the wrong scale.
+    /// Note: butterfly is not loaded from USDZ so its scale value here is unused,
+    /// but it is kept exhaustive to detect future BugType additions at compile time.
     private static func usdzScale(for type: BugType) -> SIMD3<Float> {
         let s: Float
         switch type {
-        case .butterfly: s = 0.005   // toy_biplane — compact flying toy
+        case .butterfly: s = 0.005   // unused — butterfly uses procedural geometry
         case .beetle:    s = 0.004   // gramophone  — dome-shaped object
         case .stag:      s = 0.004   // toy_drummer — animated character
         }
@@ -96,9 +99,13 @@ final class Bug3DNode {
     /// instantiation clones from memory rather than performing synchronous I/O.
     /// Call this once early in the app lifecycle (e.g. from ARGameView.makeUIView
     /// and from WorldViewController.viewDidLoad for the projector path).
+    ///
+    /// Note: toy_biplane.usdz is intentionally excluded because its spinning
+    /// propeller disc renders as a distracting blue circle in AR space.
+    /// The butterfly type uses procedural PBR geometry instead.
     static func preloadAssets() {
         let mapping: [(BugType, String)] = [
-            (.butterfly, "toy_biplane"),
+            // .butterfly intentionally omitted — uses procedural geometry (see note above)
             (.beetle,    "gramophone"),
             (.stag,      "toy_drummer"),
         ]
@@ -271,9 +278,10 @@ final class Bug3DNode {
     // MARK: Butterfly — orange/tinted body, 4 wing slabs, antennae
 
     private func setupButterfly() {
+        // Body material: dark brown, no emission so the body does not emit a
+        // blue glow that appears as a blue circle in the AR scene.
         let bodyMat = pbr(UIColor(red: 0.10, green: 0.05, blue: 0.01, alpha: 1),
-                          roughness: 0.65, metalness: 0.02,
-                          emission: UIColor(red: 0.0, green: 0.14, blue: 0.35, alpha: 1))
+                          roughness: 0.65, metalness: 0.02)
 
         // Abdomen: capsule approximated as cylinder-like rounded box + head sphere
         let body = makeCapsule(capRadius: 0.009, height: 0.048, material: bodyMat)

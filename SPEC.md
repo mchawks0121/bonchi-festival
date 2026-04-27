@@ -141,6 +141,40 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 
 ---
 
+## 森林環境（ForestEnvironment）
+
+ゲームに「森の中でバグ取り」する臨場感を与えるため、`ForestEnvironment` が両シーンに静的な 3D 木を配置します。
+
+### iOS AR モード
+
+| 項目 | 内容 |
+|------|------|
+| 植林タイミング | `ARGameView.Coordinator.startSpawning()` 呼び出し時（ゲーム開始時） |
+| 木の本数 | 12 本 |
+| 配置半径 | 原点から 2〜5 m |
+| Y オフセット | −1.2 m（キャリブレーション基点が目線高さと想定し、床面に幹の根元を合わせる） |
+
+### プロジェクター（非 AR）モード
+
+| 項目 | 内容 |
+|------|------|
+| 植林タイミング | `ProjectorBug3DCoordinator.attach()` 呼び出し時（ゲーム開始時） |
+| 木の本数 | 16 本 |
+| 背景色 | 深い青緑（`0.06, 0.18, 0.10`）— 森の空をイメージ |
+| 配置ゾーン | バグ平面（Z=0）背後（Z=−1.5〜−4.2）および画面左右の側面列 |
+
+### 木の構造
+
+- **幹**: 茶色の細い角丸ボックス（`generateBox`）
+- **葉冠シルエット 3 種**:
+  - `variant 0` — 丸型: 単一大球（`generateSphere`）
+  - `variant 1` — 円錐型: 幅が上に行くほど狭い 3 段ボックス
+  - `variant 2` — 層状型: 高さ・大きさの異なる 3 球の重ね合わせ
+- **マテリアル**: `PhysicallyBasedMaterial`（roughness 0.88, metalness 0.0、暗/中/明 3 段階の緑）
+- タイマーなし・アニメーションなし（純粋な静的装飾）
+
+---
+
 ## アーキテクチャ概要
 
 ```
@@ -163,12 +197,19 @@ bonchi-festival/
 │   │                             distortionLayer（グリッチバー × 12本）: バグ数に応じて強度が上昇
 │   │                             fireNet(angle:power:) で 2段階当たり判定（ロックオン優先 → 弾道判定）
 │   │                             BugHunterSceneDelegate プロトコルを定義（didUpdateScore/sceneDidFinish）
-│   ├── Bug3DNode.swift        … RealityKit Entity ラッパー。USDZ モデル優先（toy_biplane/gramophone/toy_drummer）。
+│   ├── Bug3DNode.swift        … RealityKit Entity ラッパー。USDZ モデル優先（gramophone/toy_drummer）。
+│   │                             butterfly (Null) は toy_biplane.usdz のプロペラが青い円に見えるため USDZ を除外し手続きジオメトリを使用
 │   │                             Entity.loadAsync(named:) で事前ロードし、clone 後に availableAnimations + playAnimation ループ
 │   │                             USDZ 不在時は手続き的 PBR ジオメトリにフォールバック
 │   │                             butterfly: 4枚翅・触角 / beetle: 光沢甲殻・6脚 / stag: 大顎・6脚
 │   │                             各バグ固有アニメ（羽ばたき/回転/頷き）＋共通ホバー＋二次水平ドリフト
-│   │                             preloadAssets(): ゲーム開始前に全 USDZ を RealityKit 非同期ローダーで事前ロード（NSLock キャッシュ）
+│   │                             preloadAssets(): ゲーム開始前に USDZ を RealityKit 非同期ローダーで事前ロード（NSLock キャッシュ）
+│   ├── ForestEnvironment.swift … 手続き的 3D 木エンティティを AR / プロジェクター両シーンに植林するユーティリティ（enum）
+│   │                             plantARTrees(in:origin:): worldOriginTransform 基準に AR ワールド空間へ 12 本の木を配置
+│   │                             plantProjectorTrees(in:): バグ平面（Z=0）の背後（Z<0）と側面に 16 本の木を配置
+│   │                             木はすべて RealityKit プリミティブ（generateBox / generateSphere）＋ PhysicallyBasedMaterial の手続き生成
+│   │                             シルエット 3 種: 0=丸型（単一大球）/ 1=円錐型（積み重ねボックス）/ 2=層状（3 球重ね）
+│   │                             タイマーなし・静的エンティティ（装飾のみ）
 │   ├── SlingshotNode.swift    … RealityKit Entity ラッパー。3D Y 字スリングショットフォーク + ゴム紐 + 網ポーチ
 │   │                             arView.pointOfView の子として追加することでカメラ空間に固定表示
 │   │                             updateDrag(offset:maxDrag:): ドラッグ量に応じてゴム紐・ポーチを変形
@@ -262,7 +303,7 @@ iOS Controller (×最大3台)               Projector Server
 ```
 ARView (3D バグ)
     └── Bug3DNode.entity (Entity)
-          ├── USDZ モデル優先（toy_biplane / gramophone / toy_drummer）
+          ├── USDZ モデル優先（gramophone / toy_drummer）※ butterfly は手続きジオメトリを使用
           │     ※ USDZ が見つからない場合は手続き的 PBR ジオメトリにフォールバック
           └── 各種アニメーション（羽ばたき・回転・ホバー等）＋二次ドリフト（水平スクエア軌道）
 
@@ -295,11 +336,11 @@ SKView (透過オーバーレイ) → ARBugScene
 
 Apple AR Quick Look ギャラリー（<https://developer.apple.com/jp/augmented-reality/quick-look/>）から取得したモデルを使用。
 
-| BugType | USDZ ファイル | スケール定数 |
-|---------|-------------|------------|
-| butterfly (Null) | `toy_biplane.usdz` | 0.005 |
-| beetle (Virus) | `gramophone.usdz` | 0.004 |
-| stag (Glitch) | `toy_drummer.usdz` | 0.004 |
+| BugType | USDZ ファイル | スケール定数 | 備考 |
+|---------|-------------|------------|------|
+| butterfly (Null) | ― | ― | **USDZ 非使用**（プロペラが青い円に見えるため手続きジオメトリを使用） |
+| beetle (Virus) | `gramophone.usdz` | 0.004 | |
+| stag (Glitch) | `toy_drummer.usdz` | 0.004 | |
 
 USDZ ファイルが存在しない場合は手続き的ジオメトリ（PBR マテリアル）で代替されるため、ファイルがなくてもゲームは動作します。
 

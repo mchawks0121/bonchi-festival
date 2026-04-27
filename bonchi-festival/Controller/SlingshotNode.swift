@@ -77,9 +77,11 @@ final class SlingshotNode {
         leftBandEntity = SlingshotNode.makeBandEntity()
         rightBandEntity = SlingshotNode.makeBandEntity()
 
-        // Pouch: neon glowing sphere visible only while dragging
+        // Pouch: small box marker visible only while dragging (sphere replaced to avoid circle appearance)
         let neonMat = SlingshotNode.makeNeonMat()
-        pouchEntity = ModelEntity(mesh: .generateSphere(radius: 0.012), materials: [neonMat])
+        pouchEntity = ModelEntity(mesh: .generateBox(size: SIMD3<Float>(0.018, 0.018, 0.018),
+                                                     cornerRadius: 0.003),
+                                  materials: [neonMat])
 
         forkRoot.position = SlingshotNode.forkCenter
         entity.addChild(forkRoot)
@@ -125,10 +127,11 @@ final class SlingshotNode {
         // Dark anodized-metal body: near-black, high metalness.
         let bodyMat = pbr(UIColor(red: 0.09, green: 0.09, blue: 0.11, alpha: 1),
                           roughness: 0.28, metalness: 0.85)
-        // Neon cyan glow caps on tine tips.
-        let tipMat = pbr(UIColor(red: 0.10, green: 1.00, blue: 0.82, alpha: 1),
+        // Yellow-green glow caps on tine tips (changed from cyan to avoid "blue circle"
+        // appearance when the spheres are visible in the AR camera view).
+        let tipMat = pbr(UIColor(red: 0.45, green: 1.00, blue: 0.20, alpha: 1),
                          roughness: 0.25, metalness: 0.10,
-                         emission: UIColor(red: 0.04, green: 0.48, blue: 0.36, alpha: 1))
+                         emission: UIColor(red: 0.18, green: 0.48, blue: 0.04, alpha: 1))
 
         // Stem: unit-height box entity, scaled and rotated to span stemBottom → branch
         forkRoot.addChild(
@@ -150,19 +153,13 @@ final class SlingshotNode {
                       to: SlingshotNode.rightTip,
                       radius: 0.007, material: bodyMat)
         )
-
-        // Neon sphere caps on each tine tip
-        for tip in [SlingshotNode.leftTip, SlingshotNode.rightTip] {
-            let dot = ModelEntity(mesh: .generateSphere(radius: 0.010), materials: [tipMat])
-            dot.position = tip
-            forkRoot.addChild(dot)
-        }
+        // NOTE: Sphere caps removed — no circle/sphere objects are displayed.
     }
 
     // MARK: - Private: rubber bands
 
     private func setupBands() {
-        // Slim neon cyan elastic band with soft emissive glow.
+        // Slim yellow-green elastic band with soft emissive glow (changed from cyan).
         forkRoot.addChild(leftBandEntity)
         forkRoot.addChild(rightBandEntity)
     }
@@ -178,13 +175,14 @@ final class SlingshotNode {
         return e
     }
 
-    /// Cyan neon band material shared by bands and pouch.
+    /// Yellow-green neon band material shared by bands and pouch.
+    /// Changed from cyan to avoid blue appearance in the AR camera view.
     private static func makeNeonMat() -> PhysicallyBasedMaterial {
         var mat = PhysicallyBasedMaterial()
-        mat.baseColor     = .init(tint: UIColor(red: 0.08, green: 0.92, blue: 0.70, alpha: 1))
+        mat.baseColor     = .init(tint: UIColor(red: 0.35, green: 0.92, blue: 0.10, alpha: 1))
         mat.roughness     = .init(floatLiteral: 0.50)
         mat.metallic      = .init(floatLiteral: 0.0)
-        mat.emissiveColor = .init(color: UIColor(red: 0.03, green: 0.38, blue: 0.26, alpha: 1))
+        mat.emissiveColor = .init(color: UIColor(red: 0.15, green: 0.38, blue: 0.03, alpha: 1))
         mat.emissiveIntensity = 0.4
         return mat
     }

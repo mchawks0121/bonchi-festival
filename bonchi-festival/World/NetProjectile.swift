@@ -3,8 +3,8 @@
 //  bonchi-festival
 //
 //  Projector World: net projectile node launched from iOS controller data.
-//  The net is drawn procedurally as a spider-web pattern (SKShapeNode) rather
-//  than an emoji, producing a richer, scalable look on the projector screen.
+//  The net is drawn procedurally as a spider-web pattern (SKShapeNode) using
+//  radial spokes only — no circle/ring shapes are rendered in any mode.
 //
 
 import SpriteKit
@@ -14,13 +14,6 @@ import SpriteKit
 /// An animated net mesh that flies across the scene, colliding with BugNodes.
 final class NetProjectile: SKNode {
 
-    /// Net / ring accent colors for each player slot (index 0–2).
-    static let playerColors: [SKColor] = [
-        SKColor(red: 0.0, green: 1.0, blue: 1.0, alpha: 1),   // Player 1: cyan
-        SKColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 1),  // Player 2: orange
-        SKColor(red: 1.0, green: 0.2,  blue: 0.8, alpha: 1),  // Player 3: magenta
-    ]
-
     /// Called when this net captures a bug; passes the captured BugNode.
     var onCapture: ((BugNode) -> Void)?
 
@@ -28,43 +21,24 @@ final class NetProjectile: SKNode {
     /// Read by `BugHunterScene.didBegin(contact:)` to attribute the capture.
     let playerIndex: Int
 
-    private let netShape: SKShapeNode   // drawn net mesh
-    private let ringNode: SKShapeNode   // outer accent ring
+    private let netShape: SKShapeNode   // drawn net mesh (spokes only, no rings)
 
     // MARK: Init
 
-    /// - Parameter playerIndex: 0-based slot index used to tint the net (wraps at 3).
+    /// - Parameter playerIndex: 0-based slot index (wraps at 3).
     init(playerIndex: Int = 0) {
         self.playerIndex = playerIndex
-        let color = NetProjectile.playerColors[playerIndex % NetProjectile.playerColors.count]
 
-        // ── Drawn net mesh ─────────────────────────────────────────────────────
-        // Create a spider-web pattern: radial spokes + concentric circles.
-        netShape = SKShapeNode(path: NetProjectile.netPath(outerRadius: 34,
-                                                            spokeCount: 8,
-                                                            ringCount:  3))
+        // ── Drawn net mesh (spokes only — no circle/ellipse shapes) ─────────
+        netShape = SKShapeNode(path: NetProjectile.netPath(outerRadius: 34, spokeCount: 8))
         netShape.strokeColor = SKColor(red: 0.30, green: 0.92, blue: 0.45, alpha: 0.95)
-        netShape.fillColor   = SKColor(red: 0.10, green: 0.55, blue: 0.20, alpha: 0.12)
+        netShape.fillColor   = .clear
         netShape.lineWidth   = 2.2
         netShape.lineCap     = .round
 
-        // ── Outer accent ring (player colour) ──────────────────────────────────
-        ringNode = SKShapeNode(circleOfRadius: 38)
-        ringNode.strokeColor = color.withAlphaComponent(0.80)
-        ringNode.fillColor   = color.withAlphaComponent(0.06)
-        ringNode.lineWidth   = 3.5
-
         super.init()
 
-        addChild(ringNode)
         addChild(netShape)
-
-        // Small filled dot at the centre so the player colour is always visible
-        let dot = SKShapeNode(circleOfRadius: 6)
-        dot.fillColor   = color
-        dot.strokeColor = .clear
-        dot.zPosition   = 1
-        addChild(dot)
 
         name = "net"
 
@@ -83,32 +57,17 @@ final class NetProjectile: SKNode {
 
     // MARK: Net path factory
 
-    /// Build a CGPath representing a spider-web net with `spokeCount` radial spokes
-    /// and `ringCount` concentric circles inside `outerRadius`.
+    /// Build a CGPath with `spokeCount` radial spokes only (no rings/ellipses).
     private static func netPath(outerRadius: CGFloat,
-                                 spokeCount: Int,
-                                 ringCount:  Int) -> CGPath {
+                                 spokeCount: Int) -> CGPath {
         let path = CGMutablePath()
 
-        // Outer ring
-        path.addEllipse(in: CGRect(x: -outerRadius, y: -outerRadius,
-                                   width:  outerRadius * 2,
-                                   height: outerRadius * 2))
-
-        // Radial spokes from centre to outer ring
+        // Radial spokes from centre to outer radius
         for i in 0..<spokeCount {
             let angle = CGFloat(i) * .pi * 2 / CGFloat(spokeCount)
             path.move(to: .zero)
             path.addLine(to: CGPoint(x: outerRadius * cos(angle),
                                      y: outerRadius * sin(angle)))
-        }
-
-        // Concentric inner rings
-        for r in 1...ringCount {
-            let radius = outerRadius * CGFloat(r) / CGFloat(ringCount + 1)
-            path.addEllipse(in: CGRect(x: -radius, y: -radius,
-                                       width:  radius * 2,
-                                       height: radius * 2))
         }
 
         return path
@@ -149,17 +108,6 @@ final class NetProjectile: SKNode {
             SKAction.scale(to: 1.3, duration: travelTime * 0.35),
             SKAction.scale(to: 1.0, duration: travelTime * 0.65)
         ])
-
-        // Ring starts small and bright, then expands dramatically as the net opens
-        ringNode.setScale(0.4)
-        ringNode.alpha = 0.90
-        ringNode.run(SKAction.group([
-            SKAction.scale(to: 3.2, duration: 0.5),
-            SKAction.sequence([
-                SKAction.fadeAlpha(to: 0.5, duration: 0.25),
-                SKAction.fadeOut(withDuration: 0.25)
-            ])
-        ]))
 
         // Multi-rotation spin: 0.75–2.5 full turns so the net clearly spins in flight
         let minRotations: CGFloat = 1.5          // minimum 0.75 full turns (1.5 × π)

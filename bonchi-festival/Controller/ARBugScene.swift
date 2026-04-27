@@ -348,9 +348,9 @@ final class ARBugScene: SKScene {
                 SKAction.run { [weak self] in self?.lockOnRing.setScale(0) }
             ]))
 
-            // Restore crosshair to cyan idle pulse
-            let cyan  = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 0.85)
-            crosshairRing.strokeColor = cyan
+            // Restore crosshair to yellow-green idle pulse (not blue/cyan)
+            let ringColor = SKColor(red: 0.85, green: 1.0, blue: 0.50, alpha: 0.85)
+            crosshairRing.strokeColor = ringColor
             let pulse = SKAction.sequence([
                 SKAction.scale(to: 1.07, duration: 0.85),
                 SKAction.scale(to: 1.00, duration: 0.85)
@@ -454,9 +454,9 @@ final class ARBugScene: SKScene {
         // ── 4. Space-restoration healing ripple ───────────────────────────────
         playHealRipple(at: bugCenter)
 
-        // ── 5. Brief cyan-white screen flash ──────────────────────────────────
+        // ── 5. Brief yellow-green screen flash (changed from cyan-white) ─────
         let flash = SKShapeNode(rect: CGRect(origin: .zero, size: size))
-        flash.fillColor   = SKColor(red: 0.3, green: 1.0, blue: 0.9, alpha: 0.32)
+        flash.fillColor   = SKColor(red: 0.5, green: 1.0, blue: 0.3, alpha: 0.22)
         flash.strokeColor = .clear
         flash.zPosition   = 71
         addChild(flash)
@@ -471,7 +471,7 @@ final class ARBugScene: SKScene {
         pop.fontName  = "HiraginoSans-W7"
         pop.fontSize  = pts == 5 ? 64 : 54
         pop.fontColor = pts == 5
-            ? SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 1)
+            ? SKColor(red: 1.0, green: 0.95, blue: 0.2, alpha: 1)
             : SKColor(red: 1,   green: 0.85, blue: 0,  alpha: 1)
         pop.position  = CGPoint(x: bugCenter.x, y: bugCenter.y + 30)
         pop.zPosition = 65
@@ -505,10 +505,10 @@ final class ARBugScene: SKScene {
 
     /// Enhanced net entanglement animation at the bug's 2-D screen position.
     ///
-    /// Three layers compose a "net wraps and cinches" feel:
+    /// Two layers compose a "net wraps and cinches" feel:
     /// - **Main net** (🕸️): flies from screen centre, billows open on impact, cinches tight.
     /// - **Four binding strands** (small 🕸️): snap outward like threads, then constrict back.
-    /// - **Constricting ring**: yellow circle that contracts around the bug.
+    /// No circle objects are rendered.
     private func playNetEntangle(at bugPos: CGPoint) {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
 
@@ -585,76 +585,19 @@ final class ARBugScene: SKScene {
                 SKAction.removeFromParent()
             ]))
         }
-
-        // ── Constricting ring ─────────────────────────────────────────────────
-        let ring = SKShapeNode(circleOfRadius: 54)
-        ring.strokeColor = SKColor(red: 1.0, green: 0.85, blue: 0.1, alpha: 0.9)
-        ring.fillColor   = SKColor(red: 1.0, green: 0.95, blue: 0.3, alpha: 0.08)
-        ring.lineWidth   = 2.5
-        ring.position    = bugPos
-        ring.zPosition   = 60
-        ring.alpha       = 0
-        addChild(ring)
-
-        ring.run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.20),
-            SKAction.group([
-                SKAction.fadeAlpha(to: 0.85, duration: 0.06),
-                SKAction.scale(to: 0.88, duration: 0.06)
-            ]),
-            // Cinch tight
-            SKAction.group([
-                SKAction.scale(to: 0.22, duration: 0.32),
-                SKAction.fadeAlpha(to: 0.35, duration: 0.32)
-            ]),
-            SKAction.wait(forDuration: 0.22),
-            SKAction.fadeOut(withDuration: 0.18),
-            SKAction.removeFromParent()
-        ]))
+        // NOTE: Constricting circle ring removed — no circle objects are displayed.
     }
 
-    /// Expanding cyan ripple that signals the space has been restored.
+    /// No-op: heal ripple removed — no circle objects are displayed.
     private func playHealRipple(at position: CGPoint) {
-        let healRing = SKShapeNode(circleOfRadius: 20)
-        healRing.strokeColor = SKColor(red: 0.4, green: 1.0, blue: 0.8, alpha: 0.9)
-        healRing.fillColor   = .clear
-        healRing.lineWidth   = 3
-        healRing.position    = position
-        healRing.zPosition   = 68
-        addChild(healRing)
-        healRing.run(SKAction.sequence([
-            SKAction.group([
-                SKAction.scale(to: 5.0, duration: 0.55),
-                SKAction.fadeOut(withDuration: 0.55)
-            ]),
-            SKAction.removeFromParent()
-        ]))
+        // Circle ripple removed per design requirement: no circle objects in any mode.
     }
 
     // MARK: - Private: throw / miss animations
 
     private func playNetThrowAnimation(toward flyTarget: CGPoint) {
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-
-        // Expanding ring that mimics the net mouth opening
-        let ring = SKShapeNode(circleOfRadius: 28)
-        ring.strokeColor = UIColor.white.withAlphaComponent(0.60)
-        ring.fillColor   = .clear
-        ring.lineWidth   = 2.5
-        ring.position    = center
-        ring.zPosition   = 52
-        ring.setScale(0.3)
-        ring.alpha = 0.85
-        addChild(ring)
-        ring.run(SKAction.sequence([
-            SKAction.group([
-                SKAction.scale(to: 3.8, duration: 0.45),
-                SKAction.fadeOut(withDuration: 0.45)
-            ]),
-            SKAction.removeFromParent()
-        ]))
-        // NOTE: The 3-D Net3DNode (SceneKit) is the primary net visual;
-        //       this ring provides supplementary 2D feedback from the launch point.
+        // Circle ring removed — no circle objects are displayed.
+        // The 3-D Net3DNode (RealityKit) is the primary net visual.
     }
 
     private func playMissAnimation(near center: CGPoint) {
@@ -684,7 +627,8 @@ final class ARBugScene: SKScene {
         let hitColor  = success
             ? SKColor(red: 0.2, green: 1.0, blue: 0.5, alpha: 1)
             : SKColor(red: 1.0, green: 0.3, blue: 0.3, alpha: 1)
-        let baseColor = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 0.85)
+        // Base color matches the setupCrosshair yellow-green (no blue)
+        let baseColor = SKColor(red: 0.85, green: 1.0, blue: 0.50, alpha: 0.85)
         crosshairRing.removeAction(forKey: "pulse")
         crosshairRing.run(
             SKAction.sequence([
@@ -700,38 +644,23 @@ final class ARBugScene: SKScene {
     // MARK: - Private: crosshair setup
 
     private func setupCrosshair() {
-        let cx   = size.width  / 2
-        let cy   = size.height / 2
-        let cyan = SKColor(red: 0.2, green: 1.0, blue: 0.8, alpha: 0.85)
+        let cx    = size.width  / 2
+        let cy    = size.height / 2
+        let aimColor = SKColor(red: 0.85, green: 1.0, blue: 0.50, alpha: 0.85)
 
-        // Lock-on ring (hidden until a bug enters catch radius)
-        lockOnRing = SKShapeNode(circleOfRadius: 58)
-        lockOnRing.strokeColor = SKColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 1)
-        lockOnRing.fillColor   = .clear
-        lockOnRing.lineWidth   = 3.5
-        lockOnRing.position    = CGPoint(x: cx, y: cy)
-        lockOnRing.zPosition   = 52
-        lockOnRing.alpha       = 0
+        // Invisible placeholder nodes — kept so existing lock-on / pulse code compiles
+        // without crashing via optional chaining. Alpha is always 0 so no circles render.
+        lockOnRing = SKShapeNode()
+        lockOnRing.alpha = 0
+        lockOnRing.position = CGPoint(x: cx, y: cy)
         addChild(lockOnRing)
 
-        // Outer crosshair ring (idle pulse)
-        crosshairRing = SKShapeNode(circleOfRadius: 54)
-        crosshairRing.strokeColor = cyan
-        crosshairRing.fillColor   = .clear
-        crosshairRing.lineWidth   = 2.5
-        crosshairRing.position    = CGPoint(x: cx, y: cy)
-        crosshairRing.zPosition   = 50
+        crosshairRing = SKShapeNode()
+        crosshairRing.alpha = 0
+        crosshairRing.position = CGPoint(x: cx, y: cy)
         addChild(crosshairRing)
 
-        // Centre dot
-        let dot = SKShapeNode(circleOfRadius: 5)
-        dot.fillColor   = cyan
-        dot.strokeColor = .clear
-        dot.position    = CGPoint(x: cx, y: cy)
-        dot.zPosition   = 51
-        addChild(dot)
-
-        // Four tick marks (N / S / E / W)
+        // Crosshair: four tick marks and a small square centre marker (no circle).
         let tickGap: CGFloat = 64
         let tickLen: CGFloat = 14
         let dirs: [(CGFloat, CGFloat)] = [(0, 1), (0, -1), (1, 0), (-1, 0)]
@@ -740,17 +669,19 @@ final class ARBugScene: SKScene {
             path.move(to: CGPoint(x: cx + ox * tickGap, y: cy + oy * tickGap))
             path.addLine(to: CGPoint(x: cx + ox * (tickGap + tickLen), y: cy + oy * (tickGap + tickLen)))
             let tick = SKShapeNode(path: path)
-            tick.strokeColor = cyan
+            tick.strokeColor = aimColor
             tick.lineWidth   = 2.5
             tick.zPosition   = 50
             addChild(tick)
         }
 
-        // Gentle idle pulse on the ring
-        let pulse = SKAction.sequence([
-            SKAction.scale(to: 1.07, duration: 0.85),
-            SKAction.scale(to: 1.00, duration: 0.85)
-        ])
-        crosshairRing.run(SKAction.repeatForever(pulse), withKey: "pulse")
+        // Small square centre marker (replaces circular dot)
+        let squareSize: CGFloat = 6
+        let square = SKShapeNode(rect: CGRect(x: cx - squareSize / 2, y: cy - squareSize / 2,
+                                              width: squareSize, height: squareSize))
+        square.fillColor   = aimColor
+        square.strokeColor = .clear
+        square.zPosition   = 51
+        addChild(square)
     }
 }

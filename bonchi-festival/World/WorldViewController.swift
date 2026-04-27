@@ -58,9 +58,9 @@ final class WorldViewController: UIViewController {
         arView = ARView(frame: .zero, cameraMode: .nonAR,
                         automaticallyConfigureSession: false)
         arView.translatesAutoresizingMaskIntoConstraints = false
-        // Dark green background colour matching the original SCNView background.
-        arView.environment.background = .color(UIColor(red: 0.05, green: 0.12,
-                                                       blue: 0.05, alpha: 1))
+        // Forest sky colour: deep blue-green suggesting a canopy opening (森の空).
+        arView.environment.background = .color(UIColor(red: 0.06, green: 0.18,
+                                                       blue: 0.10, alpha: 1))
         view.addSubview(arView)
 
         // ── SpriteKit layer (front, transparent) — HUD + net + proxy nodes ─
@@ -246,6 +246,9 @@ final class ProjectorBug3DCoordinator {
         self.bugScene = bugScene
         if arView.bounds.size.height > 0 { cachedViewSize = arView.bounds.size }
         setupCamera(in: arView)
+        // Plant static forest trees behind the bug plane to create the atmosphere
+        // of "bug hunting in a forest".  Called once per game session.
+        ForestEnvironment.plantProjectorTrees(in: arView)
         startAutonomousSpawning()
     }
 

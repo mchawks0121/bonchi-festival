@@ -54,6 +54,9 @@ struct ARGameView: UIViewRepresentable {
         // Enable environment-based lighting so PBR materials react to real-world light.
         arView.environment.lighting.intensityExponent = 1.0
         arView.renderOptions = []  // no special render-option overrides needed
+        // Disable all debug overlays (feature points, anchor geometry, etc.) to
+        // prevent any debug visualizations from appearing in the AR view.
+        arView.debugOptions = []
         container.addSubview(arView)
         context.coordinator.arView = arView
         arView.session.delegate = context.coordinator
@@ -208,6 +211,13 @@ extension ARGameView {
             // SceneEvents.Update replaces ARSCNViewDelegate.renderer(_:updateAtTime:).
             updateSubscription = arView?.scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
                 self?.handleSceneUpdate()
+            }
+
+            // Plant forest tree entities around the spawn origin to create
+            // the "bug hunting in a forest" atmosphere (即時性).
+            if let view = arView {
+                ForestEnvironment.plantARTrees(in: view,
+                                              origin: gameManager?.worldOriginTransform)
             }
 
             scheduleNextSpawn(delay: 0.9)
