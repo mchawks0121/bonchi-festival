@@ -1,0 +1,590 @@
+# AR バグハンター — サーバー・クライアント連携 実装プロンプト v3
+
+> **用途**: このドキュメントを GitHub Copilot に渡すだけで、**スタンドアロンモード（iOS 単体）** と **プロジェクター（大画面サーバー）＋ iOS クライアントの MultipeerConnectivity 完全同期連携** の両方を任意のプロジェクトに実装できるようにする汎用テンプレートです。
+>
+> **v3 の重点**: このプロンプトは「作成元プロジェクト」と「流し込み先プロジェクト」の環境が異なることを前提として設計されています。ファイル名・クラス名・Swift バージョン・iOS ターゲット・フレームワーク構成がすべて異なる環境でも、Copilot が既存コードを読んで順応してから実装できるよう、**環境サーベイフェーズを必須の第一ステップ**として定義しています。
+
+---
+
+## 0. 環境サーベイ（実装前の必須ステップ）
+
+> **Copilot への絶対指示**: §1 以降の実装に着手する前に、必ずこのセクションの全チェックリストを完了すること。サーベイ結果が不明な項目は推測で埋めず、その場でユーザーに確認する。
+
+### 0-1. プロジェクト構造の読み取り
+
+以下を実行して構造を把握する。
+
+```
+# ディレクトリ構造の概観（深さ 3 程度）
+find . -maxdepth 3 -not -path '*/\.*' -not -path '*/build/*' -not -path '*/.git/*'
+```
+
+確認事項:
+- ターゲットが何個あるか（iOS アプリ / macOS アプリ / フレームワーク / テスト）
+- サーバー側とクライアント側のターゲット分割方法（別ターゲット / 同一ターゲット内のフォルダ分け / Swift Package）
+- Shared コードの置き場（`Shared/` / `Common/` / Swift Package / 同一ターゲット内）
+- `*.swift` ファイル数と主要ファイルの命名パターン
+
+### 0-2. Swift・iOS バージョンの確認
+
+```
+# .xcodeproj / .xcworkspace が見つかったら
+grep -r "SWIFT_VERSION\|IPHONEOS_DEPLOYMENT_TARGET\|MACOSX_DEPLOYMENT_TARGET" *.xcodeproj/project.pbxproj | head -20
+```
+
+確認事項と対応方針:
+
+| 確認項目 | 対応方針 |
+|---|---|
+| Swift バージョン | 5.5 未満なら `async/await` 不使用。`DispatchQueue` / completion handler で実装する |
+| iOS Deployment Target | 14 未満なら `ARView` が使えない可能性あり。既存の AR セッション管理クラスに倣う |
+| iOS 16+ | `ARSession` の `async` API が使用可能。ただし既存コードが非 async なら合わせる |
+| macOS ターゲット有無 | macOS 向けサーバー側の場合、`UIKit` を使わず `AppKit` に準拠する |
+
+### 0-3. 既存の命名規約の読み取り
+
+以下の観点でプロジェクト内の既存ファイルを 3〜5 個読み、命名規約を把握する。
+
+- クラス名: `Manager` / `Controller` / `Coordinator` / `Service` / `Handler` のどれを使っているか
+- プロトコル名: `Delegate` suffix / `Protocol` suffix / なし
+- プロパティ名: camelCase の慣習（略語の扱い: `id` vs `ID`、`url` vs `URL`）
+- ファイル分割粒度: 1 クラス 1 ファイルか / 関連型をまとめているか
+- アクセス修飾子: `private` / `fileprivate` / `internal` の使い分け
+
+> **規約の適用**: 以降の実装では、このプロジェクト固有の規約に従って命名する。このドキュメント内の型名・メソッド名（`BugType`、`GamePhase`、`spawnAndSync` 等）はあくまで **意図を示す仮名** であり、プロジェクトの規約に合わせてリネームしてよい。
+
+### 0-4. 既存の通信・非同期パターンの確認
+
+以下のパターンがすでに使われているか確認し、**新規コードを既存パターンに合わせる**。
+
+```
+grep -rn "async\|await\|Combine\|Publisher\|PassthroughSubject\|NotificationCenter\|delegate\|closure\|callback\|@Published" \
+  --include="*.swift" . | grep -v "\.git" | head -40
+```
+
+| 検出パターン | 採用方針 |
+|---|---|
+| `async/await` が多用されている | 送受信・接続コールバックも `async` で実装する |
+| `Combine` が使われている | 状態変化は `@Published` / `PassthroughSubject` で流す |
+| `delegate` パターンのみ | 通信コールバックも `protocol` + `delegate` で実装する |
+| `NotificationCenter` が多用されている | メッセージ受信通知を `NotificationCenter` で配信することを検討する |
+| 混在している | **最も近い責務の既存クラス**が使っているパターンに合わせる |
+
+### 0-5. MultipeerConnectivity の既存実装確認
+
+```
+grep -rn "MCSession\|MCPeerID\|MCNearbyService\|MultipeerConnectivity" --include="*.swift" . | grep -v "\.git"
+```
+
+- **既存の `MCSession` ラッパークラスがある場合**: そのクラスを拡張して実装する。新しいラッパーを作らない。
+- **存在しない場合**: §13 の責務分割指針に従い新規作成する。
+- 既存の `serviceType` 文字列（`"xxx-game"` 等）が見つかった場合: **その文字列をそのまま流用する**（サーバー・クライアント間で一致必須）。
+
+### 0-6. ARKit / RealityKit の既存実装確認
+
+```
+grep -rn "ARView\|ARSession\|ARAnchor\|AnchorEntity\|ARWorldTrackingConfiguration\|cameraMode" \
+  --include="*.swift" . | grep -v "\.git" | head -30
+```
+
+- `ARView(cameraMode: .nonAR)` の記述があればサーバー側表示として流用できる
+- 独自の AR セッション管理クラス（Coordinator 等）がある場合: **そのクラスにスポーン / 削除ロジックを追加する形で実装する**。新規クラスを作ってスポーンを横取りしない
+- `RealityKit` ではなく `SceneKit` が使われている場合: `AnchorEntity` の代わりに `SCNNode` に対応する方式で実装する（§3-4 の表示モードを読み替える）
+
+### 0-7. サーベイ結果の宣言（実装開始前に必ず出力する）
+
+上記 0-1〜0-6 を完了したら、以下のフォーマットで結果を出力してからコード生成を開始する。
+
+```
+【環境サーベイ結果】
+- Swift バージョン        : X.X
+- iOS Deployment Target  : XX.X
+- async/await 使用        : あり / なし
+- 非同期パターン           : Combine / delegate / closure / NotificationCenter / 混在（主要: ○○）
+- 既存 MCSession ラッパー  : あり（ファイル名: ○○） / なし
+- 既存 ARView ラッパー     : あり（ファイル名: ○○） / なし
+- 命名規約（クラスサフィックス）: Manager / Controller / Coordinator / Service / その他（○○）
+- Shared コードの置き場    : ○○
+- サーバー/クライアント分割 : 別ターゲット（○○ / ○○） / 同一ターゲット内（フォルダ: ○○）
+- serviceType 文字列       : "○○" （既存） / 新規作成（値: "<your-app>-game"）
+- 特記事項                 : ○○
+```
+
+---
+
+## 1. 目的（Why）
+
+本仕様の目的は以下を実現することです。
+
+- **スタンドアロンモード**: iOS クライアント 1 台だけでエンティティ生成・捕獲を完結させる
+- **プロジェクター連携モード**: プロジェクター側を唯一の権限サーバーとして扱い、iOS クライアントとの状態同期を一貫したフローで実現する
+- スポーンや削除の最終決定権をサーバーに集約する（連携時）
+- クライアントごとの差分や二重処理を防ぐ
+- 途中参加・再接続・切断復帰を含めて、接続中クライアントの状態を整合させる
+- 通信仕様と責務分離を明確にし、他プロジェクトでも流用しやすい形にする
+
+---
+
+## 2. 機能概要（What）
+
+### 2-1. 動作モデル（モード別）
+
+| モード | エンティティ生成権限 | 通信 | 表示 |
+|---|---|---|---|
+| スタンドアロン | iOS クライアント自身が自律生成 | なし（Multipeer セッション未起動） | AR 表示 |
+| クライアント（連携） | プロジェクター（サーバー）のみが生成・ID 発行 | MultipeerConnectivity | AR 表示 |
+| サーバー（プロジェクター） | プロジェクター（サーバー）のみが生成・ID 発行 | MultipeerConnectivity | 平面表示（非 AR モード） |
+
+- **スタンドアロンモード**: iOS デバイスが唯一の生成権限を持つ。スポーンはローカルでのみ行われ、ネットワーク送受信は一切発生しない。
+- **プロジェクター連携モード**: プロジェクター側（サーバー）が唯一の権限を持つ。エンティティの生成、安定 ID の発行、削除判定、全体同期はサーバーだけが行う。クライアントはサーバーから受け取ったイベントを AR シーンに反映するだけで、自律的に生成しない。
+
+### 2-2. 通信フロー（クライアント ↔ サーバー）
+
+> **重要**: 削除フローは要求と確定を別メッセージ型で表す。同一メッセージ型を双方向で使い回してはならない（受信側判定ロジックの複雑化・誤処理を防ぐため）。
+
+- スポーン通知: Server → All Clients (`bugSpawned`)
+- 削除要求: Client → Server (`bugRemoveRequest`)
+- 削除確定通知: Server → All Clients (`bugRemoveConfirm`)
+- 得点通知: Server → Target Client (`bugCaptured`)
+- ゲーム状態同期: Server → All Clients (`gameState`)
+- 操作要求（発射/開始/リセット）: Client → Server (`launch` / `startGame` / `resetGame`)
+
+### 2-3. 非対象
+
+この文書では以下を扱わない。
+
+- AR 空間への配置方法（ARKit アンカー計算の詳細）
+- RealityKit / SceneKit / SpriteKit の描画詳細（マテリアル、アニメーション等）
+- UI レイアウトやオーバーレイ表示
+- ゲーム演出、移動アニメーション、スコア演出
+
+---
+
+## 3. 実装方針（How）
+
+### 3-1. 接続方式（連携モードのみ）
+
+- サーバー（プロジェクター）は `MCNearbyServiceAdvertiser` で広告し、`MCNearbyServiceBrowser` でも探索する
+- クライアントは `MCNearbyServiceBrowser` でサーバーを発見したら即座に招待する
+- サーバーは招待受理時に接続上限を確認し、空きがある場合のみ接続を許可する
+- `MCSession` は暗号化必須（`.required`）の設定を使用する
+- スタンドアロンモードでは Multipeer セッションを起動しない
+
+### 3-2. 責務分離
+
+- 通信層はメッセージの送受信、接続管理、再同期要求の処理だけを担当する
+- ゲーム層は受信イベントを購読し、ローカル状態へ反映する
+- 通信層は描画 API や UI API に依存しない
+- スタンドアロンモードの生成ロジックは AR コーディネーター（AR セッション管理クラス）に閉じ込め、通信層を一切経由しない
+
+### 3-3. 整合性維持（連携モード）
+
+- サーバーはエンティティごとに `UUID().uuidString` を発行する
+- クライアントは受信した安定 ID を削除まで保持する
+- 途中参加時はサーバーが生存中エンティティ一覧を再送する
+- 同一 ID の重複追加はクライアント側で無視する
+
+### 3-4. 表示モード
+
+> **環境差異への対応**: プロジェクトが RealityKit ではなく SceneKit を使っている場合、`AnchorEntity` → `SCNNode`、`ARAnchor` ベースのアタッチ → `SCNNode` 追加に読み替える。フレームワークの選択は既存コードに従い、このドキュメントは変更しない。
+
+- **プロジェクター側（サーバー）**: `ARView(cameraMode: .nonAR)` + `SKView` による平面 2D 表示。ARKit トラッキングは使用しない。固定カメラ（`PerspectiveCameraComponent`）で 3D エンティティを描画する。
+- **iOS クライアント側（スタンドアロン / 連携）**: `ARView`（ARKit + RealityKit）による AR 表示。ARKit ワールドトラッキング + `ARAnchor` でエンティティを空間に固定する。
+
+---
+
+## 4. デバイスロール
+
+### 4-1. プロジェクター（サーバー）
+
+- **表示**: `ARView(cameraMode: .nonAR)` + 透明 `SKView` オーバーレイによる平面 2D 表示。ARKit トラッキング不使用。
+- MultipeerConnectivity セッションの主導権を持つ
+- サービス識別子: §0-5 で既存の `serviceType` 文字列が見つかった場合はそれを使う。なければプロジェクト固有の文字列を新規定義する（例: `"<your-app>-game"`）
+- 最大同時接続数は 3 クライアントとする（変更する場合は定数化し、サーバー・クライアント双方から参照できる Shared 定義に置く）
+- 接続ごとにプレイヤースロットを 0, 1, 2 の順で割り当てる
+- 接続直後に生存エンティティ一覧を新規クライアントへ送信して初期同期を行う
+- サーバー側の生成コーディネーターがエンティティを自律スポーンし、スポーン通知コールバック経由で Multipeer ブロードキャストを呼び出す
+- クライアントからの削除要求（`bugRemoveRequest`）を受信したら妥当性を確認し、削除確定後に全クライアントへ `bugRemoveConfirm` を送信する
+
+### 4-2. iOS クライアント（連携モード）
+
+- **表示**: ARKit ワールドトラッキング + RealityKit（`ARView`）による AR 表示。エンティティは `ARAnchor` ベースの `AnchorEntity` に紐付けて空間に固定する。
+- サーバーへ接続し、受信したスポーン通知をローカル AR シーンに反映する
+- エンティティ捕獲時はサーバーへ削除要求（`bugRemoveRequest`）を送信する。削除確定は `bugRemoveConfirm` 受信後にのみ行う
+- 発射（`launch`）、開始（`startGame`）、リセット（`resetGame`）の入力イベントをサーバーへ送信する
+- サーバー未確定のローカル状態を権威状態として扱わない
+- 重複スポーンや未知 ID の削除通知を受けてもクラッシュしない
+
+### 4-3. iOS スタンドアロン
+
+- **表示**: iOS クライアントと同様の AR 表示（ARKit + RealityKit）。
+- Multipeer セッションは起動しない
+- AR コーディネーターが `ARKit ARAnchor` ベースでエンティティを自律スポーンする
+- 捕獲はすべてローカルで完結する。削除通知メソッドは呼ばれるが、接続ピアがないため送信は no-op になる
+- スコア・タイマーはすべて iOS 側で管理する
+- スコア反映経路: `ARコーディネーター捕獲コールバック` → `シーンデリゲート` → `ゲームマネージャー`（この経路はスタンドアロン専用。連携モードでは `bugCaptured` 受信 → ゲームマネージャーが別経路で処理する）
+
+---
+
+## 5. 接続管理仕様
+
+### 5-1. セッション確立
+
+- クライアントはサーバー発見後に `invitePeer(_:to:withContext:timeout:)` を呼ぶ
+- サーバーは接続数が 3 未満の場合のみ招待を承諾する
+- 接続確立時に空きスロットの最小値を割り当てる
+- 切断時は割り当て済みスロットを解放する
+- 再接続時はその時点の空きスロットを再割り当てする
+
+### 5-2. スロット管理
+
+- サーバーはピア → スロット番号の対応を `[MCPeerID: Int]` 形式のマップで管理する
+- サーバーは使用中スロット集合を `Set<Int>` 形式で管理する
+- スロット番号はクライアント識別と個別通知に使用する
+- クライアント数が上限を超える接続要求は拒否する
+
+### 5-3. 再同期
+
+- サーバーは `MCSessionState.connected` 直後に現在の生存エンティティ一覧を対象クライアントへ送信する
+- 再同期は通常のスポーン通知メッセージを個別送信する方式で行う
+- クライアントは通常受信と同一経路で処理する
+
+---
+
+## 6. メッセージプロトコル
+
+### 6-1. エンベロープ
+
+全メッセージは JSON で送受信し、共通エンベロープを持つ。
+
+```json
+{
+    "type": "<MessageType>",
+    "launchPayload": null,
+    "gameStatePayload": null,
+    "bugCapturedPayload": null,
+    "bugSpawnedPayload": null,
+    "bugRemoveRequestPayload": null,
+    "bugRemoveConfirmPayload": null
+}
+```
+
+- `type` でメッセージ種別を表す
+- 使用しないペイロードは `null` にする
+- デコード失敗メッセージは破棄する
+- 未知の `type` は破棄する
+
+### 6-2. メッセージ種別
+
+> **削除フロー注意**: `bugRemoveRequest`（Client→Server：削除要求）と `bugRemoveConfirm`（Server→AllClients：削除確定）は必ず別の型として定義する。同一 `type` 文字列を双方向で使い回すと、受信側の処理分岐が複雑になり誤処理の原因になる。
+
+| MessageType 文字列 | 方向 | ペイロード | 用途 |
+|---|---|---|---|
+| `startGame` | Client → Server | なし | ゲーム開始要求 |
+| `resetGame` | Client → Server | なし | ゲームリセット要求 |
+| `launch` | Client → Server | `LaunchPayload` | 発射イベント送信 |
+| `bugSpawned` | Server → All Clients | `BugSpawnedPayload` | スポーン通知 |
+| `bugRemoveRequest` | Client → Server | `BugRemoveRequestPayload` | 削除要求（クライアント起点） |
+| `bugRemoveConfirm` | Server → All Clients | `BugRemoveConfirmPayload` | 削除確定通知（サーバー権威） |
+| `bugCaptured` | Server → Target Client | `BugCapturedPayload` | 個別加点通知 |
+| `gameState` | Server → All Clients | `GameStatePayload` | 全体状態同期 |
+
+### 6-3. ペイロード定義
+
+#### LaunchPayload
+
+```text
+angle     : Float
+power     : Float
+timestamp : Double
+```
+
+#### BugSpawnedPayload
+
+```text
+id          : String   // UUID文字列。サーバーが発行し、削除まで不変
+bugType     : BugType  // エンティティ種別（列挙型。詳細は §6-4 参照）
+normalizedX : Float    // プロジェクター表示領域の横軸比率（0.0 = 左端, 1.0 = 右端）
+normalizedY : Float    // プロジェクター表示領域の縦軸比率（0.0 = 上端, 1.0 = 下端）
+// ※ クライアント側はこの正規化座標を ARKit ワールド座標へ変換する責務を持つ
+// ※ 変換方法（レイキャスト等）はクライアント実装に委ねるが、座標系の解釈はこの定義に従う
+```
+
+#### BugRemoveRequestPayload
+
+```text
+id : String   // 削除対象のサーバー発行 UUID
+```
+
+#### BugRemoveConfirmPayload
+
+```text
+id : String   // 削除確定したサーバー発行 UUID
+```
+
+#### BugCapturedPayload
+
+```text
+bugType     : BugType
+playerIndex : Int
+```
+
+#### GameStatePayload
+
+```text
+state         : GamePhase   // 列挙型（§6-4 参照）。String 生値ではなく列挙型で定義すること
+score         : Int
+timeRemaining : Double
+```
+
+### 6-4. 共有列挙型定義
+
+> **重要**: `String` のまま定義すると受信側の `switch` で網羅性を保証できない。以下の列挙型はサーバー・クライアント双方が参照できる共有ファイル（§0-1 で確認した Shared コード置き場）に定義する。型名はプロジェクトの命名規約に合わせてリネームしてよいが、`rawValue` の文字列は変えない（サーバー・クライアント間の JSON 互換性を保つため）。
+
+```swift
+// エンティティ種別
+// ⚠️ プロジェクトのエンティティ名に合わせてケースをリネームしてよい。
+// rawValue（JSON 上の文字列）はサーバー・クライアントで必ず一致させる。
+enum BugType: String, Codable, CaseIterable {
+    case beetle
+    case moth
+    case spider
+    // 追加時はここにケースを足す。switch の網羅性チェックにより対応漏れがコンパイルエラーで発覚する
+}
+
+// ゲームフェーズ（GameStatePayload.state に使用）
+enum GamePhase: String, Codable, CaseIterable {
+    case waiting
+    case playing
+    case ended
+}
+
+// メッセージ種別（§6-2 の MessageType 文字列に対応）
+enum MessageType: String, Codable, CaseIterable {
+    case startGame
+    case resetGame
+    case launch
+    case bugSpawned
+    case bugRemoveRequest
+    case bugRemoveConfirm
+    case bugCaptured
+    case gameState
+}
+```
+
+---
+
+## 7. 同期ルール
+
+### 7-1. スポーン同期（連携モード）
+
+1. サーバー側の生成コーディネーターが新しいエンティティ ID（`UUID().uuidString`）を発行する
+2. サーバーが内部の生存エンティティ管理マップへ登録する
+3. サーバーが `bugSpawned` を全クライアントへブロードキャストする
+4. クライアントは未登録 ID のみ AR 空間に配置する
+
+### 7-1b. スポーン（スタンドアロンモード）
+
+1. AR コーディネーターがローカルでエンティティ種別をランダム決定する
+2. ARKit `ARAnchor` を世界座標に追加する（`arView.session.add(anchor:)`）
+3. `session(_:didAdd:)` デリゲートで 3D エンティティと SpriteKit プロキシノードを生成する
+4. ゲームマネージャーのスポーン通知メソッドは呼ばれるが、接続ピアがないため no-op となる
+
+### 7-2. 削除同期（連携モード）
+
+> 削除フローは必ず「要求 → サーバー確定 → 全体通知」の順を守る。クライアントは `bugRemoveRequest` 送信後、`bugRemoveConfirm` を受信するまでローカルからエンティティを削除しない。
+
+1. クライアントがエンティティを捕獲し、サーバー割り当ての安定 ID を `bugRemoveRequest` として送信する
+2. サーバーがその ID の生存を確認する
+3. サーバーが内部状態から削除する
+4. サーバーが `bugRemoveConfirm` を全クライアントへブロードキャストする
+5. 全クライアントは対象 ID をローカル AR シーンから削除する
+
+### 7-3. 遅延参加
+
+1. クライアントが接続完了する（`MCSessionState.connected`）
+2. サーバーが生存エンティティ取得コールバックで現在生存中の全 ID を列挙する
+3. 各 ID について `bugSpawned` を当該クライアントへ個別送信する
+4. クライアントはサーバー ID → ローカル識別子マップで重複を検出し、既存 ID を重複追加しない
+
+### 7-4. 同時表示上限
+
+- サーバーとクライアントは同じ上限値を共有する
+- 推奨上限は 4 体（Shared 定義に定数として置き、サーバー・クライアント双方から参照する）
+- サーバーは上限到達中に新規スポーンを確定しない
+- クライアントは上限超過のスポーン通知を受信しても安全に破棄する
+
+### 7-5. スタンドアロン削除フロー
+
+1. 発射物がエンティティに命中し、捕獲コールバックが呼ばれる
+2. AR コーディネーターの捕獲処理メソッドが `ARAnchor` をセッションから除去する
+3. スコアは `ARコーディネーター捕獲コールバック` → `シーンデリゲート` → `ゲームマネージャー` の経路で反映される（**この経路はスタンドアロン専用**。連携モードでは `bugCaptured` 受信がスコア更新起点となり、この経路は使用しない）
+4. 削除通知メソッドは呼ばれるが、接続ピアがないため no-op となる
+
+### As-Is: 初回スポーン要件（現行実装の明文化）
+
+> この As-Is セクションは「現在このリポジトリで動いている挙動」の説明。次の To-Be セクションは「他プロジェクトで不具合再発を防ぐための採用必須ルール」。
+
+- サーバーは `attach(...)` 呼び出し直後に自律スポーンループを開始する
+- 現行実装の初回スポーンは「即時」ではなく、スポーン開始メソッド内の遅延スケジュール（1.5 秒後）で発生する
+- クライアント接続時は `MCSessionState.connected` 直後に生存バグ一覧を再送するが、その時点で 0 体なら再送は発生しない
+
+### To-Be: 厳格運用ルール（他プロジェクトへ適用する必須指示）
+
+1. サーバーはスポーンループ開始直後に初回バグを**即時スポーン**する（初回のみ遅延禁止）
+2. クライアント接続直後に生存バグ一覧が 0 件なら、1 体を**即時スポーンしてから**同期送信する
+3. `sendCurrentBugs(to:)` 呼び出し前に「生存バグが最低 1 体存在する状態」を保証する
+4. 即時スポーンはサーバー権威で行い、クライアント側で補填スポーンしない
+5. 即時スポーンに失敗した場合の再試行は**メインスレッド上で** `DispatchQueue.main.asyncAfter` を使い、0.2 秒間隔・最大 10 回実施する。`syncCompleted: Bool` と `retryCount: Int` をインスタンス変数として持ち、`syncCompleted == false` の間は同期送信を呼ばない
+
+    > **Swift バージョン差異**: Swift 5.5 以上で `async/await` を採用しているプロジェクトでは、`DispatchQueue.main.asyncAfter` の代わりに `Task { try? await Task.sleep(nanoseconds: 200_000_000) }` を使ってよい。ただし §0-4 で確認した既存パターンを優先する。
+
+    ```swift
+    // 実装イメージ（命名はプロジェクト規約に合わせてリネームすること）
+    private var syncCompleted = false
+    private var retryCount = 0
+    private let maxRetry = 10
+
+    private func spawnAndSync(to peer: MCPeerID) {
+        guard retryCount < maxRetry else {
+            // os_log が使えない場合は print や Logger に差し替える
+            os_log(.fault, "即時スポーン失敗: 最大再試行超過。対象ピアを切断します")
+            session.disconnect()
+            retryCount = 0
+            return
+        }
+        let success = attemptImmediateSpawn()
+        if success {
+            syncCompleted = true
+            retryCount = 0
+            sendCurrentBugs(to: peer)
+        } else {
+            retryCount += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.spawnAndSync(to: peer)
+            }
+        }
+    }
+    ```
+
+6. 10 回失敗した場合はログを残し、対象クライアントを切断して再接続時に再同期フローをやり直す
+
+---
+
+## 8. サーバー側状態管理（プロジェクター）
+
+### 8-1. 必須管理情報
+
+- 接続中ピア一覧（`MCSession.connectedPeers`）
+- ピア → スロット番号マップ（`[MCPeerID: Int]` 形式）
+- 使用中スロット集合（`Set<Int>` 形式）
+- 現在生存中のエンティティ管理マップ（ID → スポーン情報）
+- エンティティ ID とスポーン情報（正規化座標・種別）の対応
+
+### 8-2. 要件
+
+- 生存中一覧は遅延参加同期用コールバックにそのまま利用できる形で保持する
+- 削除確定（`bugRemoveConfirm` 送信完了）前に一覧から消さない
+- 接続イベントとゲームイベントの更新順序が競合しないよう、すべてメインスレッドで処理する
+- 共有マップへのアクセスは `NSLock` またはメインスレッド集約で排他制御する
+
+---
+
+## 9. クライアント側状態管理
+
+### 9-1. 必須管理情報（連携モード）
+
+- サーバー接続状態フラグ
+- サーバー発行 ID → ローカル識別子（`ARAnchor` の UUID 等）マップ
+- ローカル識別子 → サーバー発行 ID 逆引きマップ
+- ローカル識別子 → 3D エンティティ / プロキシノードのマップ
+
+### 9-2. 必須管理情報（スタンドアロンモード）
+
+- ローカル識別子（`ARAnchor` UUID）→ エンティティ種別マップ
+- ローカル識別子 → 3D エンティティ / プロキシノードのマップ
+- サーバー ID マップ群は不使用のまま（空）
+
+### 9-3. 要件
+
+- 同一 ID のスポーン通知を重複適用しない（サーバー ID → ローカル識別子マップで存在確認）
+- 未知 ID の削除通知（`bugRemoveConfirm`）を受けても無視する（マップに存在しない場合は早期リターン）
+- エンティティのローカル削除は `bugRemoveConfirm` 受信後のみ行う（`bugRemoveRequest` 送信直後に削除しない）
+- セッション切断時は接続依存状態を安全に破棄または再接続待ちに戻す
+- 通信コールバックから UI を直接触る場合はメインスレッドへ移譲する（`DispatchQueue.main.async`）
+- RealityKit レンダースレッドから UIKit に直接アクセスしない（キャッシュ変数経由でアクセスする）
+
+---
+
+## 10. エラーハンドリング要件
+
+- JSON エンコード失敗時はログを残して送信を中止する
+- 接続先が 0 件なら送信をスキップする
+- デコード失敗時はメッセージを破棄する
+- 未知 ID の削除要求（`bugRemoveRequest`）または削除確定（`bugRemoveConfirm`）はサイレントスキップする
+- 再同期用コールバックやデータソースが未設定なら空振りで終了する
+- 切断済みピアへの個別送信失敗はクラッシュ原因にしない
+- スタンドアロンモードで `bugRemoveRequest` / `bugRemoveConfirm` 送受信メソッドが呼ばれた場合は、接続ピアなしとして即 `return` する（例外・クラッシュなし）
+
+---
+
+## 11. コーディング規約
+
+- サーバー・クライアント連携ロジックのみを対象に変更する（**スタンドアロンの生成ロジックは変更しない**）
+- 描画ロジックと通信ロジックを同一責務に混在させない
+- `switch` は網羅的に書き、安易な `default` を使わない（`GamePhase` / `MessageType` / `BugType` の各列挙型すべて）
+- 新しい定数は型の内部に閉じ込め、マジックナンバーを避ける
+- 共有状態はスレッドセーフに扱う（`NSLock` / `DispatchQueue.main` で保護）
+- メッセージ型の `rawValue` 文字列、サービス識別子、接続上限はサーバーとクライアントで必ず一致させる
+- スタンドアロンモードのコードは通信層を経由させない
+- `GameStatePayload.state` には `String` を使わず `GamePhase` 列挙型を使う。`BugType` も同様（§6-4 参照）
+- **既存コードのスタイルを最優先する**: インデント・改行位置・コメントスタイルは既存ファイルに合わせる
+
+---
+
+## 12. Copilot への実装指示
+
+### 実装順序（必ず守ること）
+
+```
+Step 1: §0 の環境サーベイを完了し、結果を宣言する
+Step 2: 共有型定義（MessageType / Payload 群 / 列挙型）を Shared 置き場に追加する
+Step 3: 既存 MCSession ラッパーを拡張（なければ新規作成）する
+Step 4: サーバー側の接続管理・スポーン通知・削除確定処理を実装する
+Step 5: クライアント側の受信処理・AR 反映・削除要求送信を実装する
+Step 6: スタンドアロンモードに影響がないことを確認する
+```
+
+### 禁止事項
+
+- サーバー・クライアント連携以外（AR 表示、描画、UI、演出、ゲームバランス）に触れない
+- スタンドアロンの生成ロジックを変更しない
+- 通信責務・エンティティ生成責務に直接関係しない既存コードを変更しない
+- `bugRemoved` という名前の型・メソッド・変数を新規作成しない（`bugRemoveRequest` / `bugRemoveConfirm` に分離された名前を使う）
+- §0 のサーベイを省略して実装を開始しない
+
+---
+
+## 13. 実装ファイルに求められる責務
+
+> **ファイル名・クラス名**: §0-3 で把握した命名規約に従ってください。以下の「責務」列は変えず、「主なコンテンツ」列に記載された型名・メソッド名はプロジェクト規約に合わせてリネームしてください。
+
+| 責務 | 配置先の指針 | 主なコンテンツ |
+|---|---|---|
+| メッセージ型定義 | §0-1 で確認した Shared 置き場 | `MessageType`、`GameMessage` エンベロープ、各ペイロード構造体、`BugType`、`GamePhase` |
+| クライアント側 Multipeer ラッパー | iOS Controller 層（既存ラッパーがあればそこへ追記） | `MCSession` / `MCNearbyServiceAdvertiser` / `MCNearbyServiceBrowser` の管理、送受信、デリゲート転送 |
+| クライアント側ゲーム状態管理 | iOS Controller 層 | ゲームモード切替、スコア・タイマー管理、`bugRemoveRequest` 送信・`bugRemoveConfirm` 受信処理 |
+| AR コーディネーター | iOS Controller 層（既存 AR 管理クラスへ追記） | AR セッション管理、アンカー追加・削除、スタンドアロンのスポーンタイマー、サーバー sync コールバック受信、捕獲処理 |
+| サーバー側 Multipeer ラッパー | Projector / World 層（既存ラッパーがあればそこへ追記） | スロット管理、接続上限チェック、ブロードキャスト / 個別送信、遅延参加再同期、即時スポーン再試行ロジック |
+| プロジェクター UI ルート | Projector / World 層 | `ARView(nonAR)` + `SKView` のレイアウト、生成コーディネーターの接続、デリゲート受信 |
+| サーバー側生成コーディネーター | Projector / World 層 | 自律スポーンタイマー、生存エンティティ管理マップ、スポーン / 削除コールバック |
+
+---
+
+## 14. 変更履歴
+
+| バージョン | 変更内容 |
+|---|---|
+| v1 | 初版 |
+| v2 | `bugRemoved` を `bugRemoveRequest` / `bugRemoveConfirm` に分離 / `normalizedX・Y` の座標系定義を明文化 / 再試行ロジックにスレッド・フラグ実装例を追加 / `GameStatePayload.state` を `GamePhase` 列挙型に変更 / スタンドアロンのスコア反映経路と連携モードの経路差異を明記 |
+| v3 | **§0「環境サーベイ」フェーズを新設**（Swift / iOS バージョン確認・命名規約読み取り・既存パターン検出・MCSession / ARView 既存実装確認・サーベイ結果宣言フォーマット）/ 既存パターン優先の実装方針を全セクションに適用 / SceneKit 等の代替フレームワーク対応注記を追加 / serviceType の既存文字列流用ルールを追加 / 実装ステップ順序の明示と禁止事項リストを整理 |
