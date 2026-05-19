@@ -1,6 +1,6 @@
 # ぼんち祭り バグハンター — サーバー・クライアント連携 実装プロンプト
 
-> 用途: このドキュメントを GitHub Copilot に渡すことで、スタンドアロンモードおよびプロジェクター側サーバーと iOS クライアントの MultipeerConnectivity 連携を正確に実装・改修できるようにする。
+> 用途: このドキュメントを GitHub Copilot に渡すことで、**スタンドアロンモード（iOS 単体でのバグ生成・捕獲）** および **プロジェクター側サーバーと iOS クライアントの MultipeerConnectivity 連携** の両方を正確に実装・改修できるようにする。旧バージョンは MultipeerConnectivity 連携のみを対象としていたが、本バージョンからスタンドアロンモードも含めた全モードをカバーする。
 > 対象環境: 最新の iOS SDK / 最新の Xcode / Swift / MultipeerConnectivity
 
 ---
@@ -349,5 +349,5 @@ timeRemaining : Double
 | `Controller/ARGameView.swift` | AR 表示・スタンドアロンバグ生成・server-sync コールバック受信 |
 | `World/ProjectorGameManager.swift` | プロジェクター側 MultipeerConnectivity ラッパー、スロット管理、ブロードキャスト |
 | `World/WorldViewController.swift` | プロジェクター UI ルート、`ProjectorBug3DCoordinator` の生成・接続 |
-| `World/BugSpawner.swift` | プロジェクター 2D シーン用バグ生成（現在は使用されない旧アーキテクチャ残留） |
+| `World/BugSpawner.swift` | `BugSpawner` クラス（旧プロジェクター 2D スポーナー、現在は `ProjectorBug3DCoordinator` に置き換え済みで直接使用されていない）と `BugNode` クラス（AR コーディネーターがプロキシノード生成に使用）を定義 |
 
