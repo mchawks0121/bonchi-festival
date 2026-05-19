@@ -294,6 +294,9 @@ Projector Server                         iOS Controller (×最大3台)
 - `ProjectorBug3DCoordinator.spawnAutonomousBug()` が UUID を生成し、`onBugSpawned` コールバック → `ProjectorGameManager.sendBugSpawned` で全 iOS クライアントへブロードキャストします。
 - iOS クライアント（projectorClient モード）は自前スポーンを行わず、`GameManager.onServerBugSpawned` コールバック経由で `ARGameView.Coordinator.addServerBug` を呼び出します。
 - スタンドアロンモードのみ従来通り iOS 側で自律スポーンします。
+- 現行実装（As-Is）では、プロジェクターの初回自律スポーンは attach 直後の即時ではなく、最初の待機時間（約 1.5 秒）経過後に発生します。
+- クライアント接続時は `MCSessionState.connected` 直後に生存バグを再送しますが、その時点で生存バグが 0 体なら再送は行われず、次回スポーンまで待機になります。
+- 他プロジェクトへ横展開する際は、再発防止のため「サーバー初回スポーン即時」「接続直後に生存 0 体なら 1 体即時生成してから再送」を必須要件（To-Be）として扱います。
 
 ### プロジェクター表示設計
 
