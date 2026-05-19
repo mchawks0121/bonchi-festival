@@ -656,8 +656,7 @@ extension ARGameView {
             anchorProxyNodeMap.removeValue(forKey: anchor.identifier)
             anchorEntityMap.removeValue(forKey: anchor.identifier)
             bugAnchorMap.removeValue(forKey: anchor.identifier)
-            anchorIDToServerID.removeValue(forKey: anchor.identifier)
-            if let sID = serverIDToAnchorID.first(where: { $0.value == anchor.identifier })?.key {
+            if let sID = anchorIDToServerID.removeValue(forKey: anchor.identifier) {
                 serverIDToAnchorID.removeValue(forKey: sID)
             }
             mapLock.unlock()

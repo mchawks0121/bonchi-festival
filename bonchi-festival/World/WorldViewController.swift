@@ -323,8 +323,7 @@ final class ProjectorBug3DCoordinator {
 
         // Notify clients that every active bug is being removed so their AR scenes
         // stay in sync when the game resets.
-        for (identity, id) in autonomousBugIDs {
-            _ = identity  // suppress unused-variable warning
+        for (_, id) in autonomousBugIDs {
             onBugRemoved?(id)
         }
         for id in bug3DNodes.keys {
@@ -419,7 +418,7 @@ final class ProjectorBug3DCoordinator {
         let elapsed        = Date().timeIntervalSince(autonomousStartTime)
         let (halfW, halfH) = visibleHalfExtents()
 
-        // Generate normalised direction hints that act as the canonical bug position.
+        // Generate normalized direction hints that act as the canonical bug position.
         // normalizedX: -1 (far left) → 1 (far right)
         // normalizedY:  0 (bottom)   → 1 (top)
         // These values are broadcast to iOS clients so they can place the AR bug in the
@@ -427,7 +426,7 @@ final class ProjectorBug3DCoordinator {
         let normalizedX = Float.random(in: -0.85...0.85)
         let normalizedY = Float.random(in: 0.10...0.90)
 
-        // Derive projector world position from the normalised hints.
+        // Derive projector world position from the normalized hints.
         let startX = normalizedX * halfW * 0.70
         let startY = (normalizedY * 2.0 - 1.0) * halfH * 0.60
 
