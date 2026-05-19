@@ -477,6 +477,8 @@ final class ProjectorBug3DCoordinator {
         // Bug stays on-screen longer so players have a fair chance to capture it.
         // butterfly (speed=110): 1200/110 ≈ 10.9 s, clamped to minimum 12 s.
         // beetle   (speed= 70): 1200/ 70 ≈ 17.1 s, clamped to maximum 35 s.
+        // stag     (speed= 45): 1200/ 45 ≈ 26.7 s, clamped to maximum 35 s.
+        // (stag is currently excluded from spawns but the formula covers it for consistency)
         let bugDuration  = max(12.0, min(1200.0 / Double(bugType.speed), 35.0))
         let waypointCount = Int.random(in: 2...3)
         let segDur        = bugDuration / Double(waypointCount + 1)

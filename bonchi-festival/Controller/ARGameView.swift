@@ -329,6 +329,8 @@ extension ARGameView {
                   let frame = arView.session.currentFrame else { return }
 
             // Clamp against active-bug limit to avoid overloading the AR session.
+            // Silently drop the spawn when the cap is reached — the projector will
+            // continue to broadcast subsequent bugs and the session self-corrects.
             mapLock.lock()
             let currentBugCount = bugAnchorMap.count
             mapLock.unlock()
@@ -354,7 +356,8 @@ extension ARGameView {
             var anchorTransform = matrix_identity_float4x4
             anchorTransform.columns.3 = worldPos
 
-            let anchor = ARAnchor(name: "bug-server", transform: anchorTransform)
+            // Include a short ID prefix in the name to simplify debugging in AR sessions.
+            let anchor = ARAnchor(name: "bug-server-\(id.prefix(8))", transform: anchorTransform)
 
             mapLock.lock()
             bugAnchorMap[anchor.identifier]            = type
