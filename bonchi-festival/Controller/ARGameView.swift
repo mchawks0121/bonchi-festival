@@ -741,9 +741,14 @@ extension ARGameView {
             let net = Net3DNode(playerIndex: 0)
             netAnchor.addChild(net.entity)
 
+            // Capture `net` strongly in the completion closure.
+            // Net3DNode owns its flightTimer; if `net` were a local var that goes out of
+            // scope here, deinit would invalidate the timer before completion fires and
+            // the netAnchor would never be removed, leaving the green mesh in AR space.
             net.launch(from: origin, direction: direction, power: power) { [weak arView, weak netAnchor] in
                 // Remove the net anchor (and its net entity child) after the flight ends.
                 if let na = netAnchor { arView?.scene.removeAnchor(na) }
+                _ = net  // keep Net3DNode alive until this closure fires
             }
         }
     }

@@ -417,14 +417,37 @@ final class ProjectorBug3DCoordinator {
     }
 
     func removeSyncedBug(id: String) {
-        guard let bug3D     = bug3DNodes[id],
-              let bugAnchor = bug3DAnchors[id] else { return }
+        // ── Phone-synced bug ─────────────────────────────────────────────────
+        if let bug3D = bug3DNodes[id], let bugAnchor = bug3DAnchors[id] {
+            bug3D.captured()
+            bug3DNodes.removeValue(forKey: id)
+            bug3DAnchors.removeValue(forKey: id)
+            syncedBugData.removeValue(forKey: id)
+            notifyBugCountChanged()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self, weak bugAnchor] in
+                if let a = bugAnchor { self?.arView?.scene.removeAnchor(a) }
+            }
+            return
+        }
+
+        // ── Autonomous bug captured by a phone player ────────────────────────
+        // Reverse-lookup: find the AnchorEntity key whose associated ID matches.
+        guard let anchorKey = autonomousBugIDs.first(where: { $0.value == id })?.key,
+              let idx = autonomousAnchors.firstIndex(where: { ObjectIdentifier($0) == anchorKey })
+        else { return }
+
+        let bug3D     = autonomousBugs[idx]
+        let bugAnchor = autonomousAnchors[idx]
+
+        // Remove from all tracking collections so the wander loop exits on its next tick.
+        autonomousBugIDs.removeValue(forKey: anchorKey)
+        autonomousBugData.removeValue(forKey: id)
+        autonomousBugs.remove(at: idx)
+        autonomousAnchors.remove(at: idx)
+        notifyBugCountChanged()
 
         bug3D.captured()
-        bug3DNodes.removeValue(forKey: id)
-        bug3DAnchors.removeValue(forKey: id)
-        syncedBugData.removeValue(forKey: id)
-        notifyBugCountChanged()
 
         // Remove anchor after capture animation completes (~1.5 s).
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self, weak bugAnchor] in
@@ -447,8 +470,6 @@ final class ProjectorBug3DCoordinator {
             withTimeInterval: delay, repeats: false
         ) { [weak self] _ in self?.spawnAutonomousBug() }
     }
-
-    private static let spawnMargin: Float = 1.25
 
     // Maximum number of bugs that may be visible on screen simultaneously.
     // Matches the iOS client's maxActiveBugs constant (ARGameView.Coordinator).
@@ -511,81 +532,44 @@ final class ProjectorBug3DCoordinator {
             if p >= 1.0 { t.invalidate() }
         }
 
-        // Movement path: 2–3 interior waypoints then exit off-screen.
-        // The anchor entity position is updated via move(to:) to avoid conflicting
-        // with Bug3DNode's hover timer (which only modifies entity.position.y locally).
-        // Bug stays on-screen longer so players have a fair chance to capture it.
-        // butterfly (speed=110): 1200/110 ≈ 10.9 s, clamped to minimum 12 s.
-        // beetle   (speed= 70): 1200/ 70 ≈ 17.1 s, clamped to maximum 35 s.
-        // stag     (speed= 45): 1200/ 45 ≈ 26.7 s, clamped to maximum 35 s.
-        // (stag is currently excluded from spawns but the formula covers it for consistency)
-        let bugDuration  = max(12.0, min(1200.0 / Double(bugType.speed), 35.0))
-        let waypointCount = Int.random(in: 2...3)
-        let segDur        = bugDuration / Double(waypointCount + 1)
-
-        var cumulativeDelay: TimeInterval = 0
-
-        for _ in 0..<waypointCount {
-            let wx = Float.random(in: -halfW * 0.75 ... halfW * 0.75)
-            let wy = Float.random(in: -halfH * 0.65 ... halfH * 0.65)
-            let targetPos = SIMD3<Float>(wx, wy, 0)
-            let delay     = cumulativeDelay
-            cumulativeDelay += segDur
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak bugAnchor] in
-                guard let bugAnchor else { return }
-                bugAnchor.move(
-                    to: Transform(scale: SIMD3<Float>(repeating: 1), rotation: simd_quatf(),
-                                  translation: targetPos),
-                    relativeTo: nil,
-                    duration: segDur,
-                    timingFunction: .easeInOut
-                )
-            }
-        }
-
-        // Exit toward a random off-screen edge
-        let exitMargin = Self.spawnMargin * 1.04
-        let exitEdge   = Int.random(in: 0..<4)
-        let exitX      = Float.random(in: -halfW * 0.8 ... halfW * 0.8)
-        let exitY      = Float.random(in: -halfH * 0.8 ... halfH * 0.8)
-        let exitPoint: SIMD3<Float>
-        switch exitEdge {
-        case 0:  exitPoint = SIMD3<Float>(exitX, -halfH * exitMargin, 0)
-        case 1:  exitPoint = SIMD3<Float>(exitX,  halfH * exitMargin, 0)
-        case 2:  exitPoint = SIMD3<Float>( halfW * exitMargin, exitY, 0)
-        default: exitPoint = SIMD3<Float>(-halfW * exitMargin, exitY, 0)
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + cumulativeDelay) { [weak bugAnchor] in
-            bugAnchor?.move(
-                to: Transform(scale: SIMD3<Float>(repeating: 1), rotation: simd_quatf(), translation: exitPoint),
-                relativeTo: nil,
-                duration: segDur,
-                timingFunction: .easeIn
-            )
-        }
-
-        // Remove on natural exit and notify iOS clients so they clear the AR bug.
-        let totalDur = cumulativeDelay + segDur
-        DispatchQueue.main.asyncAfter(deadline: .now() + totalDur) { [weak self, weak bug3D, weak bugAnchor] in
-            guard let self else { return }
-            // Notify clients only if the bug hasn't already been removed by a capture.
-            if let anchor = bugAnchor,
-               let removedID = self.autonomousBugIDs.removeValue(forKey: ObjectIdentifier(anchor)) {
-                self.autonomousBugData.removeValue(forKey: removedID)
-                self.onBugRemoved?(removedID)
-            }
-            if let a = bugAnchor { self.arView?.scene.removeAnchor(a) }
-            self.autonomousBugs.removeAll    { $0 === bug3D }
-            self.autonomousAnchors.removeAll { $0 === bugAnchor }
-            self.notifyBugCountChanged()
-        }
+        // Infinite wandering: bugs stay on screen until captured.
+        // No exit path and no natural-removal timer — only a player throwing the net
+        // (or a game reset) can remove a bug from the scene.
+        startWandering(bug: bug3D, anchor: bugAnchor, bugType: bugType)
 
         notifyBugCountChanged()
 
         let nextDelay = max(0.6, 1.8 - elapsed / 90.0)
         scheduleNextAutonomousSpawn(after: nextDelay)
+    }
+
+    /// Recursively picks a random on-screen waypoint and moves the bug anchor there.
+    /// Re-schedules itself after each segment so the bug wanders indefinitely.
+    /// Stops naturally when `bug` is no longer in `autonomousBugs` (captured or reset).
+    private func startWandering(bug: Bug3DNode, anchor: AnchorEntity, bugType: BugType) {
+        let (halfW, halfH) = visibleHalfExtents()
+        let wx = Float.random(in: -halfW * 0.75 ... halfW * 0.75)
+        let wy = Float.random(in: -halfH * 0.65 ... halfH * 0.65)
+        let targetPos = SIMD3<Float>(wx, wy, 0)
+
+        // Segment duration proportional to bug speed so faster bugs cover ground quicker.
+        // butterfly (speed=110) ≈ 5.5 s, beetle (speed=70) ≈ 8.6 s, stag (speed=45) ≈ 13 s.
+        let segDur = max(5.0, min(600.0 / Double(bugType.speed), 15.0))
+
+        anchor.move(
+            to: Transform(scale: SIMD3<Float>(repeating: 1), rotation: simd_quatf(),
+                          translation: targetPos),
+            relativeTo: nil,
+            duration: segDur,
+            timingFunction: .easeInOut
+        )
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + segDur) { [weak self, weak bug, weak anchor] in
+            guard let self, let bug, let anchor else { return }
+            // Only continue if the bug is still alive (not yet captured or game reset).
+            guard self.autonomousBugs.contains(where: { $0 === bug }) else { return }
+            self.startWandering(bug: bug, anchor: anchor, bugType: bugType)
+        }
     }
 
     private func randomAutonomousBugType() -> BugType {
