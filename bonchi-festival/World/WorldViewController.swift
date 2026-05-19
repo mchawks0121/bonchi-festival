@@ -412,8 +412,20 @@ final class ProjectorBug3DCoordinator {
 
     private static let spawnMargin: Float = 1.25
 
+    // Maximum number of bugs that may be visible on screen simultaneously.
+    // Matches the iOS client's maxActiveBugs constant (ARGameView.Coordinator).
+    private static let maxSimultaneousBugs = 4
+
     private func spawnAutonomousBug() {
         guard let arView else { return }
+
+        // Enforce simultaneous bug cap before spawning.
+        let activeBugCount = autonomousBugs.count + bug3DNodes.count
+        guard activeBugCount < ProjectorBug3DCoordinator.maxSimultaneousBugs else {
+            // Re-check after a short delay rather than dropping the spawn entirely.
+            scheduleNextAutonomousSpawn(after: 1.5)
+            return
+        }
 
         let elapsed        = Date().timeIntervalSince(autonomousStartTime)
         let (halfW, halfH) = visibleHalfExtents()
@@ -462,7 +474,10 @@ final class ProjectorBug3DCoordinator {
         // Movement path: 2–3 interior waypoints then exit off-screen.
         // The anchor entity position is updated via move(to:) to avoid conflicting
         // with Bug3DNode's hover timer (which only modifies entity.position.y locally).
-        let bugDuration  = max(4.0, min(600.0 / Double(bugType.speed), 14.0))
+        // Bug stays on-screen longer so players have a fair chance to capture it.
+        // butterfly (speed=110): 1200/110 ≈ 10.9 s, clamped to minimum 12 s.
+        // beetle   (speed= 70): 1200/ 70 ≈ 17.1 s, clamped to maximum 35 s.
+        let bugDuration  = max(12.0, min(1200.0 / Double(bugType.speed), 35.0))
         let waypointCount = Int.random(in: 2...3)
         let segDur        = bugDuration / Double(waypointCount + 1)
 

@@ -124,7 +124,14 @@ final class Net3DNode {
         // 60 fps Timer drives the physics + scale + opacity + spin each frame.
         // Timer is stored so it can be invalidated by stopAllTimers if needed.
         flightTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
-            guard let self else { timer.invalidate(); return }
+            guard let self else {
+                // Net3DNode was deallocated before the flight timer fired.
+                // Always call completion so the caller can remove the netAnchor from
+                // the scene and prevent the green net mesh from lingering in AR space.
+                timer.invalidate()
+                completion()
+                return
+            }
 
             let elapsed  = Float(Date().timeIntervalSince(startTime))
             let progress = elapsed / travelTime

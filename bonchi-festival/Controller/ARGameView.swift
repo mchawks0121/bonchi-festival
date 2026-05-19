@@ -174,7 +174,7 @@ extension ARGameView {
         private static let referenceDistance:    Float  = 3.0
         private static let minBugScale:          Float  = 0.3
         private static let maxBugScale:          Float  = 5.0
-        private static let maxActiveBugs:        Int    = 5
+        private static let maxActiveBugs:        Int    = 4
         private static let maxHorizontalAngle:   Float  = 0.65
 
         // MARK: Spawning
