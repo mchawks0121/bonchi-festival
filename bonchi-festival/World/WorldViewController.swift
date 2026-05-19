@@ -149,6 +149,13 @@ final class WorldViewController: UIViewController {
             self?.projectorManager.sendBugRemoved(id: id)
         }
 
+        // Wire the state-sync callback: when a new iOS client connects mid-game,
+        // ProjectorGameManager will call this to get the full list of active bugs
+        // and immediately send each one to that client.
+        projectorManager.requestCurrentBugs = { [weak coordinator] in
+            coordinator?.currentActiveBugs ?? []
+        }
+
         bug3DCoordinator = coordinator
     }
 
@@ -258,6 +265,29 @@ final class ProjectorBug3DCoordinator {
     /// Maps AnchorEntity object identity → server-assigned bug ID for autonomous bugs.
     private var autonomousBugIDs: [ObjectIdentifier: String] = [:]
 
+    // MARK: Bug data for state-sync (new client re-join)
+
+    /// Holds the spawn parameters for each currently-alive autonomous bug so that
+    /// a newly-connected iOS client can be sent the full current state.
+    /// Key = stable server bug ID; value = (type, normalizedX, normalizedY).
+    private var autonomousBugData: [String: (type: BugType, normalizedX: Float, normalizedY: Float)] = [:]
+
+    /// Holds the spawn parameters for each currently-alive phone-synced bug.
+    /// Key = stable server bug ID; value = (type, normalizedX, normalizedY).
+    private var syncedBugData: [String: (type: BugType, normalizedX: Float, normalizedY: Float)] = [:]
+
+    /// Snapshot of all bugs currently alive on the projector, ready to be re-broadcast
+    /// to a newly-connected iOS client so it can catch up to the current game state.
+    var currentActiveBugs: [(id: String, type: BugType, normalizedX: Float, normalizedY: Float)] {
+        let autonomous = autonomousBugData.map { (id: $0.key, type: $0.value.type,
+                                                  normalizedX: $0.value.normalizedX,
+                                                  normalizedY: $0.value.normalizedY) }
+        let synced     = syncedBugData.map { (id: $0.key, type: $0.value.type,
+                                              normalizedX: $0.value.normalizedX,
+                                              normalizedY: $0.value.normalizedY) }
+        return autonomous + synced
+    }
+
     /// Timer driving the autonomous spawn cycle.
     private var autonomousSpawnTimer: Timer?
 
@@ -335,10 +365,12 @@ final class ProjectorBug3DCoordinator {
         autonomousAnchors.removeAll()
         autonomousBugs.removeAll()
         autonomousBugIDs.removeAll()
+        autonomousBugData.removeAll()
 
         bug3DAnchors.values.forEach { arView?.scene.removeAnchor($0) }
         bug3DAnchors.removeAll()
         bug3DNodes.removeAll()
+        syncedBugData.removeAll()
 
         notifyBugCountChanged()
     }
@@ -376,6 +408,8 @@ final class ProjectorBug3DCoordinator {
 
         bug3DNodes[id]   = bug3D
         bug3DAnchors[id] = bugAnchor
+        // Store spawn parameters for state-sync to newly-connected clients.
+        syncedBugData[id] = (type: type, normalizedX: normalizedX, normalizedY: normalizedY)
         notifyBugCountChanged()
     }
 
@@ -386,6 +420,7 @@ final class ProjectorBug3DCoordinator {
         bug3D.captured()
         bug3DNodes.removeValue(forKey: id)
         bug3DAnchors.removeValue(forKey: id)
+        syncedBugData.removeValue(forKey: id)
         notifyBugCountChanged()
 
         // Remove anchor after capture animation completes (~1.5 s).
@@ -454,6 +489,8 @@ final class ProjectorBug3DCoordinator {
         // Assign a stable server-side ID for this bug.
         let bugID = UUID().uuidString
         autonomousBugIDs[ObjectIdentifier(bugAnchor)] = bugID
+        // Store spawn parameters so they can be re-sent to a newly-connected client.
+        autonomousBugData[bugID] = (type: bugType, normalizedX: normalizedX, normalizedY: normalizedY)
 
         bug3D.entity.scale = SIMD3<Float>(repeating: s * 0.05)
         autonomousBugs.append(bug3D)
@@ -533,6 +570,7 @@ final class ProjectorBug3DCoordinator {
             // Notify clients only if the bug hasn't already been removed by a capture.
             if let anchor = bugAnchor,
                let removedID = self.autonomousBugIDs.removeValue(forKey: ObjectIdentifier(anchor)) {
+                self.autonomousBugData.removeValue(forKey: removedID)
                 self.onBugRemoved?(removedID)
             }
             if let a = bugAnchor { self.arView?.scene.removeAnchor(a) }
