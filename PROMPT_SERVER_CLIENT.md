@@ -1,334 +1,291 @@
 # ぼんち祭り バグハンター — サーバー・クライアント連携 実装プロンプト
 
-> **用途**: このドキュメントを GitHub Copilot（チャット／エージェントモード）に渡すことで、  
-> プロジェクター（サーバー）と iOS デバイス（クライアント）が **MultipeerConnectivity** を介して  
-> リアルタイム同期するアーキテクチャを正確に実装・改修できます。  
-> **対象環境**: iOS 17.0+ / Swift 5.9+ / RealityKit + MultipeerConnectivity
+> 用途: このドキュメントを GitHub Copilot に渡すことで、プロジェクター側サーバーと iOS クライアントの MultipeerConnectivity 連携だけを正確に実装・改修できるようにする。
+> 対象環境: 最新の iOS SDK / 最新の Xcode / Swift / MultipeerConnectivity
 
 ---
 
-## 1. 概要
+## 1. 目的（Why）
 
-「ぼんち祭り バグハンター」は **プロジェクター（サーバー）が唯一のバグ生成権限者** です。
+本仕様の目的は、プロジェクター側を唯一の権限サーバーとして扱い、iOS クライアントとの状態同期を一貫したフローで実現することです。
 
-- iOS クライアントは `projectorClient` モード時にバグを自前でスポーンしません
-- プロジェクターが自律的にバグを生成し、全 iOS クライアントへブロードキャストします
-- あるクライアントがバグを捕獲したら、プロジェクターが **全クライアントへ削除をリレー** し、全員の AR から同時にバグが消えます
-- スタンドアロン（`.standalone`）モードは iOS 側の自律スポーンを継続します（本仕様の対象外）
-
----
-
-## 2. 設計原則
-
-| 原則 | 要件 |
-|------|------|
-| **バグ生成権限（Server-Authoritative）** | バグのスポーン・ID 発行・削除判定はプロジェクターのみが行う。iOS クライアントが独自にバグを生成することを禁止する |
-| **単一フロー同期** | スポーン: Projector → 全 iOS。削除: iOS → Projector → 全 iOS という一方向フローを厳守する |
-| **安定 ID 管理** | バグごとに `UUID().uuidString` を生成し、スポーン〜削除まで同一 ID を全デバイスで使い回す |
-| **遅延参加対応** | 途中接続した iOS クライアントに現在生存中の全バグを即座に送信して同期させる |
-| **スレッド安全** | 全マップへのアクセスは `NSLock` (`mapLock`) で保護する。メインスレッド以外からの UI 操作禁止 |
-| **同時表示上限** | プロジェクター・iOS クライアント双方で最大 4 体。両サイドが同じ上限を持ち、一方が超過しないよう制御する |
-| **バグ永続化** | バグはプレイヤーの捕獲またはゲームリセット以外では消滅しない。時間経過や画面外退場による自動削除を禁止する |
+- スポーンや削除の最終決定権をサーバーに集約する
+- クライアントごとの差分や二重処理を防ぐ
+- 途中参加・再接続・切断復帰を含めて、接続中クライアントの状態を整合させる
+- 通信仕様と責務分離を明確にし、他環境でも流用しやすい形にする
 
 ---
 
-## 3. デバイスロール
+## 2. 機能概要（What）
 
-### 3-1. プロジェクター（サーバー）
+### 2-1. サーバー権限モデル
 
-- 大画面（プロジェクター）に表示される iOS デバイス
-- `MCNearbyServiceAdvertiser` でサービスを告知し、接続要求を受理する
-- `MCNearbyServiceBrowser` でも同時にブラウズし、クライアントを能動的に招待する
-- サービス識別子: `"bughunter-game"`（双方で一致させること）
-- 最大同時接続数: **3 クライアント**。超過接続は拒否する
-- 各クライアントに 0 始まりの連番スロットインデックス（0, 1, 2）を割り当てる
-- 切断時はスロットを解放し、再接続時に空きスロットを再割り当てする
+- プロジェクター側が唯一のサーバーである
+- バグの生成、安定 ID の発行、削除判定、全体同期はサーバーだけが行う
+- クライアントはサーバーから受け取ったイベントを反映するだけで、自律的にバグ生成しない
 
-### 3-2. iOS コントローラー（クライアント）
+### 2-2. 通信フロー
 
-- プレイヤーが手に持つ iPhone
-- `projectorClient` モード時に MultipeerSession を起動し、プロジェクターを探してセッションに参加する
-- 自身の ARKit セッションにプロジェクターから通知されたバグを AR エンティティとして配置する
-- スリングショット発射・ゲーム開始・リセット操作をプロジェクターへ送信する
+- スポーン: Server → All Clients
+- 削除要求: Client → Server
+- 削除確定通知: Server → All Clients
+- 得点通知: Server → Target Client
+- ゲーム状態同期: Server → All Clients
+- 操作要求: Client → Server
+
+### 2-3. 非対象
+
+この文書では以下を扱わない。
+
+- AR 空間への配置方法
+- RealityKit / SpriteKit / SceneKit の描画詳細
+- UI レイアウトやオーバーレイ表示
+- ゲーム演出、移動アニメーション、スコア演出
+- スタンドアロンモード固有ロジック
 
 ---
 
-## 4. メッセージプロトコル
+## 3. 実装方針（How）
 
-### 4-1. エンベロープ構造
+### 3-1. 接続方式
 
-全メッセージは以下の共通構造を JSON エンコードして送受信する。
+- サーバーは `MCNearbyServiceAdvertiser` で広告し、`MCNearbyServiceBrowser` でも探索する
+- クライアントは `MCNearbyServiceBrowser` でサーバーを発見したら即座に招待する
+- サーバーは招待受理時に接続上限を確認し、空きがある場合のみ接続を許可する
+- `MCSession` は暗号化必須の設定を使用する
 
-```
+### 3-2. 責務分離
+
+- 通信層はメッセージの送受信、接続管理、再同期要求の処理だけを担当する
+- ゲーム層は受信イベントを購読し、ローカル状態へ反映する
+- 通信層は描画 API や UI API に依存しない
+
+### 3-3. 整合性維持
+
+- サーバーはバグごとに `UUID().uuidString` を発行する
+- クライアントは受信した安定 ID を削除まで保持する
+- 途中参加時はサーバーが生存中エンティティ一覧を再送する
+- 同一 ID の重複追加はクライアント側で無視する
+
+---
+
+## 4. デバイスロール
+
+### 4-1. プロジェクター（サーバー）
+
+- MultipeerConnectivity セッションの主導権を持つ
+- サービス識別子は `bughunter-game` で固定する
+- 最大同時接続数は 3 クライアントとする
+- 接続ごとにプレイヤースロットを 0, 1, 2 の順で割り当てる
+- 接続直後に必要な初期同期を送信する
+- 削除要求を受信したら妥当性を確認し、削除を確定した後で全クライアントへ通知する
+
+### 4-2. iOS コントローラー（クライアント）
+
+- サーバーへ接続し、受信イベントをローカル状態へ反映する
+- 発射、開始、リセット、削除要求などの入力イベントをサーバーへ送信する
+- サーバー未確定のローカル状態を権威状態として扱わない
+- 重複スポーンや未知 ID の削除通知を受けてもクラッシュしない
+
+---
+
+## 5. 接続管理仕様
+
+### 5-1. セッション確立
+
+- クライアントはサーバー発見後に `invitePeer(_:to:withContext:timeout:)` を呼ぶ
+- サーバーは接続数が 3 未満の場合のみ招待を承諾する
+- 接続確立時に空きスロットの最小値を割り当てる
+- 切断時は割り当て済みスロットを解放する
+- 再接続時はその時点の空きスロットを再割り当てする
+
+### 5-2. スロット管理
+
+- サーバーは `playerSlots: [MCPeerID: Int]` を管理する
+- サーバーは `usedSlots: Set<Int>` を管理する
+- スロット番号はクライアント識別と個別通知に使用する
+- クライアント数が上限を超える接続要求は拒否する
+
+### 5-3. 再同期
+
+- サーバーは `MCSessionState.connected` 直後に現在の生存バグ一覧を対象クライアントへ送信する
+- 再同期は通常の `bugSpawned` メッセージを個別送信する方式で行う
+- クライアントは通常受信と同一経路で処理する
+
+---
+
+## 6. メッセージプロトコル
+
+### 6-1. エンベロープ
+
+全メッセージは JSON で送受信し、共通エンベロープを持つ。
+
+```json
 {
-  "type": "<MessageType>",
-  "launchPayload": { ... } | null,
-  "gameStatePayload": { ... } | null,
-  "bugCapturedPayload": { ... } | null,
-  "bugSpawnedPayload": { ... } | null,
-  "bugRemovedPayload": { ... } | null
+    "type": "<MessageType>",
+    "launchPayload": null,
+    "gameStatePayload": null,
+    "bugCapturedPayload": null,
+    "bugSpawnedPayload": null,
+    "bugRemovedPayload": null
 }
 ```
 
-- 使用しないペイロードフィールドは `null` とする
-- デコードに失敗したメッセージは黙って捨てる（アプリをクラッシュさせない）
+- `type` でメッセージ種別を表す
+- 使用しないペイロードは `null` にする
+- デコード失敗メッセージは破棄する
+- 未知の `type` は破棄する
 
-### 4-2. メッセージ種別と方向
+### 6-2. メッセージ種別
 
-| MessageType | 方向 | ペイロード | 説明 |
+| MessageType | 方向 | ペイロード | 用途 |
 |---|---|---|---|
-| `startGame` | iOS → Projector | なし | ゲーム開始を指示する |
-| `resetGame` | iOS → Projector | なし | ゲームリセットを指示する |
-| `launch` | iOS → Projector | `LaunchPayload` | スリングショット発射情報を送信する |
-| `bugSpawned` | Projector → 全 iOS | `BugSpawnedPayload` | 新バグのスポーンを通知する |
-| `bugRemoved` | iOS → Projector<br>Projector → 全 iOS | `BugRemovedPayload` | バグ削除を通知またはリレーする |
-| `bugCaptured` | Projector → 個別 iOS | `BugCapturedPayload` | スコア加算を特定クライアントへ通知する |
-| `gameState` | Projector → 全 iOS | `GameStatePayload` | ゲーム進行状態を同期する（任意送信） |
+| `startGame` | Client → Server | なし | ゲーム開始要求 |
+| `resetGame` | Client → Server | なし | ゲームリセット要求 |
+| `launch` | Client → Server | `LaunchPayload` | 発射イベント送信 |
+| `bugSpawned` | Server → All Clients | `BugSpawnedPayload` | スポーン通知 |
+| `bugRemoved` | Client → Server / Server → All Clients | `BugRemovedPayload` | 削除要求または削除確定通知 |
+| `bugCaptured` | Server → Target Client | `BugCapturedPayload` | 個別加点通知 |
+| `gameState` | Server → All Clients | `GameStatePayload` | 全体状態同期 |
 
-### 4-3. ペイロード定義
+### 6-3. ペイロード定義
 
 #### LaunchPayload
-```
-angle     : Float   // 発射角（ラジアン、0 = 右, π/2 = 上）
-power     : Float   // 発射強度（0.0 〜 1.0 正規化）
-timestamp : Double  // Unix 時刻（秒、レイテンシ補正用）
+
+```text
+angle     : Float
+power     : Float
+timestamp : Double
 ```
 
 #### BugSpawnedPayload
-```
-id          : String  // サーバー生成の UUID 文字列（全通信で使い回す安定 ID）
-bugType     : BugType // .butterfly | .beetle | .stag
-normalizedX : Float   // 水平位置ヒント（−1.0 = 左端, +1.0 = 右端）
-normalizedY : Float   // 垂直位置ヒント（0.0 = 下端, 1.0 = 上端）
+
+```text
+id          : String
+bugType     : BugType
+normalizedX : Float
+normalizedY : Float
 ```
 
 #### BugRemovedPayload
-```
-id : String  // 削除対象バグの UUID（BugSpawnedPayload.id と一致させる）
+
+```text
+id : String
 ```
 
 #### BugCapturedPayload
-```
-bugType     : BugType // 捕獲されたバグの種類（得点計算に使用）
-playerIndex : Int     // スコアを加算するプレイヤースロット番号（0 始まり）
+
+```text
+bugType     : BugType
+playerIndex : Int
 ```
 
 #### GameStatePayload
-```
-state         : String  // "waiting" | "playing" | "finished"
+
+```text
+state         : String
 score         : Int
 timeRemaining : Double
 ```
 
 ---
 
-## 5. バグのライフサイクル
+## 7. 同期ルール
 
-### 5-1. スポーン
+### 7-1. スポーン同期
 
-1. プロジェクターがバグを生成し `UUID().uuidString` を付与する
-2. バグをプロジェクター画面上の RealityKit シーンに配置する（`AnchorEntity(world:)` を使用）
-3. `bugSpawned(id, bugType, normalizedX, normalizedY)` を全クライアントへブロードキャストする
-4. `normalizedX`/`normalizedY` は正規化された位置ヒントであり、クライアントはこれを元に AR 空間上の位置を復元する
+1. サーバーが新しいバグ ID を発行する
+2. サーバーが内部状態へ登録する
+3. サーバーが `bugSpawned` を全クライアントへ送信する
+4. クライアントは未登録 ID のみ反映する
 
-```
-normalizedX : Float.random(in: -0.85...0.85)
-normalizedY : Float.random(in: 0.10...0.90)
-```
+### 7-2. 削除同期
 
-### 5-2. バグの移動（プロジェクター側）
+1. クライアントが対象 ID の削除要求として `bugRemoved` を送信する
+2. サーバーがその ID の生存を確認する
+3. サーバーが内部状態から削除する
+4. サーバーが `bugRemoved` を全クライアントへブロードキャストする
+5. クライアントは対象 ID をローカル状態から削除する
 
-- バグは画面外に退場せず、画面内ランダムウェイポイントを **無限に巡回** する
-- 巡回は再帰的なスケジューリング（`DispatchQueue.main.asyncAfter` + `anchor.move(to:duration:timingFunction:)`）で実現する
-- 1 セグメントの移動時間: `max(5.0, min(600.0 / speed, 15.0))` 秒（速いバグほど短い）
-- タイミング関数: `.easeInOut`
-- ループ継続条件: バグが追跡配列に存在していること。削除済みなら次の再帰を起動しない
+### 7-3. 遅延参加
 
-### 5-3. 捕獲フロー
+1. クライアントが接続完了する
+2. サーバーが現在生存中の全 ID を列挙する
+3. 各 ID について `bugSpawned` を個別送信する
+4. クライアントは既存 ID を重複追加しない
 
-```
-iOS クライアントが AR でバグを捕獲
-    ↓
-bugRemoved(id) をプロジェクターへ送信
-    ↓
-プロジェクターがそのバグをシーンから削除（removeSyncedBug または removeAutonomousBug）
-    ↓
-bugRemoved(id) を全クライアントへリレー
-    ↓
-全クライアントが当該 ID のバグを AR から削除（フェードアウト 0.3 秒 → エンティティ削除）
-```
+### 7-4. 同時表示上限
 
-### 5-4. 自然消滅の禁止
-
-- バグは時間経過・画面外移動などによる自動削除を行わない
-- プレイヤーによる捕獲または `stopSpawning()` によるゲームリセットのみが削除トリガー
-- `stopSpawning()` 時は全アクティブバグの `bugRemoved(id)` をリレーしてからシーンをクリアする
-
-### 5-5. 同時表示上限
-
-- 上限: **4 体**（プロジェクター・iOS クライアント共通）
-- 上限に達している間は新規スポーンを行わず、1.5 秒後に再試行する
-- iOS クライアントは上限超過の `bugSpawned` を受信した場合、黙って破棄する（クラッシュ禁止）
+- サーバーとクライアントは同じ上限値を共有する
+- 推奨上限は 4 体とする
+- サーバーは上限到達中に新規スポーンを確定しない
+- クライアントは上限超過の `bugSpawned` を受信しても安全に破棄する
 
 ---
 
-## 6. 遅延参加（Late-Join）同期
+## 8. サーバー側状態管理
 
-途中接続した iOS クライアントに対して、プロジェクターは以下の処理を行う。
+### 8-1. 必須管理情報
 
-1. 接続確立直後（`MCSessionState.connected`）に `sendCurrentBugs(to: peer)` を呼ぶ
-2. 現在生存中の全バグ（自律スポーン分 + 電話同期分の両方）を個別の `bugSpawned` メッセージとして送信する
-3. クライアントは受信した `bugSpawned` を通常スポーンと同じルートで処理する
-4. 重複追加防止: クライアント側は `serverIDToAnchorID[id] != nil` を確認し、同一 ID のバグを二重追加しない
+- 接続中ピア一覧
+- ピアごとのスロット番号
+- 使用中スロット集合
+- 現在生存中のバグ一覧
+- バグ ID と spawn 情報の対応
 
-### プロジェクター側の生存バグ管理
+### 8-2. 要件
 
-プロジェクターは以下の 2 種を分けて管理し、統合して外部へ公開する。
-
-| 区分 | 格納先 | 説明 |
-|------|--------|------|
-| 自律スポーン分 | `autonomousBugData: [String: (type, normalizedX, normalizedY)]` | プロジェクターが自ら生成したバグの spawn パラメータ |
-| 電話同期分 | `syncedBugData: [String: (type, normalizedX, normalizedY)]` | iOS クライアントからの `bugSpawned` 受信で追加されたバグの spawn パラメータ |
-
-```
-currentActiveBugs → autonomousBugData + syncedBugData を結合して返す
-```
+- 生存中一覧は遅延参加同期にそのまま利用できる形で保持する
+- 削除確定前に一覧から消さない
+- 接続イベントとゲームイベントの更新順序が競合しないようにする
+- 共有マップへのアクセスはロックまたは同等の排他制御で保護する
 
 ---
 
-## 7. iOS クライアント側の AR 反映
+## 9. クライアント側状態管理
 
-### 7-1. バグ追加（addServerBug）
+### 9-1. 必須管理情報
 
-`bugSpawned` 受信時の処理:
+- サーバー接続状態
+- サーバー発行 ID の受信済み集合
+- サーバー発行 ID とローカル表現の対応
+- 保留中イベントの有無
 
-1. 上限チェック（`bugAnchorMap.count >= maxActiveBugs` ならスキップ）
-2. `normalizedX` から水平角度を復元: `horizontalAngle = normalizedX × maxHorizontalAngle(0.65 rad)`
-3. `normalizedY` から垂直オフセットを復元: `verticalOffset = normalizedY × (vertRange.upper - vertRange.lower) + vertRange.lower`
-4. スポーン距離をランダム生成: `Float.random(in: 0.5...1.4)` メートル
-5. カメラ座標系でのローカル位置を計算し、`worldOriginTransform`（キャリブレーション原点）でワールド変換する
-6. `ARAnchor` を生成して ARKit セッションに追加する
-7. 双方向 ID マップに登録する
-   - `serverIDToAnchorID[id] = anchor.identifier`
-   - `anchorIDToServerID[anchor.identifier] = id`
+### 9-2. 要件
 
-### 7-2. バグ削除（removeServerBug）
-
-`bugRemoved` 受信時の処理:
-
-1. `serverIDToAnchorID[id]` で `anchorUUID` を O(1) ルックアップする
-2. 対応する `anchorProxyNodeMap`・`anchorEntityMap`・`bugAnchorMap` をすべてクリアする
-3. 双方向 ID マップから当該エントリを削除する
-4. SKNode（プロキシ）をフェードアウト（0.3 秒）後に削除する
-5. Bug3DNode に縮小キャプチャアニメーションを再生し、アニメーション完了後に AnchorEntity をシーンから削除する
-
-### 7-3. ID マップの構造（スレッドセーフ要件）
-
-```
-mapLock: NSLock  // 以下4マップへの全アクセスを保護すること
-
-serverIDToAnchorID: [String: UUID]              // server ID → ローカル ARAnchor UUID
-anchorIDToServerID: [UUID: String]              // ローカル ARAnchor UUID → server ID
-bugAnchorMap:       [UUID: BugType]             // ARAnchor UUID → BugType
-anchorEntityMap:    [UUID: AnchorEntity]        // ARAnchor UUID → RealityKit AnchorEntity
-anchorProxyNodeMap: [UUID: SKNode]              // ARAnchor UUID → SpriteKit プロキシノード
-anchorBug3DNodeMap: [UUID: Bug3DNode]           // ARAnchor UUID → Bug3DNode（エンティティ）
-nodeAnchorMap:      [ObjectIdentifier: ARAnchor]// SKNode identity → ARAnchor（逆引き）
-```
-
-- `mapLock` は読み書きを問わず全マップアクセスで取得・解放すること
-- UI 操作（SpriteKit・UIKit）は必ずメインスレッドで行うこと。ARKit デリゲートから直接 UI を変更しない
+- 同一 ID の `bugSpawned` を重複適用しない
+- 未知 ID の `bugRemoved` を受けても無視する
+- セッション切断時は接続依存状態を安全に破棄または再接続待ちに戻す
+- 通信コールバックから UI を直接触る場合はメインスレッドへ移譲する
 
 ---
 
-## 8. プロジェクター側のバグ追跡マップ
+## 10. エラーハンドリング要件
 
-```
-// 自律スポーン分
-autonomousBugs:           [Bug3DNode]                          // 追跡配列（捕獲時に削除）
-autonomousAnchors:        [AnchorEntity]                       // 対応する AnchorEntity 配列
-autonomousBugIDs:         [ObjectIdentifier: String]           // AnchorEntity identity → bug ID
-autonomousIDToAnchorKey:  [String: ObjectIdentifier]           // bug ID → AnchorEntity identity（逆引き O(1)）
-autonomousBugData:        [String: (type, normalizedX, normalizedY)]  // spawn パラメータ（遅延参加用）
-
-// 電話同期分
-bug3DNodes:    [String: Bug3DNode]    // bug ID → Bug3DNode
-bug3DAnchors:  [String: AnchorEntity] // bug ID → AnchorEntity
-syncedBugData: [String: (type, normalizedX, normalizedY)] // spawn パラメータ（遅延参加用）
-```
-
-`removeSyncedBug(id:)` は電話同期分と自律スポーン分の両方を対象とし、どちらの辞書に存在するかをチェックしてから削除すること。
+- JSON エンコード失敗時はログを残して送信を中止する
+- 接続先が 0 件なら送信をスキップする
+- デコード失敗時はメッセージを破棄する
+- 未知 ID の削除要求または削除通知はサイレントスキップする
+- 再同期用コールバックやデータソースが未設定なら空振りで終了する
+- 切断済みピアへの個別送信失敗はクラッシュ原因にしない
 
 ---
 
-## 9. ゲームモード定義
+## 11. コーディング規約
 
-| GameMode | 説明 | バグスポーン権限 | MultipeerSession |
-|----------|------|----------------|-----------------|
-| `.standalone` | iOS のみで完結するモード | iOS クライアント自身 | 起動しない |
-| `.projectorClient` | プロジェクターに接続した iOS | プロジェクターのみ | 起動（Browser + Advertiser） |
-| `.projectorServer` | プロジェクター表示デバイス | プロジェクターのみ | Advertiser + Browser |
-
-### projectorClient モードの制約
-
-- `startSpawning()` 内でモードが `.projectorClient` の場合、ローカル自律スポーンタイマーを起動しない
-- `gameManager?.onServerBugSpawned` / `onServerBugRemoved` コールバックを設定し、ネットワーク受信をそのまま AR 追加・削除に橋渡しする
-- コールバックは `stopSpawning()` / `resetGame()` 時に必ず `nil` クリアし、ゾンビクロージャが発火しないようにする
+- サーバー・クライアント連携ロジックだけを対象に変更する
+- 描画ロジックと通信ロジックを同一責務に混在させない
+- `switch` は網羅的に書き、安易な `default` を使わない
+- 新しい定数は型の内部に閉じ込め、マジックナンバーを避ける
+- 共有状態はスレッドセーフに扱う
+- メッセージ型、サービス識別子、接続上限はサーバーとクライアントで必ず一致させる
 
 ---
 
-## 10. 接続管理の詳細要件
+## 12. Copilot への実装指示
 
-### 10-1. セッション確立
-
-- iOS クライアントは `MCNearbyServiceBrowser` でプロジェクターを発見次第、即座に `invitePeer(_:to:withContext:timeout:10)` を呼んで招待する
-- プロジェクターは `MCNearbyServiceAdvertiser` の招待ハンドラで、`usedSlots.count < maxPlayers(3)` の場合のみ承諾する
-- 暗号化設定: `MCSession(encryptionPreference: .required)`
-
-### 10-2. スロット管理
-
-- プロジェクターは `playerSlots: [MCPeerID: Int]` と `usedSlots: Set<Int>` を管理する
-- 接続時: 最小の空きスロット番号を割り当てる（0, 1, 2 の順）
-- 切断時: 該当スロットを `usedSlots` から削除し `playerSlots` から除去する
-- スロット番号は `bugCaptured` の個別送信および UI 表示のプレイヤーカラー決定に使用する
-
-### 10-3. 接続中プレイヤー表示
-
-プロジェクター画面の右下に半透明オーバーレイを常時表示する。
-
-- 表示内容: `"接続中 N / 3"` ヘッダー + プレイヤーごとの名前と色付きドット
-- プレイヤーカラー: スロット 0 = シアン / スロット 1 = オレンジ / スロット 2 = ピンク
-- 更新タイミング: 接続・切断イベントのたびにリストを再描画する
-
----
-
-## 11. ゲーム進行とネットワーク操作の対応
-
-| ユーザー操作 | iOS 側処理 | ネットワーク送信 |
-|---|---|---|
-| スタートボタンタップ | `state = .playing`、ローカルシーン生成 | `startGame()` → Projector |
-| ARキャリブレーション完了 | `worldOriginTransform` を記録、`state = .ready` | なし |
-| スリングショット発射（初回） | `confirmReady()` でカウントダウン開始 | `startGame()` 送信済みのため追加送信なし |
-| スリングショット発射 | ローカル AR シーンでネット発射 | `launch(angle, power, timestamp)` → Projector |
-| AR でバグ捕獲 | ローカルスコアに加算 | `bugRemoved(id)` → Projector |
-| リセットボタンタップ | ローカル状態初期化 | `resetGame()` → Projector |
-
----
-
-## 12. エラーハンドリング要件
-
-- JSON エンコード失敗時はログを出力してスキップする（`try?` を使用、クラッシュ禁止）
-- 接続先が 0 件の場合は送信をスキップする（`mcSession.connectedPeers.isEmpty` チェック）
-- `currentFrame` が取得できない（AR セッション未起動）場合は `addServerBug` を中断する
-- `bugRemoved` の ID が存在しない場合はサイレントスキップ（ゾンビ ID の除去試行でクラッシュしない）
-- `requestCurrentBugs` コールバックが未設定の場合は `sendCurrentBugs` を空振りで終了する
-
----
-
-## 13. コーディング規約
-
-- `switch BugType` は **網羅的 switch** を使用し `default` を書かない（新ケース追加時のコンパイルエラーで漏れを検知するため）
-- RealityKit のみを使用する（SceneKit / ARSCNView / SCNNode は禁止）
-- 新しい定数は `private static let` で閉じ込め、マジックナンバーを避ける
-- `NSLock` を使用したスレッドセーフキャッシュパターンを踏襲する
-- Swift の命名規則（camelCase）に従う
+- サーバー・クライアント連携の変更だけを行う
+- AR 表示、描画、UI、演出、ゲームバランスには触れない
+- 既存コードのうち通信責務に直接関係しない部分は変更しない
+- 必要なら通信層の型定義、送受信処理、接続管理、再同期処理のみを更新する
+- 変更時は 1 つの PR 単位に収まる範囲で実装する
