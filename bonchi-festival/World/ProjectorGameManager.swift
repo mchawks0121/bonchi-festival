@@ -87,6 +87,27 @@ final class ProjectorGameManager: NSObject {
         try? mcSession.send(data, toPeers: mcSession.connectedPeers, with: .reliable)
     }
 
+    /// Broadcast a newly spawned bug to all connected iOS clients.
+    /// Called by the projector when it creates a new autonomous bug so every client
+    /// can mirror the bug in its AR scene.
+    func sendBugSpawned(id: String, type: BugType, normalizedX: Float, normalizedY: Float) {
+        guard !mcSession.connectedPeers.isEmpty else { return }
+        let payload = BugSpawnedPayload(id: id, bugType: type,
+                                        normalizedX: normalizedX, normalizedY: normalizedY)
+        guard let data = try? JSONEncoder().encode(GameMessage.bugSpawned(payload)) else { return }
+        try? mcSession.send(data, toPeers: mcSession.connectedPeers, with: .reliable)
+    }
+
+    /// Broadcast a bug-removed event to all connected iOS clients.
+    /// Called either when a client reports a capture (relay) or when the projector
+    /// itself removes a bug (autonomous exit, game reset).
+    func sendBugRemoved(id: String) {
+        guard !mcSession.connectedPeers.isEmpty else { return }
+        let payload = BugRemovedPayload(id: id)
+        guard let data = try? JSONEncoder().encode(GameMessage.bugRemoved(payload)) else { return }
+        try? mcSession.send(data, toPeers: mcSession.connectedPeers, with: .reliable)
+    }
+
     /// Send a bug-captured notification to the specific player peer so it can add points.
     func sendBugCaptured(bugType: BugType, toPlayerAtSlot playerIndex: Int) {
         guard let peer = playerSlots.first(where: { $0.value == playerIndex })?.key else { return }
