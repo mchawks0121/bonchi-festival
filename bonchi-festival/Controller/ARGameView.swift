@@ -174,6 +174,9 @@ extension ARGameView {
         private static let referenceDistance:    Float  = 3.0
         private static let minBugScale:          Float  = 0.3
         private static let maxBugScale:          Float  = 5.0
+        // Capped at 4 to match the projector's maxSimultaneousBugs and keep
+        // the AR session manageable.  Both sides enforce the same limit so
+        // the server never broadcasts more bugs than the client can display.
         private static let maxActiveBugs:        Int    = 4
         private static let maxHorizontalAngle:   Float  = 0.65
 
@@ -356,7 +359,8 @@ extension ARGameView {
             var anchorTransform = matrix_identity_float4x4
             anchorTransform.columns.3 = worldPos
 
-            // Include a short ID prefix in the name to simplify debugging in AR sessions.
+            // Include a short ID prefix (UUID strings are always 36 chars, so prefix(8) is safe)
+            // in the name to simplify debugging in AR sessions.
             let anchor = ARAnchor(name: "bug-server-\(id.prefix(8))", transform: anchorTransform)
 
             mapLock.lock()

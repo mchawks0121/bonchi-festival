@@ -114,7 +114,12 @@ final class ProjectorGameManager: NSObject {
         for bug in bugs {
             let payload = BugSpawnedPayload(id: bug.id, bugType: bug.type,
                                             normalizedX: bug.normalizedX, normalizedY: bug.normalizedY)
-            guard let data = try? JSONEncoder().encode(GameMessage.bugSpawned(payload)) else { continue }
+            // Encoding should never fail for a valid Codable struct;
+            // log and skip rather than crashing if it does.
+            guard let data = try? JSONEncoder().encode(GameMessage.bugSpawned(payload)) else {
+                print("[ProjectorGameManager] sendCurrentBugs: failed to encode bugSpawned for id=\(bug.id)")
+                continue
+            }
             try? mcSession.send(data, toPeers: [peer], with: .reliable)
         }
     }

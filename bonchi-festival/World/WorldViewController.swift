@@ -276,8 +276,11 @@ final class ProjectorBug3DCoordinator {
     /// Key = stable server bug ID; value = (type, normalizedX, normalizedY).
     private var syncedBugData: [String: (type: BugType, normalizedX: Float, normalizedY: Float)] = [:]
 
-    /// Snapshot of all bugs currently alive on the projector, ready to be re-broadcast
-    /// to a newly-connected iOS client so it can catch up to the current game state.
+    /// Snapshot of all bugs currently alive on the projector screen, combining both
+    /// autonomously-spawned and phone-synced bugs.
+    /// Used by `ProjectorGameManager.requestCurrentBugs` to replay each active bug as a
+    /// `bugSpawned` message to a newly-connected iOS client, ensuring both devices show
+    /// the same set of bugs from the moment the client joins the session.
     var currentActiveBugs: [(id: String, type: BugType, normalizedX: Float, normalizedY: Float)] {
         let autonomous = autonomousBugData.map { (id: $0.key, type: $0.value.type,
                                                   normalizedX: $0.value.normalizedX,
