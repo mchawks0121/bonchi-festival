@@ -60,6 +60,18 @@ final class GameManager: ObservableObject {
     /// Called when the player releases the slingshot; passes the final drag offset and power.
     var onNetFired: ((CGSize, Float) -> Void)?
 
+    // MARK: Server-sync callbacks (projectorClient mode)
+    // Set by ARGameView.Coordinator when startSpawning() runs in projectorClient mode.
+    // Cleared by stopSpawning() and resetGame().
+
+    /// Called when the projector server broadcasts a new bug spawn.
+    /// Passes (id, bugType, normalizedX, normalizedY).
+    var onServerBugSpawned: ((String, BugType, Float, Float) -> Void)?
+
+    /// Called when the projector server removes a bug (captured by any player or natural exit).
+    /// Passes the bug ID to remove from the AR scene.
+    var onServerBugRemoved: ((String) -> Void)?
+
     // MARK: Dependencies
 
     let multipeerSession = MultipeerSession()
@@ -168,6 +180,8 @@ final class GameManager: ObservableObject {
         state = .waiting
         slingshotDragUpdate = nil
         onNetFired = nil
+        onServerBugSpawned = nil
+        onServerBugRemoved = nil
         // Signal any connected projector (no-op when no peers are connected).
         multipeerSession.send(.resetGame())
     }
@@ -241,6 +255,22 @@ extension GameManager: MultipeerSessionDelegate {
             if let payload = message.bugCapturedPayload {
                 DispatchQueue.main.async {
                     self.score += payload.bugType.points
+                }
+            }
+        case .bugSpawned:
+            // The projector server spawned a new bug; add it to the AR scene.
+            if let payload = message.bugSpawnedPayload {
+                DispatchQueue.main.async {
+                    self.onServerBugSpawned?(payload.id, payload.bugType,
+                                             payload.normalizedX, payload.normalizedY)
+                }
+            }
+        case .bugRemoved:
+            // The projector relays a bug removal (captured by any player or natural exit).
+            // Remove the bug from this client's AR scene.
+            if let payload = message.bugRemovedPayload {
+                DispatchQueue.main.async {
+                    self.onServerBugRemoved?(payload.id)
                 }
             }
         default:

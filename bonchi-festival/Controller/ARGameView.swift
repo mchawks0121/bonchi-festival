@@ -143,6 +143,19 @@ extension ARGameView {
         /// Maps anchor UUID → RealityKit AnchorEntity (for removal from scene)
         private var anchorEntityMap:    [UUID: AnchorEntity]     = [:]
 
+        // MARK: Server-sync ID maps (projectorClient mode)
+        //
+        // The projector assigns each bug a stable String ID.  These maps bridge
+        // between the server ID and the local ARAnchor UUID so that:
+        //   • addServerBug(id:) can register the ARAnchor under the server ID.
+        //   • removeServerBug(id:) can find and clean up the correct anchor.
+        //   • startBug3DCaptureAnimation(of:) reports the server ID, not the anchor UUID.
+
+        /// Maps server bug ID → local ARAnchor UUID.
+        private var serverIDToAnchorID: [String: UUID] = [:]
+        /// Maps local ARAnchor UUID → server bug ID (reverse of serverIDToAnchorID).
+        private var anchorIDToServerID: [UUID: String] = [:]
+
         // MARK: 3-D slingshot state
 
         private var slingshotNode:        SlingshotNode?
@@ -161,7 +174,10 @@ extension ARGameView {
         private static let referenceDistance:    Float  = 3.0
         private static let minBugScale:          Float  = 0.3
         private static let maxBugScale:          Float  = 5.0
-        private static let maxActiveBugs:        Int    = 5
+        // Capped at 4 to match the projector's maxSimultaneousBugs and keep
+        // the AR session manageable.  Both sides enforce the same limit so
+        // the server never broadcasts more bugs than the client can display.
+        private static let maxActiveBugs:        Int    = 4
         private static let maxHorizontalAngle:   Float  = 0.65
 
         // MARK: Spawning
@@ -193,6 +209,8 @@ extension ARGameView {
             anchorBug3DNodeMap.removeAll()
             anchorProxyNodeMap.removeAll()
             anchorEntityMap.removeAll()
+            serverIDToAnchorID.removeAll()
+            anchorIDToServerID.removeAll()
             mapLock.unlock()
 
             ensureSlingshotAttached()
@@ -220,7 +238,15 @@ extension ARGameView {
                                               origin: gameManager?.worldOriginTransform)
             }
 
-            scheduleNextSpawn(delay: 0.9)
+            if gameManager?.gameMode == .projectorClient {
+                // In projectorClient mode bugs are spawned by the server (projector).
+                // Wire callbacks so GameManager can forward incoming bugSpawned /
+                // bugRemoved network messages directly into this AR scene.
+                setupServerBugCallbacks()
+            } else {
+                // Standalone mode: this device is its own bug authority.
+                scheduleNextSpawn(delay: 0.9)
+            }
         }
 
         /// Attaches the 3-D slingshot to the camera and wires drag/fire callbacks.
@@ -255,6 +281,10 @@ extension ARGameView {
             updateSubscription?.cancel()
             updateSubscription = nil
 
+            // Clear server-sync callbacks so stale closures don't fire after the session.
+            gameManager?.onServerBugSpawned = nil
+            gameManager?.onServerBugRemoved = nil
+
             // Remove slingshot camera anchor from the RealityKit scene
             if let ca = slingshotCameraAnchor {
                 arView?.scene.removeAnchor(ca)
@@ -273,9 +303,111 @@ extension ARGameView {
             bugAnchorMap.removeAll()
             nodeAnchorMap.removeAll()
             anchorEntityMap.removeAll()
+            serverIDToAnchorID.removeAll()
+            anchorIDToServerID.removeAll()
             mapLock.unlock()
 
             entitiesToRemove.forEach { arView?.scene.removeAnchor($0) }
+        }
+
+        // MARK: - Server-driven bug management (projectorClient mode)
+
+        /// Registers GameManager callbacks so incoming bugSpawned / bugRemoved
+        /// network messages are forwarded into this AR scene.
+        private func setupServerBugCallbacks() {
+            gameManager?.onServerBugSpawned = { [weak self] id, type, normalizedX, normalizedY in
+                self?.addServerBug(id: id, type: type,
+                                   normalizedX: normalizedX, normalizedY: normalizedY)
+            }
+            gameManager?.onServerBugRemoved = { [weak self] id in
+                self?.removeServerBug(id: id)
+            }
+        }
+
+        /// Creates an AR anchor for a server-spawned bug and adds it to the scene.
+        /// The position is reconstructed from the normalised direction hints sent by the projector.
+        /// Called on the main thread via the onServerBugSpawned callback.
+        private func addServerBug(id: String, type: BugType, normalizedX: Float, normalizedY: Float) {
+            guard let arView,
+                  let frame = arView.session.currentFrame else { return }
+
+            // Clamp against active-bug limit to avoid overloading the AR session.
+            // Silently drop the spawn when the cap is reached — the projector will
+            // continue to broadcast subsequent bugs and the session self-corrects.
+            mapLock.lock()
+            let currentBugCount = bugAnchorMap.count
+            mapLock.unlock()
+            guard currentBugCount < Coordinator.maxActiveBugs else { return }
+
+            // Reconstruct horizontal angle and vertical offset from server normalised values.
+            let horizontalAngle = normalizedX * Coordinator.maxHorizontalAngle
+            let vertRange       = Coordinator.verticalOffsetRange
+            let verticalOffset  = normalizedY * (vertRange.upperBound - vertRange.lowerBound)
+                                  + vertRange.lowerBound
+            let distance = Float.random(in: Coordinator.minSpawnDistance...Coordinator.maxSpawnDistance)
+
+            // Transform camera-local position to world space (−Z = forward in ARKit).
+            let localPos = simd_float4(
+                distance * sin(horizontalAngle),
+                verticalOffset,
+                -distance * cos(horizontalAngle),
+                1
+            )
+            let baseTransform = gameManager?.worldOriginTransform ?? frame.camera.transform
+            let worldPos      = baseTransform * localPos
+
+            var anchorTransform = matrix_identity_float4x4
+            anchorTransform.columns.3 = worldPos
+
+            // Include a short ID prefix (UUID strings are always 36 chars, so prefix(8) is safe)
+            // in the name to simplify debugging in AR sessions.
+            let anchor = ARAnchor(name: "bug-server-\(id.prefix(8))", transform: anchorTransform)
+
+            mapLock.lock()
+            bugAnchorMap[anchor.identifier]            = type
+            serverIDToAnchorID[id]                     = anchor.identifier
+            anchorIDToServerID[anchor.identifier]      = id
+            mapLock.unlock()
+
+            arView.session.add(anchor: anchor)
+        }
+
+        /// Removes a server-spawned bug from the AR scene when the projector signals
+        /// that it has been captured by another player or has naturally exited.
+        /// Plays a brief fade-out instead of the full capture animation so the player
+        /// understands the bug was taken by someone else.
+        private func removeServerBug(id: String) {
+            mapLock.lock()
+            guard let anchorUUID = serverIDToAnchorID[id] else {
+                mapLock.unlock()
+                return
+            }
+            let proxy        = anchorProxyNodeMap[anchorUUID]
+            let anchorEntity = anchorEntityMap[anchorUUID]
+            let bug3D        = anchorBug3DNodeMap.removeValue(forKey: anchorUUID)
+            if let p = proxy { nodeAnchorMap.removeValue(forKey: ObjectIdentifier(p)) }
+            anchorProxyNodeMap.removeValue(forKey: anchorUUID)
+            anchorEntityMap.removeValue(forKey: anchorUUID)
+            bugAnchorMap.removeValue(forKey: anchorUUID)
+            serverIDToAnchorID.removeValue(forKey: id)
+            anchorIDToServerID.removeValue(forKey: anchorUUID)
+            mapLock.unlock()
+
+            // Fade the proxy out before removing so the disappearance is smooth.
+            if let p = proxy {
+                p.run(SKAction.sequence([
+                    SKAction.fadeOut(withDuration: 0.3),
+                    SKAction.removeFromParent()
+                ]))
+            }
+
+            // Play the capture (shrink) animation on the 3-D entity then remove it.
+            if let bug3D, let av = arView {
+                reparentToCaptureAnchor(bug3D, in: av)
+                bug3D.captured()
+            } else if let ae = anchorEntity {
+                arView?.scene.removeAnchor(ae)
+            }
         }
 
         private func scheduleNextSpawn(delay: TimeInterval) {
@@ -497,7 +629,13 @@ extension ARGameView {
                 bug3D.captured()
             }
 
-            gameManager?.sendBugRemoved(id: anchor.identifier.uuidString)
+            // Use the server-assigned ID when in projectorClient mode so the projector
+            // can identify and relay the capture to all other clients.  Fall back to the
+            // anchor UUID string in standalone mode (no server in the loop).
+            mapLock.lock()
+            let bugID = anchorIDToServerID[anchor.identifier] ?? anchor.identifier.uuidString
+            mapLock.unlock()
+            gameManager?.sendBugRemoved(id: bugID)
         }
 
         private func handleCapture(of node: SKNode) {
@@ -508,12 +646,13 @@ extension ARGameView {
 
             // If startBug3DCaptureAnimation() was not called for any reason, handle it here.
             mapLock.lock()
-            let bug3D = anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
+            let bug3D  = anchorBug3DNodeMap.removeValue(forKey: anchor.identifier)
+            let bugID  = anchorIDToServerID[anchor.identifier] ?? anchor.identifier.uuidString
             mapLock.unlock()
             if let bug3D, let arView {
                 reparentToCaptureAnchor(bug3D, in: arView)
                 bug3D.captured()
-                gameManager?.sendBugRemoved(id: anchor.identifier.uuidString)
+                gameManager?.sendBugRemoved(id: bugID)
             }
 
             // Clean up remaining maps and remove proxy / anchor
@@ -524,6 +663,9 @@ extension ARGameView {
             anchorProxyNodeMap.removeValue(forKey: anchor.identifier)
             anchorEntityMap.removeValue(forKey: anchor.identifier)
             bugAnchorMap.removeValue(forKey: anchor.identifier)
+            if let sID = anchorIDToServerID.removeValue(forKey: anchor.identifier) {
+                serverIDToAnchorID.removeValue(forKey: sID)
+            }
             mapLock.unlock()
 
             proxy?.removeFromParent()
@@ -599,9 +741,14 @@ extension ARGameView {
             let net = Net3DNode(playerIndex: 0)
             netAnchor.addChild(net.entity)
 
+            // Capture `net` strongly in the completion closure.
+            // Net3DNode owns its flightTimer; if `net` were a local var that goes out of
+            // scope here, deinit would invalidate the timer before completion fires and
+            // the netAnchor would never be removed, leaving the green mesh in AR space.
             net.launch(from: origin, direction: direction, power: power) { [weak arView, weak netAnchor] in
                 // Remove the net anchor (and its net entity child) after the flight ends.
                 if let na = netAnchor { arView?.scene.removeAnchor(na) }
+                _ = net  // keep Net3DNode alive until this closure fires
             }
         }
     }

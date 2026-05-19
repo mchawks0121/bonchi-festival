@@ -89,7 +89,7 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 | 同時出現上限 | **最大 5 匹** |
 | タイマー管理 | **スマホ（iOS）側のみ**。プロジェクターはタイマーを持たない |
 | スコア計算 | **スマホ（iOS）側のみ**で行う。プロジェクターはスコアを計算・表示しない |
-| バグ同期 | スマホが `bugSpawned` / `bugRemoved` を送信し、プロジェクターはそれに従ってバグを追加・削除する |
+| バグ同期 | **プロジェクター（サーバー）** がバグをスポーンし、全 iOS クライアントに `bugSpawned` をブロードキャスト。クライアントが捕獲すると `bugRemoved` をプロジェクターへ送信し、プロジェクターが全クライアントへリレーする |
 | 最大同時接続 | **3 台**（4 台目以降は接続拒否） |
 | ゲーム終了 | タイムアップ後、スマホは `FinishedView` を表示。プロジェクターは `resetGame` 受信後にバグをクリアするだけで画面遷移なし |
 
@@ -137,7 +137,7 @@ iOS デバイスのカメラ越しに 3D バグが出現し、スリングショ
 
 加えて同時出現上限を **5 匹** に制限し、多すぎる出現を防ぎます。
 
-バグスポーンは `ARGameView.Coordinator`（スマホ AR 側）のみで行います。プロジェクターは独立したスポーンを持ちません。
+バグスポーンは **プロジェクター（`ProjectorBug3DCoordinator.spawnAutonomousBug()`）が権限を持ちます**。projectorClient モードの iOS は自前スポーンを行わず、サーバーから受け取った `bugSpawned` メッセージに従って AR バグを表示します。スタンドアロンモードのみ iOS 側が自律スポーンします。
 
 ---
 
@@ -252,18 +252,23 @@ bonchi-festival/
 ### 通信フロー（Multipeer Connectivity）
 
 ```
-iOS Controller (×最大3台)               Projector Server
+Projector Server                         iOS Controller (×最大3台)
     │                                        │
-    │── startGame ──────────────────────────>│  (いずれかのクライアントが送信)
+    │<── startGame ───────────────────────── │  (いずれかのクライアントが送信)
     │                                        │
-    │── launch(angle, power, timestamp) ────>│  → playerIndex はサーバー側で peerID より特定
-    │                                        │  → 対応する色の NetProjectile を発射（視覚のみ）
+    │<── launch(angle, power, timestamp) ─── │  → playerIndex はサーバー側で peerID より特定
+    │     → 対応する色の NetProjectile を発射（視覚のみ）
     │                                        │
-    │── bugSpawned(id, type, x, y) ─────────>│  → 対応する Bug3DNode をその位置に追加
+    │── bugSpawned(id, type, x, y) ─────────>│  プロジェクターが自律スポーン → 全クライアントへブロードキャスト
+    │     → 各クライアントが AR 空間にバグを追加
     │                                        │
-    │── bugRemoved(id) ─────────────────────>│  → 対応する Bug3DNode を captured() アニメで削除
+    │<── bugRemoved(id) ─────────────────────│  捕獲したクライアントが送信
+    │── bugRemoved(id) ─────────────────────>│  プロジェクターが全クライアントへリレー
+    │     → 全クライアントの AR からバグが消える
     │                                        │
-    │── resetGame ───────────────────────── >│  → 全 Bug3DNode を即削除（画面遷移なし）
+    │── bugRemoved(id) ─────────────────────>│  自律バグが自然消滅した場合もリレー
+    │                                        │
+    │<── resetGame ───────────────────────── │  → 全 Bug3DNode を即削除（画面遷移なし）
 ```
 
 ### メッセージ型一覧
@@ -273,9 +278,9 @@ iOS Controller (×最大3台)               Projector Server
 | `launch` | iOS → Projector | `LaunchPayload(angle, power, timestamp)` | スリングショット発射（視覚同期） |
 | `startGame` | iOS → Projector | なし | ゲーム開始 |
 | `resetGame` | iOS → Projector | なし | バグをクリア |
-| `bugSpawned` | iOS → Projector | `BugSpawnedPayload(id, bugType, normalizedX, normalizedY)` | バグ出現通知（全モードで送信、接続なし時は no-op） |
-| `bugRemoved` | iOS → Projector | `BugRemovedPayload(id)` | バグ捕獲通知（全モードで送信、接続なし時は no-op） |
-| `bugCaptured` | Projector → iOS | `BugCapturedPayload(bugType, playerIndex)` | 旧スコア通知（後方互換のため残存。現在は未使用） |
+| `bugSpawned` | **Projector → 全iOS** | `BugSpawnedPayload(id, bugType, normalizedX, normalizedY)` | サーバーがバグをスポーン → 全クライアントへブロードキャスト |
+| `bugRemoved` | iOS → Projector → 全iOS | `BugRemovedPayload(id)` | 捕獲クライアントが送信 → プロジェクターが全クライアントへリレー。自然消滅時もリレー |
+| `bugCaptured` | Projector → iOS | `BugCapturedPayload(bugType, playerIndex)` | 後方互換のため残存。現在は未使用 |
 
 ### スコア設計
 
@@ -283,18 +288,20 @@ iOS Controller (×最大3台)               Projector Server
 - スタンドアロン・プロジェクタークライアント共に、`ARBugScene` での捕獲時に `BugHunterSceneDelegate` を通じて直接スコアが更新されます。
 - プロジェクター側はスコアを保持・表示しません。
 
-### スポーンシステムの統一
+### スポーン権限（サーバー主導）
 
-- **スタンドアロンとプロジェクタークライアントの出現システムは完全共通です。**
-- `sendBugSpawned`・`sendBugRemoved`・`sendLaunch`・`startGame`・`resetGame` の Multipeer 送信はすべてモード判定なしで呼ばれます。
-- スタンドアロンモード（接続ピアなし）では送信が no-op になるだけで、コードパスは同一です。
+- **バグの生成権はプロジェクター（サーバー）のみが持ちます。**
+- `ProjectorBug3DCoordinator.spawnAutonomousBug()` が UUID を生成し、`onBugSpawned` コールバック → `ProjectorGameManager.sendBugSpawned` で全 iOS クライアントへブロードキャストします。
+- iOS クライアント（projectorClient モード）は自前スポーンを行わず、`GameManager.onServerBugSpawned` コールバック経由で `ARGameView.Coordinator.addServerBug` を呼び出します。
+- スタンドアロンモードのみ従来通り iOS 側で自律スポーンします。
 
 ### プロジェクター表示設計
 
 - プロジェクターは常に RealityKit (非AR) 3D シーンを表示し続けます（待機画面や終了画面なし）。
-- バグは `bugSpawned` 受信時に `ProjectorBug3DCoordinator.addSyncedBug` で追加されます（フェードイン + スケールアップ + ホバーアニメ）。
-- バグは `bugRemoved` 受信時に `removeSyncedBug` で `captured()` アニメ付きで削除されます。
-- `resetGame` 受信時は全バグを即座に削除します。
+- バグは `spawnAutonomousBug()` で自律生成され、同時に全クライアントへ `bugSpawned` を送信します。
+- クライアントから `bugRemoved` を受信した場合、`removeSyncedBug` でプロジェクター側の Bug3DNode を `captured()` アニメ付きで削除し、同時に全クライアントへ `bugRemoved` をリレーします。
+- バグが自然消滅した場合（タイムアウト退場）も `bugRemoved` を全クライアントへ送信します。
+- `resetGame` 受信時は全バグを即削除し、各削除を `bugRemoved` としてクライアントへ通知します。
 
 ---
 

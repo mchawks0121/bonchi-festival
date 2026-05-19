@@ -138,6 +138,24 @@ final class WorldViewController: UIViewController {
 
         let coordinator = ProjectorBug3DCoordinator()
         coordinator.attach(to: arView, bugScene: scene)
+
+        // Wire server-sync callbacks so the coordinator can broadcast bug lifecycle
+        // events to all connected iOS clients via the Multipeer session.
+        coordinator.onBugSpawned = { [weak self] id, type, normalizedX, normalizedY in
+            self?.projectorManager.sendBugSpawned(id: id, type: type,
+                                                   normalizedX: normalizedX, normalizedY: normalizedY)
+        }
+        coordinator.onBugRemoved = { [weak self] id in
+            self?.projectorManager.sendBugRemoved(id: id)
+        }
+
+        // Wire the state-sync callback: when a new iOS client connects mid-game,
+        // ProjectorGameManager will call this to get the full list of active bugs
+        // and immediately send each one to that client.
+        projectorManager.requestCurrentBugs = { [weak coordinator] in
+            coordinator?.currentActiveBugs ?? []
+        }
+
         bug3DCoordinator = coordinator
     }
 
@@ -174,7 +192,11 @@ extension WorldViewController: ProjectorGameManagerDelegate {
 
     func manager(_ manager: ProjectorGameManager, didReceiveBugRemoved payload: BugRemovedPayload) {
         DispatchQueue.main.async {
+            // Remove the bug from the projector scene.
             self.bug3DCoordinator?.removeSyncedBug(id: payload.id)
+            // Relay the removal to all connected iOS clients so they remove the bug
+            // from their AR scenes (covers the case where another player caught it).
+            manager.sendBugRemoved(id: payload.id)
         }
     }
 
@@ -193,16 +215,30 @@ extension WorldViewController: ProjectorGameManagerDelegate {
 ///   individual bug positions can be updated without moving other entities.
 ///   SCNAction-based animations are replaced by Timer-based entity transform updates.
 ///
-/// Bug lifecycle is fully phone-driven:
-///   • addSyncedBug(id:type:normalizedX:normalizedY:) — creates a Bug3DNode entity.
-///   • removeSyncedBug(id:)                           — plays capture animation.
-///   • stopSpawning()                                 — clears all active bugs.
+/// Bug lifecycle is server-authoritative:
+///   • Projector autonomously spawns bugs and broadcasts them to all iOS clients via
+///     `onBugSpawned` callback (→ ProjectorGameManager.sendBugSpawned).
+///   • When a client captures a bug, the projector receives `bugRemoved`, calls
+///     `removeSyncedBug(id:)`, and relays via `onBugRemoved` callback.
+///   • When an autonomous bug exits naturally, `onBugRemoved` is also called so all
+///     clients remove the bug from their AR scenes.
+///   • stopSpawning() broadcasts removal of every active bug so clients stay in sync.
 final class ProjectorBug3DCoordinator {
 
     // MARK: Dependencies
 
     weak var arView: ARView?
     weak var bugScene: BugHunterScene?
+
+    // MARK: Server-sync callbacks (set by WorldViewController)
+
+    /// Called on the main thread when this coordinator creates a new autonomous bug.
+    /// Passes (id, bugType, normalizedX, normalizedY).
+    var onBugSpawned: ((String, BugType, Float, Float) -> Void)?
+
+    /// Called on the main thread when a bug is removed (captured or naturally exited).
+    /// Passes the bug ID so the caller can relay the removal to all iOS clients.
+    var onBugRemoved: ((String) -> Void)?
 
     // MARK: RealityKit camera constants
 
@@ -217,7 +253,7 @@ final class ProjectorBug3DCoordinator {
 
     // MARK: Bug tracking (main thread only)
 
-    /// Maps stable bug ID (phone anchor UUID string) → Bug3DNode.
+    /// Maps stable bug ID (server-generated UUID string) → Bug3DNode.
     private var bug3DNodes:   [String: Bug3DNode]   = [:]
     /// Maps stable bug ID → its world AnchorEntity (needed for scene removal).
     private var bug3DAnchors: [String: AnchorEntity] = [:]
@@ -226,6 +262,37 @@ final class ProjectorBug3DCoordinator {
     private var autonomousBugs:   [Bug3DNode]   = []
     /// World AnchorEntity instances for autonomous bugs.
     private var autonomousAnchors: [AnchorEntity] = []
+    /// Maps AnchorEntity object identity → server-assigned bug ID for autonomous bugs.
+    private var autonomousBugIDs: [ObjectIdentifier: String] = [:]
+    /// Reverse map: server bug ID → AnchorEntity object identity.
+    /// Maintained in parallel with `autonomousBugIDs` to allow O(1) lookup by ID.
+    private var autonomousIDToAnchorKey: [String: ObjectIdentifier] = [:]
+
+    // MARK: Bug data for state-sync (new client re-join)
+
+    /// Holds the spawn parameters for each currently-alive autonomous bug so that
+    /// a newly-connected iOS client can be sent the full current state.
+    /// Key = stable server bug ID; value = (type, normalizedX, normalizedY).
+    private var autonomousBugData: [String: (type: BugType, normalizedX: Float, normalizedY: Float)] = [:]
+
+    /// Holds the spawn parameters for each currently-alive phone-synced bug.
+    /// Key = stable server bug ID; value = (type, normalizedX, normalizedY).
+    private var syncedBugData: [String: (type: BugType, normalizedX: Float, normalizedY: Float)] = [:]
+
+    /// Snapshot of all bugs currently alive on the projector screen, combining both
+    /// autonomously-spawned and phone-synced bugs.
+    /// Used by `ProjectorGameManager.requestCurrentBugs` to replay each active bug as a
+    /// `bugSpawned` message to a newly-connected iOS client, ensuring both devices show
+    /// the same set of bugs from the moment the client joins the session.
+    var currentActiveBugs: [(id: String, type: BugType, normalizedX: Float, normalizedY: Float)] {
+        let autonomous = autonomousBugData.map { (id: $0.key, type: $0.value.type,
+                                                  normalizedX: $0.value.normalizedX,
+                                                  normalizedY: $0.value.normalizedY) }
+        let synced     = syncedBugData.map { (id: $0.key, type: $0.value.type,
+                                              normalizedX: $0.value.normalizedX,
+                                              normalizedY: $0.value.normalizedY) }
+        return autonomous + synced
+    }
 
     /// Timer driving the autonomous spawn cycle.
     private var autonomousSpawnTimer: Timer?
@@ -290,14 +357,27 @@ final class ProjectorBug3DCoordinator {
         autonomousSpawnTimer?.invalidate()
         autonomousSpawnTimer = nil
 
+        // Notify clients that every active bug is being removed so their AR scenes
+        // stay in sync when the game resets.
+        for (_, id) in autonomousBugIDs {
+            onBugRemoved?(id)
+        }
+        for id in bug3DNodes.keys {
+            onBugRemoved?(id)
+        }
+
         // Remove all entity anchors from the RealityKit scene
         autonomousAnchors.forEach { arView?.scene.removeAnchor($0) }
         autonomousAnchors.removeAll()
         autonomousBugs.removeAll()
+        autonomousBugIDs.removeAll()
+        autonomousIDToAnchorKey.removeAll()
+        autonomousBugData.removeAll()
 
         bug3DAnchors.values.forEach { arView?.scene.removeAnchor($0) }
         bug3DAnchors.removeAll()
         bug3DNodes.removeAll()
+        syncedBugData.removeAll()
 
         notifyBugCountChanged()
     }
@@ -335,17 +415,45 @@ final class ProjectorBug3DCoordinator {
 
         bug3DNodes[id]   = bug3D
         bug3DAnchors[id] = bugAnchor
+        // Store spawn parameters for state-sync to newly-connected clients.
+        syncedBugData[id] = (type: type, normalizedX: normalizedX, normalizedY: normalizedY)
         notifyBugCountChanged()
     }
 
     func removeSyncedBug(id: String) {
-        guard let bug3D     = bug3DNodes[id],
-              let bugAnchor = bug3DAnchors[id] else { return }
+        // ── Phone-synced bug ─────────────────────────────────────────────────
+        if let bug3D = bug3DNodes[id], let bugAnchor = bug3DAnchors[id] {
+            bug3D.captured()
+            bug3DNodes.removeValue(forKey: id)
+            bug3DAnchors.removeValue(forKey: id)
+            syncedBugData.removeValue(forKey: id)
+            notifyBugCountChanged()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self, weak bugAnchor] in
+                if let a = bugAnchor { self?.arView?.scene.removeAnchor(a) }
+            }
+            return
+        }
+
+        // ── Autonomous bug captured by a phone player ────────────────────────
+        // O(1) reverse-lookup using the dedicated reverse map, then a single linear
+        // pass through autonomousAnchors (max 4 elements) to get the array index.
+        guard let anchorKey = autonomousIDToAnchorKey[id],
+              let idx = autonomousAnchors.firstIndex(where: { ObjectIdentifier($0) == anchorKey })
+        else { return }
+
+        let bug3D     = autonomousBugs[idx]
+        let bugAnchor = autonomousAnchors[idx]
+
+        // Remove from all tracking collections so the wander loop exits on its next tick.
+        autonomousBugIDs.removeValue(forKey: anchorKey)
+        autonomousIDToAnchorKey.removeValue(forKey: id)
+        autonomousBugData.removeValue(forKey: id)
+        autonomousBugs.remove(at: idx)
+        autonomousAnchors.remove(at: idx)
+        notifyBugCountChanged()
 
         bug3D.captured()
-        bug3DNodes.removeValue(forKey: id)
-        bug3DAnchors.removeValue(forKey: id)
-        notifyBugCountChanged()
 
         // Remove anchor after capture animation completes (~1.5 s).
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self, weak bugAnchor] in
@@ -369,24 +477,35 @@ final class ProjectorBug3DCoordinator {
         ) { [weak self] _ in self?.spawnAutonomousBug() }
     }
 
-    private static let spawnMargin: Float = 1.25
+    // Maximum number of bugs that may be visible on screen simultaneously.
+    // Matches the iOS client's maxActiveBugs constant (ARGameView.Coordinator).
+    private static let maxSimultaneousBugs = 4
 
     private func spawnAutonomousBug() {
         guard let arView else { return }
 
+        // Enforce simultaneous bug cap before spawning.
+        let activeBugCount = autonomousBugs.count + bug3DNodes.count
+        guard activeBugCount < ProjectorBug3DCoordinator.maxSimultaneousBugs else {
+            // Re-check after a short delay rather than dropping the spawn entirely.
+            scheduleNextAutonomousSpawn(after: 1.5)
+            return
+        }
+
         let elapsed        = Date().timeIntervalSince(autonomousStartTime)
         let (halfW, halfH) = visibleHalfExtents()
 
-        // Spawn at a random edge of the visible frustum
-        let edge = Int.random(in: 0..<4)
-        let startX: Float
-        let startY: Float
-        switch edge {
-        case 0:  startX = Float.random(in: -halfW...halfW);  startY =  halfH * Self.spawnMargin
-        case 1:  startX = Float.random(in: -halfW...halfW);  startY = -halfH * Self.spawnMargin
-        case 2:  startX = -halfW * Self.spawnMargin;         startY = Float.random(in: -halfH...halfH)
-        default: startX =  halfW * Self.spawnMargin;         startY = Float.random(in: -halfH...halfH)
-        }
+        // Generate normalized direction hints that act as the canonical bug position.
+        // normalizedX: -1 (far left) → 1 (far right)
+        // normalizedY:  0 (bottom)   → 1 (top)
+        // These values are broadcast to iOS clients so they can place the AR bug in the
+        // same approximate region of space as the projector screen bug.
+        let normalizedX = Float.random(in: -0.85...0.85)
+        let normalizedY = Float.random(in: 0.10...0.90)
+
+        // Derive projector world position from the normalized hints.
+        let startX = normalizedX * halfW * 0.70
+        let startY = (normalizedY * 2.0 - 1.0) * halfH * 0.60
 
         let bugType = randomAutonomousBugType()
         let bug3D   = Bug3DNode(type: bugType)
@@ -397,9 +516,20 @@ final class ProjectorBug3DCoordinator {
         arView.scene.addAnchor(bugAnchor)
         bugAnchor.addChild(bug3D.entity)
 
+        // Assign a stable server-side ID for this bug.
+        let bugID = UUID().uuidString
+        let anchorKey = ObjectIdentifier(bugAnchor)
+        autonomousBugIDs[anchorKey] = bugID
+        autonomousIDToAnchorKey[bugID] = anchorKey
+        // Store spawn parameters so they can be re-sent to a newly-connected client.
+        autonomousBugData[bugID] = (type: bugType, normalizedX: normalizedX, normalizedY: normalizedY)
+
         bug3D.entity.scale = SIMD3<Float>(repeating: s * 0.05)
         autonomousBugs.append(bug3D)
         autonomousAnchors.append(bugAnchor)
+
+        // Notify all connected iOS clients that a new bug has appeared.
+        onBugSpawned?(bugID, bugType, normalizedX, normalizedY)
 
         // Pop-in scale animation
         let scaleStart = Date()
@@ -410,69 +540,45 @@ final class ProjectorBug3DCoordinator {
             if p >= 1.0 { t.invalidate() }
         }
 
-        // Movement path: 2–3 interior waypoints then exit off-screen.
-        // The anchor entity position is updated via move(to:) to avoid conflicting
-        // with Bug3DNode's hover timer (which only modifies entity.position.y locally).
-        let bugDuration  = max(4.0, min(600.0 / Double(bugType.speed), 14.0))
-        let waypointCount = Int.random(in: 2...3)
-        let segDur        = bugDuration / Double(waypointCount + 1)
-
-        var cumulativeDelay: TimeInterval = 0
-
-        for _ in 0..<waypointCount {
-            let wx = Float.random(in: -halfW * 0.75 ... halfW * 0.75)
-            let wy = Float.random(in: -halfH * 0.65 ... halfH * 0.65)
-            let targetPos = SIMD3<Float>(wx, wy, 0)
-            let delay     = cumulativeDelay
-            cumulativeDelay += segDur
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak bugAnchor] in
-                guard let bugAnchor else { return }
-                bugAnchor.move(
-                    to: Transform(scale: SIMD3<Float>(repeating: 1), rotation: simd_quatf(),
-                                  translation: targetPos),
-                    relativeTo: nil,
-                    duration: segDur,
-                    timingFunction: .easeInOut
-                )
-            }
-        }
-
-        // Exit toward the opposite edge
-        let exitX = Float.random(in: -halfW * 0.8 ... halfW * 0.8)
-        let exitY = Float.random(in: -halfH * 0.8 ... halfH * 0.8)
-        let exitMargin = Self.spawnMargin * 1.04
-        let exitPoint: SIMD3<Float>
-        switch edge {
-        case 0:  exitPoint = SIMD3<Float>(exitX, -halfH * exitMargin, 0)
-        case 1:  exitPoint = SIMD3<Float>(exitX,  halfH * exitMargin, 0)
-        case 2:  exitPoint = SIMD3<Float>( halfW * exitMargin, exitY, 0)
-        default: exitPoint = SIMD3<Float>(-halfW * exitMargin, exitY, 0)
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + cumulativeDelay) { [weak bugAnchor] in
-            bugAnchor?.move(
-                to: Transform(scale: SIMD3<Float>(repeating: 1), rotation: simd_quatf(), translation: exitPoint),
-                relativeTo: nil,
-                duration: segDur,
-                timingFunction: .easeIn
-            )
-        }
-
-        // Remove on completion
-        let totalDur = cumulativeDelay + segDur
-        DispatchQueue.main.asyncAfter(deadline: .now() + totalDur) { [weak self, weak bug3D, weak bugAnchor] in
-            guard let self else { return }
-            if let a = bugAnchor { self.arView?.scene.removeAnchor(a) }
-            self.autonomousBugs.removeAll    { $0 === bug3D }
-            self.autonomousAnchors.removeAll { $0 === bugAnchor }
-            self.notifyBugCountChanged()
-        }
+        // Infinite wandering: bugs stay on screen indefinitely via recursive scheduling.
+        // The previous timer-based exit mechanism (exit off-screen → natural removal) has
+        // been removed.  Only a player throwing the net (or a game reset via stopSpawning)
+        // can remove a bug from the scene.
+        startWandering(bug: bug3D, anchor: bugAnchor, bugType: bugType)
 
         notifyBugCountChanged()
 
         let nextDelay = max(0.6, 1.8 - elapsed / 90.0)
         scheduleNextAutonomousSpawn(after: nextDelay)
+    }
+
+    /// Recursively picks a random on-screen waypoint and moves the bug anchor there.
+    /// Re-schedules itself after each segment so the bug wanders indefinitely.
+    /// Stops naturally when `bug` is no longer in `autonomousBugs` (captured or reset).
+    private func startWandering(bug: Bug3DNode, anchor: AnchorEntity, bugType: BugType) {
+        let (halfW, halfH) = visibleHalfExtents()
+        let wx = Float.random(in: -halfW * 0.75 ... halfW * 0.75)
+        let wy = Float.random(in: -halfH * 0.65 ... halfH * 0.65)
+        let targetPos = SIMD3<Float>(wx, wy, 0)
+
+        // Segment duration proportional to bug speed so faster bugs cover ground quicker.
+        // butterfly (speed=110) ≈ 5.5 s, beetle (speed=70) ≈ 8.6 s, stag (speed=45) ≈ 13 s.
+        let segDur = max(5.0, min(600.0 / Double(bugType.speed), 15.0))
+
+        anchor.move(
+            to: Transform(scale: SIMD3<Float>(repeating: 1), rotation: simd_quatf(),
+                          translation: targetPos),
+            relativeTo: nil,
+            duration: segDur,
+            timingFunction: .easeInOut
+        )
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + segDur) { [weak self, weak bug, weak anchor] in
+            guard let self, let bug, let anchor else { return }
+            // Only continue if the bug is still alive (not yet captured or game reset).
+            guard self.autonomousBugs.contains(where: { $0 === bug }) else { return }
+            self.startWandering(bug: bug, anchor: anchor, bugType: bugType)
+        }
     }
 
     private func randomAutonomousBugType() -> BugType {

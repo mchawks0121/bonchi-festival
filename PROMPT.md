@@ -257,10 +257,10 @@ private let multipeerSession = MultipeerSession()
 | `setWorldOrigin(transform:)` | `worldOriginTransform = transform`; `state = .ready` |
 | `confirmReady()` | `.ready` → `startGame()` |
 | `startGame()` | `score=0` / `timeRemaining=90` リセット; `.projectorServer` 以外は `ARBugScene` 生成; `multipeerSession.send(.startGame())` |
-| `resetGame()` | 全状態リセット; `worldOriginTransform=nil`; `slingshotDragUpdate=nil`; `onNetFired=nil`; `multipeerSession.send(.resetGame())` |
+| `resetGame()` | 全状態リセット; `worldOriginTransform=nil`; `slingshotDragUpdate=nil`; `onNetFired=nil`; `onServerBugSpawned=nil`; `onServerBugRemoved=nil`; `multipeerSession.send(.resetGame())` |
 | `sendLaunch(angle:power:)` | `arBugScene?.fireNet(angle:power:)` + `multipeerSession.send(.launch(...))` |
-| `sendBugSpawned(id:type:normalizedX:normalizedY:)` | `multipeerSession.send(.bugSpawned(...))` （モード判定なし; 接続なし時 no-op） |
-| `sendBugRemoved(id:)` | `multipeerSession.send(.bugRemoved(...))` （モード判定なし; 接続なし時 no-op） |
+| `sendBugSpawned(id:type:normalizedX:normalizedY:)` | `multipeerSession.send(.bugSpawned(...))` — スタンドアロンモードからのみ呼ばれる（接続なし時 no-op） |
+| `sendBugRemoved(id:)` | `multipeerSession.send(.bugRemoved(...))` — 捕獲時にプロジェクターへ通知（接続なし時 no-op） |
 
 **BugHunterSceneDelegate 実装**:
 - `didUpdateScore(_:timeRemaining:)` → `self.score = score`; `self.timeRemaining = timeRemaining`
@@ -270,8 +270,13 @@ private let multipeerSession = MultipeerSession()
 - `peerDidConnect(_:)` → `isConnected = true`
 - `peerDidDisconnect(_:)` → `isConnected = (session.connectedPeers.count > 0)`
 - `didReceive(message:from:)` の `.bugCaptured` → `score += bugType.points`（後方互換）
+- `didReceive(message:from:)` の `.bugSpawned` → `onServerBugSpawned?(id, type, normalizedX, normalizedY)` （projectorClient のみ意味あり）
+- `didReceive(message:from:)` の `.bugRemoved` → `onServerBugRemoved?(id)` （projectorClient のみ意味あり）
 
-**重要**: `sendBugSpawned`/`sendBugRemoved` は接続モードに関わらず常に呼ばれる。接続なし時は no-op。
+**サーバー同期コールバック（projectorClient モード専用）**:
+- `var onServerBugSpawned: ((String, BugType, Float, Float) -> Void)?` — サーバーが新規バグをスポーンした際に呼ばれる
+- `var onServerBugRemoved: ((String) -> Void)?` — サーバーがバグを削除した際に呼ばれる（別プレイヤーの捕獲・自然消滅）
+- 両コールバックは `ARGameView.Coordinator.setupServerBugCallbacks()` で設定され、`stopSpawning()` / `resetGame()` でクリアされる
 
 ---
 
@@ -336,15 +341,44 @@ private var bugAnchorMap:       [UUID: BugType]               // anchor.identifi
 private var anchorBug3DNodeMap: [UUID: Bug3DNode]              // anchor.identifier → Bug3DNode
 private var anchorProxyNodeMap: [UUID: SKNode]                 // anchor.identifier → proxy SKNode
 private var nodeAnchorMap:      [ObjectIdentifier: ARAnchor]   // proxy SKNode → ARAnchor
+private var serverIDToAnchorID: [String: UUID]                 // サーバーバグ ID → ARAnchor UUID
+private var anchorIDToServerID: [UUID: String]                 // ARAnchor UUID → サーバーバグ ID
 ```
 
 ### startSpawning()
 
 1. `gameMode == .projectorServer` → 即 return
-2. `stopSpawning()` → アンカー辞書を全クリア
+2. `stopSpawning()` → アンカー辞書・サーバー ID マップを全クリア; `onServerBugSpawned`/`onServerBugRemoved` をクリア
 3. `ensureSlingshotAttached()`
 4. `arBugScene?.onBugCaptured3D` / `onCaptureBug` コールバックを登録
-5. `scheduleNextSpawn(delay: 0.9)`
+5. `gameMode == .projectorClient` → `setupServerBugCallbacks()` でサーバー同期コールバックを登録（自前スポーンなし）
+6. `gameMode == .standalone` → `scheduleNextSpawn(delay: 0.9)` で自前スポーン開始
+
+### setupServerBugCallbacks() — projectorClient モード専用
+
+```swift
+// gameManager?.onServerBugSpawned = { id, type, nx, ny in addServerBug(...) }
+// gameManager?.onServerBugRemoved = { id in removeServerBug(id) }
+```
+
+### addServerBug(id:type:normalizedX:normalizedY:) — projectorClient モード専用
+
+```swift
+// normalizedX → horizontalAngle = normalizedX * 0.65
+// normalizedY → verticalOffset  = normalizedY * (0.45 - (-0.30)) + (-0.30)
+// distance = random(0.5...1.4)
+// world pos = (worldOriginTransform ?? camera.transform) * localPos
+// ARAnchor を追加; serverIDToAnchorID / anchorIDToServerID に登録
+```
+
+### removeServerBug(id:) — projectorClient モード専用
+
+```swift
+// serverIDToAnchorID から anchorUUID を検索
+// proxy をフェードアウト削除
+// Bug3DNode を reparentToCaptureAnchor → captured() アニメ
+// 全マップからクリア
+```
 
 ### ensureSlingshotAttached()（冪等）
 
@@ -1133,24 +1167,35 @@ var isProjectorOverlay: Bool = false
 ### フロー図
 
 ```
-iOS Controller (×最大3台)               Projector Server
+Projector Server                         iOS Controller (×最大3台)
     │                                        │
-    │── startGame ──────────────────────────>│ → startGame()
-    │── launch(angle, power, timestamp) ────>│ → playerIndex で色分け + NetProjectile 発射
-    │── bugSpawned(id, type, x, y) ─────────>│ → addSyncedBug: Bug3DNode 追加
-    │── bugRemoved(id) ─────────────────────>│ → removeSyncedBug: captured() アニメで削除
-    │── resetGame ───────────────────────── >│ → stopSpawning: 全 Bug3DNode 即削除
+    │<── startGame ───────────────────────── │ → startGame()
+    │<── launch(angle, power, timestamp) ─── │ → playerIndex で色分け + NetProjectile 発射
+    │                                        │
+    │── bugSpawned(id, type, x, y) ─────────>│ プロジェクター自律スポーン → 全クライアントへブロードキャスト
+    │                                        │   → addServerBug: ARAnchor 生成・Bug3DNode 追加
+    │<── bugRemoved(id) ─────────────────────│ 捕獲クライアントが送信
+    │── bugRemoved(id) ─────────────────────>│ プロジェクターが全クライアントへリレー
+    │                                        │   → removeServerBug: Bug3DNode フェードアウト削除
+    │── bugRemoved(id) ─────────────────────>│ 自律バグの自然消滅時もリレー
+    │<── resetGame ───────────────────────── │ → stopSpawning: 全 Bug3DNode 即削除 + bugRemoved リレー
 ```
 
 ### normalizedX / normalizedY の計算
 
 ```swift
-// iOS 側 spawnBug() で算出:
-normalizedX = horizontalAngle / 0.65                          // -1〜1
-normalizedY = (verticalOffset - (-0.30)) / (0.45 - (-0.30))  // 0〜1 (0=下, 1=上)
-// プロジェクター側 addSyncedBug() で 3D 座標に復元:
+// プロジェクター側 spawnAutonomousBug() で生成:
+normalizedX = Float.random(in: -0.85...0.85)   // -1〜1 (左→右 方向ヒント)
+normalizedY = Float.random(in: 0.10...0.90)    // 0〜1 (下→上 方向ヒント)
+// プロジェクター画面 3D 座標:
 x = normalizedX × halfW × 0.70
 y = (normalizedY × 2.0 - 1.0) × halfH × 0.60
+
+// iOS 側 addServerBug() で AR 座標に復元:
+horizontalAngle = normalizedX × 0.65
+verticalOffset  = normalizedY × (0.45 - (-0.30)) + (-0.30)
+distance = random(0.5...1.4)
+worldPos = (worldOriginTransform ?? camera.transform) × localPos
 ```
 
 ---
@@ -1186,7 +1231,7 @@ y = (normalizedY × 2.0 - 1.0) × halfH × 0.60
 ┌────────────────────────────────────────────────────┐
 │  ARView(cameraMode:.nonAR, background: darkGreen, 背面) │ ← 常時アクティブ
 │    camera: Z=3.5, FOV=65°                            │
-│    Bug3DNode × n (phone-synced + autonomous)         │
+│    Bug3DNode × n (server-authoritative autonomous)   │
 │    scale ×10 で表示                                  │
 │    autonomous: 電話接続なし時も 1.8s→0.6s 間隔でスポーン│
 │  SKView (transparent, 前面)                          │

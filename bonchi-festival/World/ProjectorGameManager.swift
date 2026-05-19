@@ -46,6 +46,14 @@ final class ProjectorGameManager: NSObject {
 
     weak var delegate: ProjectorGameManagerDelegate?
 
+    // MARK: State-sync on new peer connect
+
+    /// Called by the manager when a new iOS client connects to fetch the complete list of
+    /// currently-alive bugs.  The manager immediately relays them to the new peer so it
+    /// can catch up to the current game state without waiting for the next spawn event.
+    /// Return value: array of (id, bugType, normalizedX, normalizedY) for every active bug.
+    var requestCurrentBugs: (() -> [(id: String, type: BugType, normalizedX: Float, normalizedY: Float)])?
+
     override init() {
         super.init()
         mcSession = MCSession(peer: myPeerID, securityIdentity: nil, encryptionPreference: .required)
@@ -84,6 +92,45 @@ final class ProjectorGameManager: NSObject {
         let message = GameMessage.gameState(payload)
         guard !mcSession.connectedPeers.isEmpty,
               let data = try? JSONEncoder().encode(message) else { return }
+        try? mcSession.send(data, toPeers: mcSession.connectedPeers, with: .reliable)
+    }
+
+    /// Broadcast a newly spawned bug to all connected iOS clients.
+    /// Called by the projector when it creates a new autonomous bug so every client
+    /// can mirror the bug in its AR scene.
+    func sendBugSpawned(id: String, type: BugType, normalizedX: Float, normalizedY: Float) {
+        guard !mcSession.connectedPeers.isEmpty else { return }
+        let payload = BugSpawnedPayload(id: id, bugType: type,
+                                        normalizedX: normalizedX, normalizedY: normalizedY)
+        guard let data = try? JSONEncoder().encode(GameMessage.bugSpawned(payload)) else { return }
+        try? mcSession.send(data, toPeers: mcSession.connectedPeers, with: .reliable)
+    }
+
+    /// Sends the complete list of currently-active bugs to a single newly-connected peer.
+    /// Each bug is encoded as a separate `bugSpawned` message so the client processes them
+    /// identically to a live spawn event.
+    private func sendCurrentBugs(to peer: MCPeerID) {
+        guard let bugs = requestCurrentBugs?(), !bugs.isEmpty else { return }
+        for bug in bugs {
+            let payload = BugSpawnedPayload(id: bug.id, bugType: bug.type,
+                                            normalizedX: bug.normalizedX, normalizedY: bug.normalizedY)
+            // Encoding should never fail for a valid Codable struct;
+            // log and skip rather than crashing if it does.
+            guard let data = try? JSONEncoder().encode(GameMessage.bugSpawned(payload)) else {
+                print("[ProjectorGameManager] sendCurrentBugs: failed to encode bugSpawned for id=\(bug.id)")
+                continue
+            }
+            try? mcSession.send(data, toPeers: [peer], with: .reliable)
+        }
+    }
+
+    /// Broadcast a bug-removed event to all connected iOS clients.
+    /// Called either when a client reports a capture (relay) or when the projector
+    /// itself removes a bug (autonomous exit, game reset).
+    func sendBugRemoved(id: String) {
+        guard !mcSession.connectedPeers.isEmpty else { return }
+        let payload = BugRemovedPayload(id: id)
+        guard let data = try? JSONEncoder().encode(GameMessage.bugRemoved(payload)) else { return }
         try? mcSession.send(data, toPeers: mcSession.connectedPeers, with: .reliable)
     }
 
@@ -127,6 +174,9 @@ extension ProjectorGameManager: MCSessionDelegate {
                 self.playerSlots[peerID] = slot
                 self.usedSlots.insert(slot)
                 self.notifyPlayersUpdate()
+                // Immediately send all currently-active bugs to the new client so it
+                // starts in sync rather than waiting for the next autonomous spawn.
+                self.sendCurrentBugs(to: peerID)
             case .notConnected:
                 if let slot = self.playerSlots[peerID] {
                     self.usedSlots.remove(slot)
