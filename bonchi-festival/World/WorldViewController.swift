@@ -264,6 +264,9 @@ final class ProjectorBug3DCoordinator {
     private var autonomousAnchors: [AnchorEntity] = []
     /// Maps AnchorEntity object identity → server-assigned bug ID for autonomous bugs.
     private var autonomousBugIDs: [ObjectIdentifier: String] = [:]
+    /// Reverse map: server bug ID → AnchorEntity object identity.
+    /// Maintained in parallel with `autonomousBugIDs` to allow O(1) lookup by ID.
+    private var autonomousIDToAnchorKey: [String: ObjectIdentifier] = [:]
 
     // MARK: Bug data for state-sync (new client re-join)
 
@@ -368,6 +371,7 @@ final class ProjectorBug3DCoordinator {
         autonomousAnchors.removeAll()
         autonomousBugs.removeAll()
         autonomousBugIDs.removeAll()
+        autonomousIDToAnchorKey.removeAll()
         autonomousBugData.removeAll()
 
         bug3DAnchors.values.forEach { arView?.scene.removeAnchor($0) }
@@ -432,8 +436,9 @@ final class ProjectorBug3DCoordinator {
         }
 
         // ── Autonomous bug captured by a phone player ────────────────────────
-        // Reverse-lookup: find the AnchorEntity key whose associated ID matches.
-        guard let anchorKey = autonomousBugIDs.first(where: { $0.value == id })?.key,
+        // O(1) reverse-lookup using the dedicated reverse map, then a single linear
+        // pass through autonomousAnchors (max 4 elements) to get the array index.
+        guard let anchorKey = autonomousIDToAnchorKey[id],
               let idx = autonomousAnchors.firstIndex(where: { ObjectIdentifier($0) == anchorKey })
         else { return }
 
@@ -442,6 +447,7 @@ final class ProjectorBug3DCoordinator {
 
         // Remove from all tracking collections so the wander loop exits on its next tick.
         autonomousBugIDs.removeValue(forKey: anchorKey)
+        autonomousIDToAnchorKey.removeValue(forKey: id)
         autonomousBugData.removeValue(forKey: id)
         autonomousBugs.remove(at: idx)
         autonomousAnchors.remove(at: idx)
@@ -512,7 +518,9 @@ final class ProjectorBug3DCoordinator {
 
         // Assign a stable server-side ID for this bug.
         let bugID = UUID().uuidString
-        autonomousBugIDs[ObjectIdentifier(bugAnchor)] = bugID
+        let anchorKey = ObjectIdentifier(bugAnchor)
+        autonomousBugIDs[anchorKey] = bugID
+        autonomousIDToAnchorKey[bugID] = anchorKey
         // Store spawn parameters so they can be re-sent to a newly-connected client.
         autonomousBugData[bugID] = (type: bugType, normalizedX: normalizedX, normalizedY: normalizedY)
 
@@ -532,9 +540,10 @@ final class ProjectorBug3DCoordinator {
             if p >= 1.0 { t.invalidate() }
         }
 
-        // Infinite wandering: bugs stay on screen until captured.
-        // No exit path and no natural-removal timer — only a player throwing the net
-        // (or a game reset) can remove a bug from the scene.
+        // Infinite wandering: bugs stay on screen indefinitely via recursive scheduling.
+        // The previous timer-based exit mechanism (exit off-screen → natural removal) has
+        // been removed.  Only a player throwing the net (or a game reset via stopSpawning)
+        // can remove a bug from the scene.
         startWandering(bug: bug3D, anchor: bugAnchor, bugType: bugType)
 
         notifyBugCountChanged()
