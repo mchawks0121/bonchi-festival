@@ -73,6 +73,10 @@ AR モードでは `config.environmentTexturing = .automatic` により、
 非 AR モードでは IBL が自動生成されないため、
 **金属光沢・反射系マテリアルを持つ USDZ が真っ黒になる**。
 
+> **⚠️ 白背景にしてもモデルが一切見えない場合は原因②ではありません。**  
+> 原因②の症状は「形はあるが真っ暗/真っ黒」です。  
+> 「完全に不可視（ポリゴン自体が描画されない）」の場合は **原因⑤・⑥** を確認してください。
+
 ### 対策（いずれか一つ以上を実施）
 
 ```swift
@@ -160,28 +164,150 @@ Entity.loadAsync(named: name)
 
 ---
 
+## 原因⑤【白背景でも完全に不可視】iOS シミュレータでの RealityKit 3D 描画非対応
+
+### 現象
+
+`arView.environment.background = .color(.white)` を設定すると **背景色は白になる** が、
+`AnchorEntity` 以下に追加した 3D エンティティ（`ModelEntity` 等）が一切表示されない。
+
+### 原因
+
+RealityKit の 3D レンダリングは **Metal GPU** を必要とするため、iOS シミュレータでは動作しない。
+
+- `environment.background = .color(...)` は UIKit/CALayer レイヤーで描画 → シミュレータでも見える
+- `AnchorEntity` 以下の 3D エンティティは Metal ベースのレンダリングパイプラインを使用 → **シミュレータでは描画されない**
+
+背景色が変わって「ARView は動いている」ように見えるため、実機未使用に気づきにくい。
+
+### 確認方法
+
+Xcode 下部コンソールに以下のいずれかが出力されていないか確認する：
+
+```
+[SceneKit] Error: OpenGL ES context is not supported on this version of iOS.
+```
+
+またはシミュレータの機種名（例: `iPhone 16 Pro Simulator`）が
+Xcode ウィンドウタイトルに表示されていないか確認する。
+
+### 対策
+
+**実機（iPhone / iPad）で実行する。** RealityKit は物理デバイスのみ完全サポート。  
+シミュレータでの 3D プレビューが必要な場合は SceneKit か SwiftUI Canvas を代替手段として検討する。
+
+---
+
+## 原因⑥【白背景でも完全に不可視】`Entity.loadAsync` が Xcode 26 / Swift 6 で `ModelComponent` を持たない Entity を返す
+
+### 現象
+
+- `preloadAssets()` のプリロードでエラーが出ていない
+- `entityCache[type.rawValue]` に Entity が格納されている（nil でない）
+- `loadUSDZModel()` で `cached.clone(recursive: true)` が成功している
+- にもかかわらず何も描画されない（背景色は見えるが 3D モデルがない）
+
+### 原因
+
+Xcode 26 / Swift 6 strict concurrency モードでは `Entity.loadAsync(named:)` の  
+Combine `receiveValue` クロージャが **Main Actor 以外のスレッド** で呼ばれることがある。
+
+このとき `Entity` の `ModelComponent`（実際の描画データ）が不完全な状態でキャッシュに入り、
+`clone(recursive: true)` しても形状のない Entity が生成される。
+
+> 本プロジェクトの `Bug3DNode.preloadAssets()` は現時点で `.receive(on: DispatchQueue.main)` を
+> 持たないため、このパターンに該当する可能性がある。
+
+### 確認方法
+
+```swift
+// Bug3DNode.loadUSDZModel() 内の clone 直後に追加
+func hasModelComponent(_ e: Entity) -> Bool {
+    if e.components.has(ModelComponent.self) { return true }
+    return e.children.contains { hasModelComponent($0) }
+}
+print("[DEBUG] \(bugType.rawValue) hasModelComponent: \(hasModelComponent(model))")
+```
+
+`false` が出れば Entity は存在するが描画可能な形状データを持っていない。
+
+### 対策
+
+```swift
+// ❌ 旧コード: Main Actor 保証なし（Xcode 26 では receiveValue が非メインスレッドで届く可能性）
+Entity.loadAsync(named: name)
+    .sink(
+        receiveCompletion: { ... },
+        receiveValue: { loaded in
+            entityCache[typeKey] = loaded
+        }
+    )
+    .store(in: &preloadCancellables)
+
+// ✅ 対策 A: .receive(on:) でメインスレッドを保証（最小変更）
+Entity.loadAsync(named: name)
+    .receive(on: DispatchQueue.main)
+    .sink(
+        receiveCompletion: { ... },
+        receiveValue: { loaded in
+            cacheLock.lock()
+            entityCache[typeKey] = loaded
+            cacheLock.unlock()
+        }
+    )
+    .store(in: &preloadCancellables)
+
+// ✅ 対策 B: async/await に移行（Swift 6 推奨。Entity.loadAsync は deprecated）
+Task { @MainActor in
+    do {
+        let loaded = try await Entity(named: name, in: nil)
+        cacheLock.lock()
+        entityCache[typeKey] = loaded
+        loadingInProgress.remove(typeKey)
+        cacheLock.unlock()
+    } catch {
+        print("Bug3DNode preload failed for \(name): \(error)")
+        cacheLock.lock()
+        loadingInProgress.remove(typeKey)
+        cacheLock.unlock()
+    }
+}
+```
+
+---
+
 ## デバッグ手順（推奨順）
 
-1. **キャッシュ確認**: `spawnBug()` 冒頭に `print` を追加し、
+1. **実機確認**: iOS シミュレータではなく実機（iPhone / iPad）で実行しているか確認する
+   → シミュレータなら**原因⑤確定**。実機に切り替える。
+
+2. **キャッシュ確認**: `spawnBug()` 冒頭に `print` を追加し、
    スポーン時点で `entityCache` に値が入っているか確認する。
 
-2. **タイミング検証**: 非 AR 起動後、意図的に 5 秒待ってからスポーンして症状が消えるか確認する
+3. **タイミング検証**: 非 AR 起動後、意図的に 5 秒待ってからスポーンして症状が消えるか確認する
    → 消えれば**原因①（レースコンディション）確定**。
 
-3. **照明検証**: `arView.environment.background = .color(.white)` を追加してモデルが見えるか確認する
-   → 見えれば**原因②（IBL 欠如）確定**。
+4. **照明検証**: `arView.environment.background = .color(.white)` を追加してモデルが見えるか確認する
+   → **見えれば原因②（IBL 欠如）確定**。  
+   → **白背景にしても見えない場合は原因②ではない**。手順 5 以降へ進む。
 
-4. **GPU フレームキャプチャ**: Xcode の Metal Debugger でフレームキャプチャを実行し、
+5. **ModelComponent 確認**: 上記「原因⑥ 確認方法」の `print` を追加し、
+   クローン後の Entity に `ModelComponent` が存在するか確認する
+   → `false` なら**原因⑥（Swift 6 / loadAsync 問題）確定**。`.receive(on: DispatchQueue.main)` を追加する。
+
+6. **GPU フレームキャプチャ**: Xcode の Metal Debugger でフレームキャプチャを実行し、
    Entity が Draw Call に含まれているか確認する。
 
-5. **Swift 6 警告確認**: Xcode の Runtime Issues パネルで
+7. **Swift 6 警告確認**: Xcode の Runtime Issues パネルで
    Actor isolation 関連の警告が出ていないか確認する。
 
 ---
 
 ## 最小修正テンプレート（非 AR ViewController）
 
-以下を `viewDidLoad` に追加するだけで原因①②③を一括対処できる。
+以下を `viewDidLoad` に追加するだけで原因①②③を一括対処できる。  
+原因⑥（Swift 6 loadAsync 問題）対策は `preloadAssets()` 内に `.receive(on: DispatchQueue.main)` を追加すること。  
+原因⑤（シミュレータ）は実機でのみ解消される。
 
 ```swift
 override func viewDidLoad() {
@@ -246,11 +372,12 @@ private func waitForPreloadThenStart() {
 
 ## 参考: AR パスが成功する理由
 
-| 状況 | AR モード | 非 AR モード |
-|------|-----------|-------------|
-| セッション初期化待機 | あり（2〜4 秒） | **なし** |
-| IBL 自動生成 | あり（カメラ映像から） | **なし** |
-| デフォルトカメラ | ARKit が自動配置 | **なし（手動設定必要）** |
+| 状況 | AR モード | 非 AR モード | シミュレータ |
+|------|-----------|-------------|-------------|
+| セッション初期化待機 | あり（2〜4 秒） | **なし** | — |
+| IBL 自動生成 | あり（カメラ映像から） | **なし** | — |
+| デフォルトカメラ | ARKit が自動配置 | **なし（手動設定必要）** | — |
+| 3D Entity 描画 | ✅ 実機のみ | ✅ 実機のみ | **❌ 非対応** |
 
 ARKit のセッション起動はカメラ権限取得・センサー初期化のために通常 2〜4 秒かかる。  
 この待機時間の間に `Entity.loadAsync` の非同期ロードが完了するため、  
